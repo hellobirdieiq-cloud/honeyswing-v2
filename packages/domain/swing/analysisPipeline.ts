@@ -1,15 +1,69 @@
 import { PoseSequence } from "../../pose/PoseTypes";
+import { getPoseProvider } from "../../pose/PoseProviderRegistry";
+
+import { calculateGolfAngles } from "./angles";
+import { detectSwingPhases, SwingTrailPoint } from "./phaseDetection";
+import { calculateTempo } from "./tempoAnalysis";
+import { scoreSwing } from "./scoring";
 
 export type AnalysisResult = {
   score: number;
-  feedback: string;
   honeyBoom: boolean;
+  angles?: any;
+  tempo?: any;
+  phases?: any[];
 };
 
-export function analyzeSwing(sequence: PoseSequence): AnalysisResult {
+function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
+  const points: SwingTrailPoint[] = [];
+
+  for (const frame of sequence.frames) {
+    const lw = frame.joints.leftWrist;
+    const rw = frame.joints.rightWrist;
+
+    if (!lw || !rw) continue;
+
+    points.push({
+      x: (lw.x + rw.x) / 2,
+      y: (lw.y + rw.y) / 2,
+      timestamp: frame.timestampMs,
+    });
+  }
+
+  return points;
+}
+
+export async function analyzeSwing(videoUri: string): Promise<AnalysisResult> {
+  const provider = getPoseProvider();
+
+  const sequence: PoseSequence = await provider.detectFromVideo({
+    videoUri,
+  });
+
+  if (!sequence.frames || sequence.frames.length === 0) {
+    return {
+      score: 0,
+      honeyBoom: false,
+    };
+  }
+
+  const midFrame = sequence.frames[Math.floor(sequence.frames.length / 2)];
+  const angles = calculateGolfAngles(midFrame);
+
+  const trail = buildTrailPoints(sequence);
+  const phases = detectSwingPhases(trail);
+  const tempo = calculateTempo(phases);
+
+  const scoring = scoreSwing({
+    angles,
+    tempo,
+  });
+
   return {
-    score: 80,
-    feedback: "Analysis not implemented",
-    honeyBoom: false,
+    score: scoring.score,
+    honeyBoom: scoring.honeyBoom,
+    angles,
+    tempo,
+    phases,
   };
 }
