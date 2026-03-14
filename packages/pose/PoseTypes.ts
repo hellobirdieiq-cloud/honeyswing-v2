@@ -44,3 +44,19 @@ export type PoseSequence = {
     durationMs?: number;
   };
 };
+
+export type V1PoseLandmark = {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  inFrameLikelihood: number;
+  isPresent?: boolean;
+};
+
+export type V1MotionFrame = {
+  landmarks: V1PoseLandmark[];
+  timestamp: number;
+  frameIndex: number;
+};
