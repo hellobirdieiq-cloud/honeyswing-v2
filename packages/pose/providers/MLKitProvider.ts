@@ -1,20 +1,11 @@
 import { PoseProvider } from "../PoseProvider";
 import {
   JointName,
-  NormalizedJoint,
   PoseFrame,
   PoseSequence,
+  V1PoseLandmark,
+  createEmptyJoints,
 } from "../PoseTypes";
-
-type V1PoseLandmark = {
-  id: number;
-  name: string;
-  x: number;
-  y: number;
-  z: number;
-  inFrameLikelihood: number;
-  isPresent?: boolean;
-};
 
 const V1_TO_V2_JOINT_MAP: Partial<Record<string, JointName>> = {
   nose: "nose",
@@ -40,32 +31,6 @@ const V1_TO_V2_JOINT_MAP: Partial<Record<string, JointName>> = {
   rightFootIndex: "rightFootIndex",
 };
 
-function createEmptyJoints(): Record<JointName, NormalizedJoint | undefined> {
-  return {
-    nose: undefined,
-    leftEye: undefined,
-    rightEye: undefined,
-    leftEar: undefined,
-    rightEar: undefined,
-    leftShoulder: undefined,
-    rightShoulder: undefined,
-    leftElbow: undefined,
-    rightElbow: undefined,
-    leftWrist: undefined,
-    rightWrist: undefined,
-    leftHip: undefined,
-    rightHip: undefined,
-    leftKnee: undefined,
-    rightKnee: undefined,
-    leftAnkle: undefined,
-    rightAnkle: undefined,
-    leftHeel: undefined,
-    rightHeel: undefined,
-    leftFootIndex: undefined,
-    rightFootIndex: undefined,
-  };
-}
-
 function mapLandmarksToPoseFrame(params: {
   landmarks: V1PoseLandmark[];
   timestampMs: number;
@@ -85,9 +50,11 @@ function mapLandmarksToPoseFrame(params: {
       x: landmark.x,
       y: landmark.y,
       z: Number.isFinite(landmark.z) ? landmark.z : undefined,
-      confidence: Number.isFinite(landmark.inFrameLikelihood)
-        ? landmark.inFrameLikelihood
-        : undefined,
+      confidence: Number.isFinite((landmark as any).confidence)
+        ? (landmark as any).confidence
+        : Number.isFinite(landmark.inFrameLikelihood)
+          ? landmark.inFrameLikelihood
+          : undefined,
     };
   }
 
