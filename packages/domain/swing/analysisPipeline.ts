@@ -33,13 +33,7 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   return points;
 }
 
-export async function analyzeSwing(videoUri: string): Promise<AnalysisResult> {
-  const provider = getPoseProvider();
-
-  const sequence: PoseSequence = await provider.detectFromVideo({
-    videoUri,
-  });
-
+export function analyzePoseSequence(sequence: PoseSequence): AnalysisResult {
   if (!sequence.frames || sequence.frames.length === 0) {
     return {
       score: 0,
@@ -66,4 +60,14 @@ export async function analyzeSwing(videoUri: string): Promise<AnalysisResult> {
     tempo,
     phases,
   };
+}
+
+export async function analyzeSwing(videoUri: string): Promise<AnalysisResult> {
+  const provider = getPoseProvider();
+
+  const sequence: PoseSequence = await provider.detectFromVideo({
+    videoUri,
+  });
+
+  return analyzePoseSequence(sequence);
 }

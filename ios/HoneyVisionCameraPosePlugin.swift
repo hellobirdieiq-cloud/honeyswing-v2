@@ -11,7 +11,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
 
   public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
     guard let imageBuffer = CMSampleBufferGetImageBuffer(frame.buffer) else {
-      return [999]
+      return [["debug": 999]]
     }
 
     let request = VNDetectHumanBodyPoseRequest()
@@ -20,17 +20,52 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
       let handler = VNImageRequestHandler(cvPixelBuffer: imageBuffer, orientation: .right, options: [:])
       try handler.perform([request])
 
-      guard let observations = request.results else {
-        return [111]
+      guard let observation = request.results?.first else {
+        return []
       }
 
-      if observations.isEmpty {
-        return [222]
+      let recognizedPoints = try observation.recognizedPoints(.all)
+
+      let nameMap: [(VNHumanBodyPoseObservation.JointName, String)] = [
+        (.nose, "nose"),
+        (.leftEye, "leftEye"),
+        (.rightEye, "rightEye"),
+        (.leftEar, "leftEar"),
+        (.rightEar, "rightEar"),
+        (.neck, "neck"),
+        (.leftShoulder, "leftShoulder"),
+        (.rightShoulder, "rightShoulder"),
+        (.leftElbow, "leftElbow"),
+        (.rightElbow, "rightElbow"),
+        (.leftWrist, "leftWrist"),
+        (.rightWrist, "rightWrist"),
+        (.root, "root"),
+        (.leftHip, "leftHip"),
+        (.rightHip, "rightHip"),
+        (.leftKnee, "leftKnee"),
+        (.rightKnee, "rightKnee"),
+        (.leftAnkle, "leftAnkle"),
+        (.rightAnkle, "rightAnkle")
+      ]
+
+      var output: [[String: Any]] = []
+
+      for (jointName, exportName) in nameMap {
+        guard let point = recognizedPoints[jointName], point.confidence > 0 else {
+          continue
+        }
+
+        output.append([
+          "name": exportName,
+          "x": point.location.x,
+          "y": point.location.y,
+          "confidence": point.confidence
+        ])
       }
 
-      return Array(repeating: 1, count: observations.count)
+      return output
     } catch {
-      return [333]
+      return [["debug": 333]]
     }
   }
 }

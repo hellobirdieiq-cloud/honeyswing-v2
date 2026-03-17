@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "HoneySwing V2",
+    "slug": "honeyswing-v2",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "honeyswingv2",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#111111"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.0"
+          },
+          "android": {
+            "minSdkVersion": 23
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "HoneySwing uses the camera to record and analyze your golf swing."
+      },
+      "bundleIdentifier": "com.honeyswing.honeyswing-v2"
+    },
+    "android": {
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    }
+  }
+}

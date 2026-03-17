@@ -60,3 +60,29 @@ export type V1MotionFrame = {
   timestamp: number;
   frameIndex: number;
 };
+
+export function createEmptyJoints(): Record<JointName, NormalizedJoint | undefined> {
+  return {
+    nose: undefined,
+    leftEye: undefined,
+    rightEye: undefined,
+    leftEar: undefined,
+    rightEar: undefined,
+    leftShoulder: undefined,
+    rightShoulder: undefined,
+    leftElbow: undefined,
+    rightElbow: undefined,
+    leftWrist: undefined,
+    rightWrist: undefined,
+    leftHip: undefined,
+    rightHip: undefined,
+    leftKnee: undefined,
+    rightKnee: undefined,
+    leftAnkle: undefined,
+    rightAnkle: undefined,
+    leftHeel: undefined,
+    rightHeel: undefined,
+    leftFootIndex: undefined,
+    rightFootIndex: undefined,
+  };
+}
