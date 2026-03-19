@@ -4,6 +4,7 @@
     "slug": "honeyswing-v2",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
     "scheme": "honeyswingv2",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -33,15 +34,24 @@
     },
     "ios": {
       "infoPlist": {
-        "NSCameraUsageDescription": "HoneySwing uses the camera to record and analyze your golf swing."
+        "NSCameraUsageDescription": "HoneySwing uses the camera to record and analyze your golf swing.",
+        "NSLocationWhenInUseUsageDescription": "HoneySwing does not use your location. This message may appear because of underlying system components."
       },
-      "bundleIdentifier": "com.honeyswing.honeyswing-v2"
+      "bundleIdentifier": "com.honeyswing.honeyswing-v2",
+      "buildNumber": "4"
     },
     "android": {
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
-    }
+        "android.permission.CAMERA"
+      ],
+      "package": "com.honeyswing.honeyswingv2"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6d20482e-c974-426d-83d9-13ff4e5c8c99"
+      }
+    },
+    "owner": "honeyswing"
   }
 }

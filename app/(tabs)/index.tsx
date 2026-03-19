@@ -3,8 +3,8 @@ import { View, Text, StyleSheet } from 'react-native';
 export default function TabsHomeScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>HoneySwing V2</Text>
-      <Text style={styles.subtitle}>Tabs shell is live.</Text>
+      <Text style={styles.title}>HoneySwing</Text>
+      <Text style={styles.subtitle}>Record your golf swing to get instant feedback</Text>
     </View>
   );
 }
@@ -19,12 +19,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#F5A623',
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   subtitle: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
+    textAlign: 'center',
   },
 });

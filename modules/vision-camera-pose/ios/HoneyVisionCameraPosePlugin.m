@@ -2,6 +2,13 @@
 #import <VisionCamera/FrameProcessorPlugin.h>
 #import <VisionCamera/FrameProcessorPluginRegistry.h>
 
-#import "honeyswing-v2-Swift.h"
+#import "HoneySwingV2-Swift.h"
 
-VISION_EXPORT_FRAME_PROCESSOR(honeyPoseDetect, HoneyVisionCameraPosePlugin)
+@interface HoneyVisionCameraPosePlugin (FrameProcessor)
+@end
+
+@implementation HoneyVisionCameraPosePlugin (FrameProcessor)
+
+VISION_EXPORT_FRAME_PROCESSOR(HoneyVisionCameraPosePlugin, honeyPoseDetect)
+
+@end

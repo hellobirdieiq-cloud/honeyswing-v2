@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Button, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
 import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
-import { Colors } from '../../constants/colors';
 import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
 import { MLKitProvider } from '../../packages/pose/providers/MLKitProvider';
 import {
@@ -21,31 +20,21 @@ import {
 
 const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
-const COUNTDOWN_MS = 3000;
-const CAPTURE_WINDOW_MS = 2200;
+const CAPTURE_WINDOW_MS = 4000;
 
-type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'complete' | 'error';
-type CaptureStartMode = 'countdown' | 'instant';
+type CapturePhase = 'idle' | 'capturing' | 'complete' | 'error';
 
 export default function RecordTab() {
   const router = useRouter();
-  const beepPlayer = useAudioPlayer(require('../../assets/beep.wav'));
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [bufferedFrameCount, setBufferedFrameCount] = useState(0);
-  const [countdownSecondsLeft, setCountdownSecondsLeft] = useState(0);
+  const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
-  const [statusMessage, setStatusMessage] = useState(
-    'Press Start Swing Capture to run the beep → go → capture flow.'
-  );
-  const [capturedAnalysis, setCapturedAnalysis] = useState<AnalysisResult | null>(null);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
   const capturePhaseRef = useRef<CapturePhase>('idle');
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function updateCapturePhase(nextPhase: CapturePhase) {
@@ -54,16 +43,6 @@ export default function RecordTab() {
   }
 
   function clearTimers() {
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-
-    if (countdownTimeoutRef.current) {
-      clearTimeout(countdownTimeoutRef.current);
-      countdownTimeoutRef.current = null;
-    }
-
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
@@ -91,9 +70,7 @@ export default function RecordTab() {
       if (!poseFrame) return;
 
       const nextFrames = [...motionFramesRef.current, poseFrame].slice(-MAX_BUFFERED_POSE_FRAMES);
-
       motionFramesRef.current = nextFrames;
-      setBufferedFrameCount(nextFrames.length);
     }
   );
 
@@ -105,11 +82,8 @@ export default function RecordTab() {
     if (frames.length < MIN_FRAMES_FOR_ANALYSIS) {
       clearCurrentSwingMotion();
       clearCurrentSwingAnalysis();
-      setCapturedAnalysis(null);
       updateCapturePhase('error');
-      setStatusMessage(
-        `Capture finished, but only ${frames.length} pose frames were detected. Need at least ${MIN_FRAMES_FOR_ANALYSIS}.`
-      );
+      setTimeout(() => updateCapturePhase('idle'), 2000);
       return;
     }
 
@@ -124,34 +98,26 @@ export default function RecordTab() {
 
     const analysis = analyzePoseSequence(sequence);
 
-    console.log('[SWING_VALIDATION]', {
-      frameCount: frames.length,
-      durationMs: sequence.metadata?.durationMs,
-      score: analysis.score,
-      tempoRatio: analysis.tempo?.tempoRatio,
-      hasAngles: !!analysis.angles,
-      phases: analysis.phases?.length ?? 0,
-    });
-
     setCurrentSwingMotion({
       frames,
       recordedAt: Date.now(),
       source: 'live-camera',
     });
     setCurrentSwingAnalysis(analysis);
-    setCapturedAnalysis(analysis);
     updateCapturePhase('complete');
-    setStatusMessage('Swing capture complete. Opening result screen.');
 
     router.push('/analysis/result');
   }
 
-  function beginCaptureWindow() {
+  function startSwingCapture() {
+    if (!hasPermission || !device || !cameraReady) return;
+
+    clearTimers();
+    clearCurrentSwingMotion();
+    clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
-    setBufferedFrameCount(0);
-    setCountdownSecondsLeft(0);
+
     updateCapturePhase('capturing');
-    setStatusMessage('Go!');
     goPlayer.play();
 
     captureTimeoutRef.current = setTimeout(() => {
@@ -159,59 +125,10 @@ export default function RecordTab() {
     }, CAPTURE_WINDOW_MS);
   }
 
-  function startSwingCapture(mode: CaptureStartMode = 'countdown') {
-    if (!hasPermission || !device) {
-      setStatusMessage('Camera permission and a real camera device are required before capture.');
-      return;
-    }
-
-    clearTimers();
-    clearCurrentSwingMotion();
-    clearCurrentSwingAnalysis();
-    setCapturedAnalysis(null);
-    motionFramesRef.current = [];
-    setBufferedFrameCount(0);
-
-    if (mode === 'instant') {
-      beginCaptureWindow();
-      return;
-    }
-
-    setCountdownSecondsLeft(3);
-    updateCapturePhase('countdown');
-    setStatusMessage('3');
-
-    beepPlayer.play();
-
-    countdownIntervalRef.current = setInterval(() => {
-      setCountdownSecondsLeft((current) => {
-        const next = current - 1;
-
-        if (next > 0) {
-          setStatusMessage(String(next));
-          beepPlayer.play();
-          return next;
-        }
-
-        if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-        }
-
-        return 0;
-      });
-    }, 1000);
-
-    countdownTimeoutRef.current = setTimeout(() => {
-      beginCaptureWindow();
-    }, COUNTDOWN_MS);
-  }
-
   useEffect(() => {
     let mounted = true;
 
     motionFramesRef.current = [];
-    setBufferedFrameCount(0);
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
 
@@ -222,7 +139,12 @@ export default function RecordTab() {
         interruptionMode: 'doNotMix',
       });
 
-      const status = await Camera.getCameraPermissionStatus();
+      let status = await Camera.getCameraPermissionStatus();
+      
+      if (status === 'not-determined') {
+        status = await Camera.requestCameraPermission();
+      }
+      
       if (mounted) {
         setHasPermission(status === 'granted');
       }
@@ -236,51 +158,7 @@ export default function RecordTab() {
     };
   }, []);
 
-  async function requestPermission() {
-    const status = await Camera.requestCameraPermission();
-    setHasPermission(status === 'granted');
-  }
-
   const device = useCameraDevice('back');
-
-  const capturePhaseLabel = useMemo(() => {
-    switch (capturePhase) {
-      case 'idle':
-        return 'Idle';
-      case 'countdown':
-        return countdownSecondsLeft > 0 ? String(countdownSecondsLeft) : 'Get Ready';
-      case 'capturing':
-        return 'Capturing';
-      case 'complete':
-        return 'Complete';
-      case 'error':
-        return 'Error';
-      default:
-        return 'Unknown';
-    }
-  }, [capturePhase, countdownSecondsLeft]);
-
-  const statusDetail = useMemo(() => {
-    if (capturePhase === 'complete' && capturedAnalysis) {
-      return `Captured ${bufferedFrameCount} frames. Score ${capturedAnalysis.score}.`;
-    }
-
-    if (capturePhase === 'capturing') {
-      return 'Hold steady through the swing window.';
-    }
-
-    if (capturePhase === 'countdown') {
-      return 'Get into position before Go.';
-    }
-
-    if (capturePhase === 'idle') {
-      return 'Ready when you are.';
-    }
-
-    return statusMessage;
-  }, [bufferedFrameCount, capturePhase, capturedAnalysis, statusMessage]);
-
-  const isCaptureBusy = capturePhase === 'countdown' || capturePhase === 'capturing';
 
   const frameProcessor = useFrameProcessor(
     (frame) => {
@@ -295,173 +173,115 @@ export default function RecordTab() {
     [appendPoseFrame]
   );
 
+  const showCamera = hasPermission === true && device != null;
+  const isCapturing = capturePhase === 'capturing';
+  const isInitializing = hasPermission === null || (showCamera && !cameraReady);
+  const canRecord = cameraReady && !isCapturing;
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-      scrollEnabled={!isCaptureBusy}
-    >
-      <Text style={styles.title}>Record</Text>
-
-      <Text style={styles.subtitle}>Line up the golfer, then start the capture flow.</Text>
-
-      {hasPermission && device ? (
-        <View style={styles.cameraFrame}>
-          <Camera
-            style={StyleSheet.absoluteFill}
-            device={device}
-            isActive={true}
-            photo={false}
-            video={true}
-            audio={false}
-            frameProcessor={frameProcessor}
-          />
-          {capturePhase === 'countdown' && countdownSecondsLeft > 0 ? (
-            <View style={styles.countdownOverlay}>
-              <Text style={styles.countdownOverlayText}>{countdownSecondsLeft}</Text>
-            </View>
-          ) : null}
-          {capturePhase === 'capturing' ? (
-            <View style={styles.goOverlay}>
-              <Text style={styles.goOverlayText}>GO</Text>
-            </View>
-          ) : null}
-        </View>
+    <View style={styles.container}>
+      {showCamera ? (
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+          photo={false}
+          video={true}
+          audio={false}
+          frameProcessor={frameProcessor}
+          onInitialized={() => setCameraReady(true)}
+        />
       ) : (
-        <View style={styles.placeholderFrame}>
+        <View style={styles.placeholder}>
+          <ActivityIndicator size="large" color="#F5A623" />
           <Text style={styles.placeholderText}>
-            {hasPermission
-              ? 'No camera device available here. Use a real iPhone for live camera preview and pose detection.'
-              : 'Camera preview unavailable'}
+            {hasPermission === false ? 'Camera permission denied' : 'Starting camera...'}
           </Text>
         </View>
       )}
 
-      <View style={styles.analysisCard}>
-        <Text style={styles.analysisTitle}>Capture Status</Text>
-        <Text style={styles.phasePill}>{capturePhaseLabel}</Text>
-        <Text style={styles.analysisText}>{statusMessage}</Text>
-        <Text style={styles.statusDetailText}>{statusDetail}</Text>
-      </View>
-
-      <View style={styles.buttonGroup}>
-        {!hasPermission && (
-          <Button title="Request Camera Permission" onPress={requestPermission} />
+      {/* Overlay */}
+      <View style={styles.overlay}>
+        {isInitializing ? (
+          <View style={styles.recordingIndicator}>
+            <ActivityIndicator size="small" color="#F5A623" />
+            <Text style={styles.recordingText}>Preparing camera...</Text>
+          </View>
+        ) : isCapturing ? (
+          <View style={styles.recordingIndicator}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingText}>Recording...</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
+            onPress={startSwingCapture}
+            disabled={!canRecord}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.recordButtonText}>Record</Text>
+          </TouchableOpacity>
         )}
-        <Button
-          title={isCaptureBusy ? 'Swing Capture In Progress...' : 'Start Swing Capture (3s)'}
-          onPress={() => startSwingCapture('countdown')}
-          disabled={isCaptureBusy || !hasPermission || !device}
-        />
-        <Button
-          title={isCaptureBusy ? 'Swing Capture In Progress...' : 'Start Instant Capture'}
-          onPress={() => startSwingCapture('instant')}
-          disabled={isCaptureBusy || !hasPermission || !device}
-        />
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
-  },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  title: {
-    color: Colors.text,
-    fontSize: 24,
-    marginBottom: 16,
-  },
-  subtitle: {
-    color: Colors.text,
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  cameraFrame: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    borderRadius: 16,
-    overflow: 'hidden',
     backgroundColor: '#000',
-    marginBottom: 20,
   },
-  countdownOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  placeholder: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-  },
-  countdownOverlayText: {
-    color: '#FFFFFF',
-    fontSize: 96,
-    fontWeight: '700',
-  },
-  goOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goOverlayText: {
-    color: '#FFFFFF',
-    fontSize: 120,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  placeholderFrame: {
-    width: '100%',
-    aspectRatio: 9 / 16,
-    borderRadius: 16,
-    backgroundColor: Colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    padding: 16,
+    backgroundColor: '#111',
   },
   placeholderText: {
-    color: Colors.text,
+    color: '#fff',
     fontSize: 16,
-    textAlign: 'center',
+    marginTop: 16,
   },
-  analysisCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
+  overlay: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
-  analysisTitle: {
-    color: Colors.text,
+  recordButton: {
+    backgroundColor: '#F5A623',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 32,
+  },
+  recordButtonDisabled: {
+    opacity: 0.5,
+  },
+  recordButtonText: {
+    color: '#111',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FF3B30',
+    marginRight: 8,
+  },
+  recordingText: {
+    color: '#fff',
     fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  phasePill: {
-    color: Colors.background,
-    backgroundColor: Colors.text,
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  analysisText: {
-    color: Colors.text,
-    fontSize: 16,
-    marginBottom: 8,
-  },
-  statusDetailText: {
-    color: Colors.text,
-    fontSize: 14,
-    opacity: 0.8,
-  },
-  buttonGroup: {
-    gap: 12,
+    fontWeight: '600',
   },
 });
