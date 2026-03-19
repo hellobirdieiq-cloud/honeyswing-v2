@@ -17,6 +17,8 @@ import {
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 
 const MIN_FRAMES_FOR_ANALYSIS = 6;
+const MIN_FRAMES_FOR_TRUST = 20;
+const MIN_NONNULL_ANGLES_FOR_TRUST = 4;
 
 function formatNumber(value: number | null | undefined, digits: number = 1): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : 'N/A';
@@ -54,6 +56,28 @@ export default function ResultScreen() {
 
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
 
+  const phases = (analysis?.phases ?? []) as DetectedPhase[];
+  const hasFallbackPhases = phases.some((phase) => phase.source === 'fallback');
+
+  const nonNullAngleCount = [
+    analysis?.angles?.spineAngle,
+    analysis?.angles?.leftElbowAngle,
+    analysis?.angles?.rightElbowAngle,
+    analysis?.angles?.leftKneeAngle,
+    analysis?.angles?.rightKneeAngle,
+    analysis?.angles?.hipRotation,
+    analysis?.angles?.shoulderTilt,
+  ].filter((value) => typeof value === 'number' && Number.isFinite(value)).length;
+
+  const isLowConfidenceCapture =
+    !!motion &&
+    (
+      motion.frames.length < MIN_FRAMES_FOR_TRUST ||
+      !analysis?.tempo ||
+      hasFallbackPhases ||
+      nonNullAngleCount < MIN_NONNULL_ANGLES_FOR_TRUST
+    );
+
   const tempoRatingLabel =
     analysis?.tempo?.tempoRating
       ? TEMPO_LABELS[analysis.tempo.tempoRating as TempoRating]
@@ -62,8 +86,8 @@ export default function ResultScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
@@ -74,8 +98,8 @@ export default function ResultScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity 
-          style={styles.primaryButton} 
+        <TouchableOpacity
+          style={styles.primaryButton}
           onPress={() => router.replace('/(tabs)/record')}
           activeOpacity={0.7}
         >
@@ -86,19 +110,39 @@ export default function ResultScreen() {
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : (
           <>
-            <View style={styles.scoreCard}>
-              <Text style={styles.scoreLabel}>Score</Text>
-              <Text style={styles.score}>{analysis?.score ?? 0}</Text>
-              {analysis?.honeyBoom && (
-                <Text style={styles.honeyBoom}>🍯 Honey Boom!</Text>
-              )}
-            </View>
+            {isLowConfidenceCapture ? (
+              <View style={styles.warningCard}>
+                <Text style={styles.warningTitle}>Low-confidence capture</Text>
+                <Text style={styles.warningText}>
+                  We captured some motion, but this swing does not look strong enough for a fully
+                  trusted result. Try recording again with your full body in frame and complete the
+                  entire swing inside the capture window.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.scoreCard}>
+                <Text style={styles.scoreLabel}>Score</Text>
+                <Text style={styles.score}>{analysis?.score ?? 0}</Text>
+                {analysis?.honeyBoom && (
+                  <Text style={styles.honeyBoom}>🍯 Honey Boom!</Text>
+                )}
+              </View>
+            )}
 
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Swing Summary</Text>
+              <Text style={styles.cardTitle}>Capture Quality</Text>
               <Text style={styles.valueText}>Frames: {motion.frames.length}</Text>
               <Text style={styles.valueText}>
                 Duration: {formatMs(sequence?.metadata?.durationMs)}
+              </Text>
+              <Text style={styles.valueText}>
+                Phase detection: {hasFallbackPhases ? 'Fallback' : phases.length ? 'Heuristic' : 'None'}
+              </Text>
+              <Text style={styles.valueText}>
+                Tempo available: {analysis?.tempo ? 'Yes' : 'No'}
+              </Text>
+              <Text style={styles.valueText}>
+                Valid angle metrics: {nonNullAngleCount}
               </Text>
             </View>
 
@@ -134,10 +178,10 @@ export default function ResultScreen() {
 
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Phases</Text>
-              {analysis?.phases?.length ? (
-                analysis.phases.map((phase: DetectedPhase, index: number) => (
+              {phases.length ? (
+                phases.map((phase: DetectedPhase, index: number) => (
                   <Text key={`${phase.phase}-${index}`} style={styles.phaseText}>
-                    {phase.label}: {Math.round(phase.timestamp)} ms
+                    {phase.label}: {Math.round(phase.timestamp)} ms ({phase.source})
                   </Text>
                 ))
               ) : (
@@ -181,6 +225,25 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: 16,
     alignItems: 'center',
+  },
+  warningCard: {
+    backgroundColor: '#2A1F12',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#F5A623',
+  },
+  warningTitle: {
+    color: '#F5A623',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  warningText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 22,
   },
   scoreLabel: { color: '#F5A623', fontSize: 16, fontWeight: '600', marginBottom: 8 },
   score: { color: '#FFFFFF', fontSize: 64, fontWeight: '700' },
