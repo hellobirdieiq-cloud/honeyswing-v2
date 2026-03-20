@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
   getCurrentSwingMotion,
@@ -9,27 +9,91 @@ import {
   analyzePoseSequence,
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
-import type { PoseSequence } from '../../packages/pose/PoseTypes';
+import type { PoseFrame, PoseSequence, NormalizedJoint } from '../../packages/pose/PoseTypes';
 import {
   TEMPO_LABELS,
+  TEMPO_COLORS,
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
+import type { GolfAngles } from '../../packages/domain/swing/angles';
+import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const MIN_FRAMES_FOR_TRUST = 20;
-const MIN_NONNULL_ANGLES_FOR_TRUST = 4;
 
-function formatNumber(value: number | null | undefined, digits: number = 1): string {
-  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(digits) : 'N/A';
+function formatDeg(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value}°` : '—';
 }
 
 function formatMs(value: number | null | undefined): string {
-  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)} ms` : 'N/A';
+  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value)} ms` : '—';
+}
+
+/** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
+function frameToLandmarks(frame: PoseFrame): Landmark[] {
+  const landmarks: Landmark[] = [];
+  for (const joint of Object.values(frame.joints)) {
+    if (!joint) continue;
+    landmarks.push({
+      name: joint.name,
+      x: joint.x,
+      y: joint.y,
+      inFrameLikelihood: joint.confidence ?? 0,
+    });
+  }
+  return landmarks;
+}
+
+/** Pick the frame with the most high-confidence joints. */
+function pickKeyFrame(frames: PoseFrame[]): PoseFrame {
+  let best = frames[Math.floor(frames.length / 2)];
+  let bestCount = 0;
+  for (const frame of frames) {
+    let count = 0;
+    for (const joint of Object.values(frame.joints)) {
+      if (joint && (joint.confidence ?? 0) >= 0.3) count++;
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      best = frame;
+    }
+  }
+  return best;
+}
+
+/** Generate a single coaching cue from the analysis. */
+function getCoachingCue(analysis: AnalysisResult): string {
+  const angles = analysis.angles as GolfAngles | undefined;
+  const tempo = analysis.tempo;
+
+  // Check tempo first — most actionable
+  if (tempo?.tempoRating === 'rushed') return 'Slow down your backswing for better control.';
+  if (tempo?.tempoRating === 'very_slow') return 'Speed up your transition for more power.';
+
+  // Check key angles
+  if (angles?.spineAngle != null && angles.spineAngle > 50)
+    return 'Keep your spine more upright at address.';
+  if (angles?.spineAngle != null && angles.spineAngle < 15)
+    return 'Add a bit more forward tilt in your stance.';
+
+  if (angles?.leftElbowAngle != null && angles.leftElbowAngle < 130)
+    return 'Try to keep your lead arm straighter through the swing.';
+
+  if (angles?.shoulderTilt != null && Math.abs(angles.shoulderTilt) > 20)
+    return 'Level your shoulders more at address.';
+
+  if (tempo?.tempoRating === 'fast') return 'Slightly slower backswing could improve consistency.';
+  if (tempo?.tempoRating === 'slow') return 'A quicker transition could add distance.';
+
+  if (analysis.score >= 85) return 'Great swing! Keep that tempo consistent.';
+  if (analysis.score >= 70) return 'Solid form. Focus on repeating this tempo.';
+  return 'Focus on a smooth, complete backswing.';
 }
 
 export default function ResultScreen() {
   const router = useRouter();
+  const { width: screenW } = useWindowDimensions();
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
 
@@ -55,31 +119,43 @@ export default function ResultScreen() {
   }, [sequence, readyForAnalysis, storedAnalysis]);
 
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
-
+  const angles = analysis?.angles as GolfAngles | undefined;
+  const tempo = analysis?.tempo;
   const phases = (analysis?.phases ?? []) as DetectedPhase[];
-  const hasFallbackPhases = phases.some((phase) => phase.source === 'fallback');
 
-  const nonNullAngleCount = [
-    analysis?.angles?.spineAngle,
-    analysis?.angles?.leftElbowAngle,
-    analysis?.angles?.rightElbowAngle,
-    analysis?.angles?.leftKneeAngle,
-    analysis?.angles?.rightKneeAngle,
-    analysis?.angles?.hipRotation,
-    analysis?.angles?.shoulderTilt,
-  ].filter((value) => typeof value === 'number' && Number.isFinite(value)).length;
+  const isLowConfidence =
+    !!motion && motion.frames.length < MIN_FRAMES_FOR_TRUST;
 
-  const isLowConfidenceCapture =
-    !!motion &&
-    (
-      motion.frames.length < MIN_FRAMES_FOR_TRUST ||
-      (!analysis?.tempo && nonNullAngleCount < 3)
-    );
+  const tempoRating = tempo?.tempoRating as TempoRating | undefined;
+  const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
+  const tempoColor = tempoRating ? TEMPO_COLORS[tempoRating] : '#999';
 
-  const tempoRatingLabel =
-    analysis?.tempo?.tempoRating
-      ? TEMPO_LABELS[analysis.tempo.tempoRating as TempoRating]
-      : 'N/A';
+  const keyFrame = useMemo(
+    () => (motion ? pickKeyFrame(motion.frames) : null),
+    [motion],
+  );
+  const keyLandmarks = useMemo(
+    () => (keyFrame ? frameToLandmarks(keyFrame) : []),
+    [keyFrame],
+  );
+
+  const coachingCue = analysis ? getCoachingCue(analysis) : null;
+
+  // Skeleton preview dimensions — wide card, 4:3 aspect
+  const skeletonW = screenW - 48;
+  const skeletonH = Math.round(skeletonW * (4 / 3));
+
+  // Collect detected angles for display
+  const angleEntries: { label: string; value: string }[] = [];
+  if (angles) {
+    if (angles.spineAngle != null) angleEntries.push({ label: 'Spine tilt', value: formatDeg(angles.spineAngle) });
+    if (angles.shoulderTilt != null) angleEntries.push({ label: 'Shoulder tilt', value: formatDeg(angles.shoulderTilt) });
+    if (angles.leftElbowAngle != null) angleEntries.push({ label: 'Lead elbow', value: formatDeg(angles.leftElbowAngle) });
+    if (angles.rightElbowAngle != null) angleEntries.push({ label: 'Trail elbow', value: formatDeg(angles.rightElbowAngle) });
+    if (angles.leftKneeAngle != null) angleEntries.push({ label: 'Lead knee', value: formatDeg(angles.leftKneeAngle) });
+    if (angles.rightKneeAngle != null) angleEntries.push({ label: 'Trail knee', value: formatDeg(angles.rightKneeAngle) });
+    if (angles.hipRotation != null) angleEntries.push({ label: 'Hip rotation', value: `${angles.hipRotation}` });
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -100,32 +176,72 @@ export default function ResultScreen() {
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : (
           <>
-            {/* 1. Score — dominant */}
-            {isLowConfidenceCapture ? (
-              <View style={styles.warningCard}>
-                <Text style={styles.warningTitle}>Low-confidence capture</Text>
-                <Text style={styles.warningText}>
-                  We captured some motion, but this swing does not look strong enough for a fully
-                  trusted result. Try recording again with your full body in frame and complete the
-                  entire swing inside the capture window.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.scoreCard}>
-                <Text style={styles.scoreLabel}>Score</Text>
-                <Text style={styles.score}>{analysis?.score ?? 0}</Text>
-                {analysis?.honeyBoom && (
-                  <Text style={styles.honeyBoom}>🍯 Honey Boom!</Text>
-                )}
-                <Text style={styles.scoreSummary}>
-                  {tempoRatingLabel !== 'N/A' ? tempoRatingLabel : 'Tempo unavailable'}
-                  {' · '}
-                  {nonNullAngleCount} of 7 angles tracked
-                </Text>
+            {/* 1. Score — dominant element */}
+            <View style={styles.scoreCard}>
+              {isLowConfidence && (
+                <Text style={styles.lowConfBadge}>Low confidence</Text>
+              )}
+              <Text style={styles.score}>{analysis?.score ?? 0}</Text>
+              {analysis?.honeyBoom && (
+                <Text style={styles.honeyBoom}>Honey Boom!</Text>
+              )}
+            </View>
+
+            {/* 2. Coaching cue */}
+            {coachingCue && (
+              <Text style={styles.coachingCue}>{coachingCue}</Text>
+            )}
+
+            {/* 3. Tempo */}
+            {tempo && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Tempo</Text>
+                <View style={styles.tempoRow}>
+                  <Text style={[styles.tempoRating, { color: tempoColor }]}>
+                    {tempoLabel}
+                  </Text>
+                  <Text style={styles.tempoRatio}>
+                    {tempo.tempoRatio.toFixed(2)} : 1
+                  </Text>
+                </View>
+                <View style={styles.tempoDetails}>
+                  <Text style={styles.tempoDetail}>Backswing {formatMs(tempo.backswingMs)}</Text>
+                  <Text style={styles.tempoDetailSep}>·</Text>
+                  <Text style={styles.tempoDetail}>Downswing {formatMs(tempo.downswingMs)}</Text>
+                </View>
               </View>
             )}
 
-            {/* 2. Primary CTA */}
+            {/* 4. Key angles */}
+            {angleEntries.length > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Key Angles</Text>
+                <View style={styles.anglesGrid}>
+                  {angleEntries.map((entry) => (
+                    <View key={entry.label} style={styles.angleItem}>
+                      <Text style={styles.angleValue}>{entry.value}</Text>
+                      <Text style={styles.angleLabel}>{entry.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* 5. Skeleton on key frame */}
+            {keyLandmarks.length > 0 && (
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Key Frame</Text>
+                <View style={[styles.skeletonContainer, { width: skeletonW, height: skeletonH }]}>
+                  <SkeletonOverlay
+                    landmarks={keyLandmarks}
+                    width={skeletonW}
+                    height={skeletonH}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* 6. Record Again CTA */}
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => router.replace('/(tabs)/record')}
@@ -134,57 +250,9 @@ export default function ResultScreen() {
               <Text style={styles.primaryButtonText}>Record Again</Text>
             </TouchableOpacity>
 
-            {/* 3. Secondary detail cards */}
-            <View style={styles.secondaryCard}>
-              <Text style={styles.secondaryTitle}>
-                Tempo{hasFallbackPhases ? ' (Estimated)' : ''}
-              </Text>
-              <Text style={styles.secondaryText}>
-                Ratio: {typeof analysis?.tempo?.tempoRatio === 'number'
-                  ? (hasFallbackPhases ? `~${analysis.tempo.tempoRatio.toFixed(1)}` : analysis.tempo.tempoRatio.toFixed(2))
-                  : 'N/A'}
-              </Text>
-              <Text style={styles.secondaryText}>
-                Backswing: {formatMs(analysis?.tempo?.backswingMs)}
-              </Text>
-              <Text style={styles.secondaryText}>
-                Downswing: {formatMs(analysis?.tempo?.downswingMs)}
-              </Text>
-              <Text style={styles.secondaryText}>Rating: {tempoRatingLabel}</Text>
-            </View>
-
-            <View style={styles.secondaryCard}>
-              <Text style={styles.secondaryTitle}>Angles</Text>
-              <Text style={styles.secondaryText}>
-                Spine: {formatNumber(analysis?.angles?.spineAngle)}°
-              </Text>
-              <Text style={styles.secondaryText}>
-                Shoulder tilt: {formatNumber(analysis?.angles?.shoulderTilt)}°
-              </Text>
-              <Text style={styles.secondaryText}>
-                Left elbow: {formatNumber(analysis?.angles?.leftElbowAngle)}°
-              </Text>
-              <Text style={styles.secondaryText}>
-                Right elbow: {formatNumber(analysis?.angles?.rightElbowAngle)}°
-              </Text>
-            </View>
-
-            <View style={styles.secondaryCard}>
-              <Text style={styles.secondaryTitle}>Phases</Text>
-              {phases.length ? (
-                phases.map((phase: DetectedPhase, index: number) => (
-                  <Text key={`${phase.phase}-${index}`} style={styles.phaseText}>
-                    {phase.label}: {Math.round(phase.timestamp)} ms ({phase.source})
-                  </Text>
-                ))
-              ) : (
-                <Text style={styles.secondaryText}>No phases detected.</Text>
-              )}
-            </View>
-
-            {/* 4. Debug-level capture info — collapsed */}
+            {/* Debug info */}
             <Text style={styles.debugText}>
-              {motion.frames.length} frames · {formatMs(sequence?.metadata?.durationMs)} · {hasFallbackPhases ? 'fallback' : phases.length ? 'heuristic' : 'no'} phases · {nonNullAngleCount}/7 angles
+              {motion.frames.length} frames · {formatMs(sequence?.metadata?.durationMs)} · {angleEntries.length}/7 angles · {phases.length > 0 ? phases[0].source : 'no'} phases
             </Text>
           </>
         )}
@@ -194,63 +262,150 @@ export default function ResultScreen() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#111111' },
+  safeArea: { flex: 1, backgroundColor: '#111' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#111111',
   },
   backButton: { padding: 8 },
   backButtonText: { color: '#F5A623', fontSize: 16, fontWeight: '600' },
   headerTitle: { color: '#F5A623', fontSize: 18, fontWeight: '700' },
   headerSpacer: { width: 60 },
-  container: { flexGrow: 1, padding: 24, paddingTop: 8 },
-  primaryButton: {
-    backgroundColor: '#F5A623',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  primaryButtonText: { color: '#111111', fontSize: 16, fontWeight: '700' },
+  container: { flexGrow: 1, padding: 24, paddingTop: 0 },
+  emptyText: { color: '#fff', fontSize: 16, textAlign: 'center', marginTop: 40 },
+
+  // Score
   scoreCard: {
-    backgroundColor: '#1C1C1E',
-    borderRadius: 20,
-    padding: 32,
-    marginBottom: 20,
     alignItems: 'center',
-  },
-  warningCard: {
-    backgroundColor: '#2A1F12',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F5A623',
-  },
-  warningTitle: {
-    color: '#F5A623',
-    fontSize: 20,
-    fontWeight: '700',
     marginBottom: 8,
+    paddingVertical: 24,
   },
-  warningText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+  lowConfBadge: {
+    color: '#F5A623',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  score: {
+    color: '#fff',
+    fontSize: 96,
+    fontWeight: '800',
+    lineHeight: 104,
+  },
+  honeyBoom: {
+    color: '#F5A623',
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+
+  // Coaching
+  coachingCue: {
+    color: '#ccc',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
     lineHeight: 22,
   },
-  scoreLabel: { color: '#F5A623', fontSize: 14, fontWeight: '600', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' },
-  score: { color: '#FFFFFF', fontSize: 80, fontWeight: '800', lineHeight: 88 },
-  honeyBoom: { color: '#F5A623', fontSize: 22, fontWeight: '700', marginTop: 8 },
-  scoreSummary: { color: '#999', fontSize: 14, marginTop: 10, textAlign: 'center' },
-  secondaryCard: { backgroundColor: '#1A1A1C', borderRadius: 14, padding: 14, marginBottom: 12 },
-  secondaryTitle: { color: '#F5A623', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  secondaryText: { color: '#CCCCCC', fontSize: 14, marginBottom: 6 },
-  phaseText: { color: '#AAAAAA', fontSize: 13, marginBottom: 5 },
-  debugText: { color: '#666', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 24 },
-  emptyText: { color: '#FFFFFF', fontSize: 16, textAlign: 'center', marginTop: 40 },
+
+  // Cards
+  card: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+  },
+  cardTitle: {
+    color: '#F5A623',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+
+  // Tempo
+  tempoRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  tempoRating: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  tempoRatio: {
+    color: '#999',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  tempoDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tempoDetail: {
+    color: '#999',
+    fontSize: 13,
+  },
+  tempoDetailSep: {
+    color: '#555',
+    fontSize: 13,
+    marginHorizontal: 8,
+  },
+
+  // Angles
+  anglesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  angleItem: {
+    width: '50%',
+    marginBottom: 10,
+  },
+  angleValue: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  angleLabel: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 1,
+  },
+
+  // Skeleton
+  skeletonContainer: {
+    backgroundColor: '#000',
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignSelf: 'center',
+  },
+
+  // CTA
+  primaryButton: {
+    backgroundColor: '#F5A623',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  primaryButtonText: {
+    color: '#111',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+
+  // Debug
+  debugText: {
+    color: '#555',
+    fontSize: 11,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
 });
