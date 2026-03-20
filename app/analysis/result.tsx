@@ -73,9 +73,7 @@ export default function ResultScreen() {
     !!motion &&
     (
       motion.frames.length < MIN_FRAMES_FOR_TRUST ||
-      !analysis?.tempo ||
-      hasFallbackPhases ||
-      nonNullAngleCount < MIN_NONNULL_ANGLES_FOR_TRUST
+      (!analysis?.tempo && nonNullAngleCount < 3)
     );
 
   const tempoRatingLabel =

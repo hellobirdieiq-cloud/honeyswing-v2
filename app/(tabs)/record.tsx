@@ -22,7 +22,16 @@ const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
 
-type CapturePhase = 'idle' | 'capturing' | 'complete' | 'error';
+/** Quality gate: a frame is "good" if at least this many key joints have confidence above threshold */
+const JOINT_CONFIDENCE_THRESHOLD = 0.3;
+const KEY_JOINTS: Array<import('../../packages/pose/PoseTypes').JointName> = [
+  'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
+  'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
+];
+const MIN_KEY_JOINTS_PER_FRAME = 4;
+const MIN_GOOD_FRAMES = 4;
+
+type CapturePhase = 'idle' | 'capturing' | 'complete' | 'error' | 'weak';
 
 export default function RecordTab() {
   const router = useRouter();
@@ -74,6 +83,17 @@ export default function RecordTab() {
     }
   );
 
+  function isGoodFrame(frame: PoseFrame): boolean {
+    let confidentJoints = 0;
+    for (const jointName of KEY_JOINTS) {
+      const joint = frame.joints[jointName];
+      if (joint && (joint.confidence ?? 0) >= JOINT_CONFIDENCE_THRESHOLD) {
+        confidentJoints++;
+      }
+    }
+    return confidentJoints >= MIN_KEY_JOINTS_PER_FRAME;
+  }
+
   function finalizeCapture() {
     clearTimers();
 
@@ -84,6 +104,15 @@ export default function RecordTab() {
       clearCurrentSwingAnalysis();
       updateCapturePhase('error');
       setTimeout(() => updateCapturePhase('idle'), 2000);
+      return;
+    }
+
+    // Quality gate: check that enough frames have reliable pose data
+    const goodFrameCount = frames.filter(isGoodFrame).length;
+    if (goodFrameCount < MIN_GOOD_FRAMES) {
+      clearCurrentSwingMotion();
+      clearCurrentSwingAnalysis();
+      updateCapturePhase('weak');
       return;
     }
 
@@ -175,8 +204,9 @@ export default function RecordTab() {
 
   const showCamera = hasPermission === true && device != null;
   const isCapturing = capturePhase === 'capturing';
+  const isWeak = capturePhase === 'weak';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing;
+  const canRecord = cameraReady && !isCapturing && !isWeak;
 
   return (
     <View style={styles.container}>
@@ -211,6 +241,24 @@ export default function RecordTab() {
           <View style={styles.recordingIndicator}>
             <View style={styles.recordingDot} />
             <Text style={styles.recordingText}>Recording...</Text>
+          </View>
+        ) : isWeak ? (
+          <View style={styles.weakCaptureContainer}>
+            <Text style={styles.weakCaptureText}>
+              Weak capture — not enough body detected
+            </Text>
+            <Text style={styles.weakCaptureHint}>
+              Make sure your full body is visible
+            </Text>
+            <TouchableOpacity
+              style={styles.retryButton}
+              onPress={() => {
+                updateCapturePhase('idle');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
@@ -283,5 +331,36 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  weakCaptureContainer: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingVertical: 20,
+    paddingHorizontal: 28,
+    borderRadius: 20,
+  },
+  weakCaptureText: {
+    color: '#FFD060',
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  weakCaptureHint: {
+    color: '#ccc',
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: '#F5A623',
+    paddingVertical: 12,
+    paddingHorizontal: 36,
+    borderRadius: 24,
+  },
+  retryButtonText: {
+    color: '#111',
+    fontSize: 17,
+    fontWeight: '700',
   },
 });
