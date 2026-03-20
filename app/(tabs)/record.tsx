@@ -215,17 +215,24 @@ export default function RecordTab() {
     zoom: zoom.value,
   }));
 
+  const logFromWorklet = Worklets.createRunOnJS((msg: string) => {
+    console.log(msg);
+  });
+
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
 
+      logFromWorklet('[HoneySwing] FRAME PROCESSOR CALLED ' + frame.width + 'x' + frame.height);
+
       const landmarks = honeyPoseDetect(frame);
+      logFromWorklet('[HoneySwing] landmarks count=' + landmarks.length + ' first=' + JSON.stringify(landmarks[0]));
 
       if (Array.isArray(landmarks) && landmarks.length > 0) {
         appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height);
       }
     },
-    [appendPoseFrame]
+    [appendPoseFrame, logFromWorklet]
   );
 
   const showCamera = hasPermission === true && device != null;
@@ -235,12 +242,12 @@ export default function RecordTab() {
   const canRecord = cameraReady && !isCapturing && !isWeak;
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       {showCamera ? (
-        <GestureHandlerRootView style={{flex: 1}}>
-          <GestureDetector gesture={pinchGesture}>
-            <ReanimatedCamera
+        <>
+          <ReanimatedCamera
             style={StyleSheet.absoluteFill}
+            resizeMode="cover"
             device={device}
             isActive={true}
             animatedProps={animatedCameraProps}
@@ -249,9 +256,11 @@ export default function RecordTab() {
             audio={false}
             frameProcessor={frameProcessor}
             onInitialized={() => setCameraReady(true)}
-            />
+          />
+          <GestureDetector gesture={pinchGesture}>
+            <Animated.View style={StyleSheet.absoluteFill} />
           </GestureDetector>
-        </GestureHandlerRootView>
+        </>
       ) : (
         <View style={styles.placeholder}>
           <ActivityIndicator size="large" color="#F5A623" />
@@ -275,17 +284,20 @@ export default function RecordTab() {
       )}
 
       {/* Overlay */}
-      <View style={styles.overlay}>
+      <View style={styles.overlay} pointerEvents="box-none">
         {isInitializing ? (
           <View style={styles.recordingIndicator}>
             <ActivityIndicator size="small" color="#F5A623" />
             <Text style={styles.recordingText}>Preparing camera...</Text>
           </View>
         ) : isCapturing ? (
-          <View style={styles.recordingIndicator}>
-            <View style={styles.recordingDot} />
-            <Text style={styles.recordingText}>Recording...</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.stopButton}
+            onPress={finalizeCapture}
+            activeOpacity={0.7}
+          >
+            <View style={styles.stopIcon} />
+          </TouchableOpacity>
         ) : isWeak ? (
           <View style={styles.weakCaptureContainer}>
             <Text style={styles.weakCaptureText}>
@@ -315,7 +327,7 @@ export default function RecordTab() {
           </TouchableOpacity>
         )}
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -387,17 +399,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 24,
   },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#FF3B30',
-    marginRight: 8,
-  },
   recordingText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  stopButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 4,
+    borderColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stopIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 4,
+    backgroundColor: '#FF3B30',
   },
   weakCaptureContainer: {
     alignItems: 'center',

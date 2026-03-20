@@ -11,7 +11,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
 
   public override func callback(_ frame: Frame, withArguments arguments: [AnyHashable: Any]?) -> Any {
     guard let imageBuffer = CMSampleBufferGetImageBuffer(frame.buffer) else {
-      return []
+      return [["sentinel": 100, "error": "no_image_buffer"]]
     }
 
     let request = VNDetectHumanBodyPoseRequest()
@@ -21,7 +21,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
       try handler.perform([request])
 
       guard let observation = request.results?.first else {
-        return []
+        return [["sentinel": 111, "error": "no_observation"]]
       }
 
       let supportedJoints: [(VNHumanBodyPoseObservation.JointName, Int, String)] = [
@@ -64,7 +64,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
 
       return landmarks
     } catch {
-      return []
+      return [["sentinel": 222, "error": "handler_error", "message": error.localizedDescription]]
     }
   }
 }

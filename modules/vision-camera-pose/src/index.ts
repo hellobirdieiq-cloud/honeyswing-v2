@@ -6,8 +6,9 @@ export function honeyPoseDetect(frame: Frame): unknown[] {
   'worklet';
 
   if (plugin == null) {
-    return [];
+    return ['PLUGIN_NULL'];
   }
 
-  return plugin.call(frame) as unknown[];
+  const result = plugin.call(frame) as unknown[];
+  return Array.isArray(result) ? result : [];
 }
