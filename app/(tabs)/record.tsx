@@ -23,6 +23,21 @@ import {
 } from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 
+/** Isolated component — landmark state updates only re-render this subtree, not the parent. */
+const LiveSkeleton = React.memo(function LiveSkeleton({
+  updateRef,
+  width,
+  height,
+}: {
+  updateRef: React.MutableRefObject<((lms: Landmark[]) => void) | null>;
+  width: number;
+  height: number;
+}) {
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  updateRef.current = setLandmarks;
+  return <SkeletonOverlay landmarks={landmarks} width={width} height={height} />;
+});
+
 const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
@@ -48,7 +63,7 @@ export default function RecordTab() {
   const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(true);
-  const [liveLandmarks, setLiveLandmarks] = useState<Landmark[]>([]);
+  const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
@@ -74,7 +89,7 @@ export default function RecordTab() {
   }
 
   const updateLandmarks = useCallback((lms: Landmark[]) => {
-    setLiveLandmarks(lms);
+    skeletonUpdateRef.current?.(lms);
   }, []);
 
   const appendPoseFrame = Worklets.createRunOnJS(
@@ -292,8 +307,9 @@ export default function RecordTab() {
   const isCountdown = capturePhase === 'countdown';
   const isCapturing = capturePhase === 'capturing';
   const isWeak = capturePhase === 'weak';
+  const isError = capturePhase === 'error';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown;
+  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError;
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -311,8 +327,8 @@ export default function RecordTab() {
             frameProcessor={frameProcessor}
             onInitialized={() => setCameraReady(true)}
           />
-          <SkeletonOverlay
-            landmarks={liveLandmarks}
+          <LiveSkeleton
+            updateRef={skeletonUpdateRef}
             width={screenW}
             height={screenH}
           />
@@ -381,6 +397,10 @@ export default function RecordTab() {
             >
               <Text style={styles.retryButtonText}>Try Again</Text>
             </TouchableOpacity>
+          </View>
+        ) : isError ? (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>No swing detected — try again</Text>
           </View>
         ) : (
           <View style={styles.recordButtonRow}>
@@ -530,6 +550,18 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 17,
     fontWeight: '700',
+  },
+  errorContainer: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    borderRadius: 16,
+  },
+  errorText: {
+    color: '#FF6B6B',
+    fontSize: 17,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   countdownOverlay: {
     ...StyleSheet.absoluteFillObject,
