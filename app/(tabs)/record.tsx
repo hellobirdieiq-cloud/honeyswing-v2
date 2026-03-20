@@ -40,6 +40,7 @@ export default function RecordTab() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
+  const [showTips, setShowTips] = useState(true);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
@@ -146,6 +147,7 @@ export default function RecordTab() {
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
 
+    setShowTips(false);
     updateCapturePhase('capturing');
     goPlayer.play();
 
@@ -230,6 +232,19 @@ export default function RecordTab() {
         </View>
       )}
 
+      {/* Framing tips */}
+      {showTips && capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={styles.tipsOverlay}
+          onPress={() => setShowTips(false)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.tipText}>Step back so full body is visible</Text>
+          <Text style={styles.tipText}>Hold phone steady</Text>
+          <Text style={styles.tipDismiss}>Tap to dismiss</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Overlay */}
       <View style={styles.overlay}>
         {isInitializing ? (
@@ -290,6 +305,29 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginTop: 16,
+  },
+  tipsOverlay: {
+    position: 'absolute',
+    top: 80,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  tipText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  tipDismiss: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 6,
   },
   overlay: {
     position: 'absolute',
