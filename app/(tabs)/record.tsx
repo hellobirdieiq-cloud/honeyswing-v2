@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+
+const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 import { Worklets } from 'react-native-worklets-core';
 import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
 import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
@@ -194,6 +198,23 @@ export default function RecordTab() {
   });
   console.log('[HoneySwing] Camera device:', device?.name, 'minZoom:', device?.minZoom, 'maxZoom:', device?.maxZoom);
 
+  const zoom = useSharedValue(device?.minZoom ?? 1);
+  const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      zoomAtPinchStart.value = zoom.value;
+    })
+    .onUpdate((e) => {
+      const min = device?.minZoom ?? 1;
+      const max = device?.maxZoom ?? 1;
+      zoom.value = Math.min(max, Math.max(min, zoomAtPinchStart.value * e.scale));
+    });
+
+  const animatedCameraProps = useAnimatedProps(() => ({
+    zoom: zoom.value,
+  }));
+
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
@@ -216,17 +237,19 @@ export default function RecordTab() {
   return (
     <View style={styles.container}>
       {showCamera ? (
-        <Camera
-          style={StyleSheet.absoluteFill}
-          device={device}
-          isActive={true}
-          zoom={device.minZoom}
-          photo={false}
-          video={true}
-          audio={false}
-          frameProcessor={frameProcessor}
-          onInitialized={() => setCameraReady(true)}
-        />
+        <GestureDetector gesture={pinchGesture}>
+          <ReanimatedCamera
+            style={StyleSheet.absoluteFill}
+            device={device}
+            isActive={true}
+            animatedProps={animatedCameraProps}
+            photo={false}
+            video={true}
+            audio={false}
+            frameProcessor={frameProcessor}
+            onInitialized={() => setCameraReady(true)}
+          />
+        </GestureDetector>
       ) : (
         <View style={styles.placeholder}>
           <ActivityIndicator size="large" color="#F5A623" />
