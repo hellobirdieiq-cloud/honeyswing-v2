@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -21,6 +21,7 @@ import {
   analyzePoseSequence,
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
+import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 
 const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
@@ -41,10 +42,13 @@ export default function RecordTab() {
   const router = useRouter();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
 
+  const { width: screenW, height: screenH } = useWindowDimensions();
+
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(true);
+  const [liveLandmarks, setLiveLandmarks] = useState<Landmark[]>([]);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
@@ -63,6 +67,10 @@ export default function RecordTab() {
     }
   }
 
+  const updateLandmarks = useCallback((lms: Landmark[]) => {
+    setLiveLandmarks(lms);
+  }, []);
+
   const appendPoseFrame = Worklets.createRunOnJS(
     async (
       landmarks: unknown,
@@ -70,6 +78,17 @@ export default function RecordTab() {
       frameWidth: number,
       frameHeight: number
     ) => {
+      // Throttle logging to once every 60 frames
+      frameCountRef.current += 1;
+      if (frameCountRef.current % 60 === 1) {
+        console.log('[HoneySwing] FRAME PROCESSOR frame #' + frameCountRef.current + ' ' + frameWidth + 'x' + frameHeight + ' landmarks=' + (Array.isArray(landmarks) ? landmarks.length : 0));
+      }
+
+      // Update skeleton overlay with raw landmarks every frame
+      if (Array.isArray(landmarks)) {
+        updateLandmarks(landmarks as Landmark[]);
+      }
+
       if (capturePhaseRef.current !== 'capturing') {
         return;
       }
@@ -200,6 +219,7 @@ export default function RecordTab() {
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
+  const frameCountRef = useRef(0);
 
   const pinchGesture = Gesture.Pinch()
     .onStart(() => {
@@ -215,24 +235,17 @@ export default function RecordTab() {
     zoom: zoom.value,
   }));
 
-  const logFromWorklet = Worklets.createRunOnJS((msg: string) => {
-    console.log(msg);
-  });
-
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
 
-      logFromWorklet('[HoneySwing] FRAME PROCESSOR CALLED ' + frame.width + 'x' + frame.height);
-
       const landmarks = honeyPoseDetect(frame);
-      logFromWorklet('[HoneySwing] landmarks count=' + landmarks.length + ' first=' + JSON.stringify(landmarks[0]));
 
       if (Array.isArray(landmarks) && landmarks.length > 0) {
         appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height);
       }
     },
-    [appendPoseFrame, logFromWorklet]
+    [appendPoseFrame]
   );
 
   const showCamera = hasPermission === true && device != null;
@@ -256,6 +269,11 @@ export default function RecordTab() {
             audio={false}
             frameProcessor={frameProcessor}
             onInitialized={() => setCameraReady(true)}
+          />
+          <SkeletonOverlay
+            landmarks={liveLandmarks}
+            width={screenW}
+            height={screenH}
           />
           <GestureDetector gesture={pinchGesture}>
             <Animated.View style={StyleSheet.absoluteFill} />
