@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
@@ -38,6 +39,10 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   return <SkeletonOverlay landmarks={landmarks} width={width} height={height} />;
 });
 
+/** Session counter for framing tips — show for first 3 record-screen visits only. */
+const TIP_MAX_SESSIONS = 3;
+let tipSessionsSeen = 0;
+
 const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
@@ -62,7 +67,7 @@ export default function RecordTab() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
-  const [showTips, setShowTips] = useState(true);
+  const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
 
@@ -234,6 +239,14 @@ export default function RecordTab() {
     beginRecording();
   }
 
+  // Count distinct screen visits for tip display — fires on every focus, not just mount
+  useFocusEffect(
+    useCallback(() => {
+      tipSessionsSeen += 1;
+      setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
+    }, [])
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -345,15 +358,16 @@ export default function RecordTab() {
         </View>
       )}
 
-      {/* Framing tips */}
+      {/* Framing tips — first 3 sessions only */}
       {showTips && capturePhase === 'idle' && cameraReady && (
         <TouchableOpacity
           style={styles.tipsOverlay}
           onPress={() => setShowTips(false)}
           activeOpacity={0.8}
         >
-          <Text style={styles.tipText}>Step back so full body is visible</Text>
-          <Text style={styles.tipText}>Hold phone steady</Text>
+          <Text style={styles.tipText}>Step back so your full body is visible</Text>
+          <Text style={styles.tipText}>Face the camera</Text>
+          <Text style={styles.tipText}>Hold the phone steady</Text>
           <Text style={styles.tipDismiss}>Tap to dismiss</Text>
         </TouchableOpacity>
       )}
