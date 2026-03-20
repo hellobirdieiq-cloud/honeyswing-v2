@@ -96,18 +96,11 @@ export default function ResultScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.replace('/(tabs)/record')}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.primaryButtonText}>Record Again</Text>
-        </TouchableOpacity>
-
         {!motion ? (
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : (
           <>
+            {/* 1. Score — dominant */}
             {isLowConfidenceCapture ? (
               <View style={styles.warningCard}>
                 <Text style={styles.warningTitle}>Low-confidence capture</Text>
@@ -124,62 +117,60 @@ export default function ResultScreen() {
                 {analysis?.honeyBoom && (
                   <Text style={styles.honeyBoom}>🍯 Honey Boom!</Text>
                 )}
+                <Text style={styles.scoreSummary}>
+                  {tempoRatingLabel !== 'N/A' ? tempoRatingLabel : 'Tempo unavailable'}
+                  {' · '}
+                  {nonNullAngleCount} of 7 angles tracked
+                </Text>
               </View>
             )}
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Capture Quality</Text>
-              <Text style={styles.valueText}>Frames: {motion.frames.length}</Text>
-              <Text style={styles.valueText}>
-                Duration: {formatMs(sequence?.metadata?.durationMs)}
-              </Text>
-              <Text style={styles.valueText}>
-                Phase detection: {hasFallbackPhases ? 'Fallback' : phases.length ? 'Heuristic' : 'None'}
-              </Text>
-              <Text style={styles.valueText}>
-                Tempo available: {analysis?.tempo ? 'Yes' : 'No'}
-              </Text>
-              <Text style={styles.valueText}>
-                Valid angle metrics: {nonNullAngleCount}
-              </Text>
-            </View>
+            {/* 2. Primary CTA */}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.replace('/(tabs)/record')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Record Again</Text>
+            </TouchableOpacity>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>
+            {/* 3. Secondary detail cards */}
+            <View style={styles.secondaryCard}>
+              <Text style={styles.secondaryTitle}>
                 Tempo{hasFallbackPhases ? ' (Estimated)' : ''}
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Ratio: {typeof analysis?.tempo?.tempoRatio === 'number'
                   ? (hasFallbackPhases ? `~${analysis.tempo.tempoRatio.toFixed(1)}` : analysis.tempo.tempoRatio.toFixed(2))
                   : 'N/A'}
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Backswing: {formatMs(analysis?.tempo?.backswingMs)}
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Downswing: {formatMs(analysis?.tempo?.downswingMs)}
               </Text>
-              <Text style={styles.valueText}>Rating: {tempoRatingLabel}</Text>
+              <Text style={styles.secondaryText}>Rating: {tempoRatingLabel}</Text>
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Angles</Text>
-              <Text style={styles.valueText}>
+            <View style={styles.secondaryCard}>
+              <Text style={styles.secondaryTitle}>Angles</Text>
+              <Text style={styles.secondaryText}>
                 Spine: {formatNumber(analysis?.angles?.spineAngle)}°
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Shoulder tilt: {formatNumber(analysis?.angles?.shoulderTilt)}°
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Left elbow: {formatNumber(analysis?.angles?.leftElbowAngle)}°
               </Text>
-              <Text style={styles.valueText}>
+              <Text style={styles.secondaryText}>
                 Right elbow: {formatNumber(analysis?.angles?.rightElbowAngle)}°
               </Text>
             </View>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Phases</Text>
+            <View style={styles.secondaryCard}>
+              <Text style={styles.secondaryTitle}>Phases</Text>
               {phases.length ? (
                 phases.map((phase: DetectedPhase, index: number) => (
                   <Text key={`${phase.phase}-${index}`} style={styles.phaseText}>
@@ -187,9 +178,14 @@ export default function ResultScreen() {
                   </Text>
                 ))
               ) : (
-                <Text style={styles.valueText}>No phases detected.</Text>
+                <Text style={styles.secondaryText}>No phases detected.</Text>
               )}
             </View>
+
+            {/* 4. Debug-level capture info — collapsed */}
+            <Text style={styles.debugText}>
+              {motion.frames.length} frames · {formatMs(sequence?.metadata?.durationMs)} · {hasFallbackPhases ? 'fallback' : phases.length ? 'heuristic' : 'no'} phases · {nonNullAngleCount}/7 angles
+            </Text>
           </>
         )}
       </ScrollView>
@@ -223,9 +219,9 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: '#111111', fontSize: 16, fontWeight: '700' },
   scoreCard: {
     backgroundColor: '#1C1C1E',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 16,
+    borderRadius: 20,
+    padding: 32,
+    marginBottom: 20,
     alignItems: 'center',
   },
   warningCard: {
@@ -247,12 +243,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
-  scoreLabel: { color: '#F5A623', fontSize: 16, fontWeight: '600', marginBottom: 8 },
-  score: { color: '#FFFFFF', fontSize: 64, fontWeight: '700' },
-  honeyBoom: { color: '#F5A623', fontSize: 20, fontWeight: '700', marginTop: 8 },
-  card: { backgroundColor: '#1C1C1E', borderRadius: 16, padding: 16, marginBottom: 16 },
-  cardTitle: { color: '#F5A623', fontSize: 20, fontWeight: '700', marginBottom: 12 },
-  valueText: { color: '#FFFFFF', fontSize: 16, marginBottom: 8 },
-  phaseText: { color: '#D0D0D0', fontSize: 14, marginBottom: 6 },
+  scoreLabel: { color: '#F5A623', fontSize: 14, fontWeight: '600', marginBottom: 4, letterSpacing: 1, textTransform: 'uppercase' },
+  score: { color: '#FFFFFF', fontSize: 80, fontWeight: '800', lineHeight: 88 },
+  honeyBoom: { color: '#F5A623', fontSize: 22, fontWeight: '700', marginTop: 8 },
+  scoreSummary: { color: '#999', fontSize: 14, marginTop: 10, textAlign: 'center' },
+  secondaryCard: { backgroundColor: '#1A1A1C', borderRadius: 14, padding: 14, marginBottom: 12 },
+  secondaryTitle: { color: '#F5A623', fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  secondaryText: { color: '#CCCCCC', fontSize: 14, marginBottom: 6 },
+  phaseText: { color: '#AAAAAA', fontSize: 13, marginBottom: 5 },
+  debugText: { color: '#666', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 24 },
   emptyText: { color: '#FFFFFF', fontSize: 16, textAlign: 'center', marginTop: 40 },
 });
