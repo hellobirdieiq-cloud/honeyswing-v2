@@ -217,6 +217,7 @@ export default function RecordTab() {
           style={StyleSheet.absoluteFill}
           device={device}
           isActive={true}
+          zoom={device.minZoom}
           photo={false}
           video={true}
           audio={false}
