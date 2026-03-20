@@ -177,12 +177,9 @@ export default function ResultScreen() {
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : classification?.validity === 'invalid' ? (
           <View style={styles.invalidContainer}>
-            <Text style={styles.invalidTitle}>Couldn't capture your swing clearly</Text>
-            {classification.reason && (
-              <Text style={styles.invalidReason}>{classification.reason}</Text>
-            )}
+            <Text style={styles.invalidTitle}>Couldn't clearly capture your swing</Text>
             <Text style={styles.invalidHint}>
-              Make sure your full body is visible and you complete the swing during the capture window.
+              Make sure your full body is in frame and try again
             </Text>
             <TouchableOpacity
               style={styles.primaryButton}
@@ -306,12 +303,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
     marginBottom: 12,
-  },
-  invalidReason: {
-    color: '#F5A623',
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: 8,
   },
   invalidHint: {
     color: '#999',
