@@ -189,7 +189,10 @@ export default function RecordTab() {
     };
   }, []);
 
-  const device = useCameraDevice('back');
+  const device = useCameraDevice('back', {
+    physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera'],
+  });
+  console.log('[HoneySwing] Camera device:', device?.name, 'minZoom:', device?.minZoom, 'maxZoom:', device?.maxZoom);
 
   const frameProcessor = useFrameProcessor(
     (frame) => {
@@ -246,6 +249,14 @@ export default function RecordTab() {
         </TouchableOpacity>
       )}
 
+      {/* Debug overlay — TEMPORARY */}
+      {device && (
+        <View style={styles.debugOverlay}>
+          <Text style={styles.debugText}>{device.name}</Text>
+          <Text style={styles.debugText}>minZoom: {device.minZoom} / maxZoom: {device.maxZoom}</Text>
+        </View>
+      )}
+
       {/* Overlay */}
       <View style={styles.overlay}>
         {isInitializing ? (
@@ -295,6 +306,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  debugOverlay: {
+    position: 'absolute',
+    top: 60,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 8,
+    padding: 10,
+    zIndex: 10,
+  },
+  debugText: {
+    color: '#fff',
+    fontSize: 13,
+    fontFamily: 'Courier',
   },
   placeholder: {
     flex: 1,
