@@ -145,9 +145,13 @@ export default function ResultScreen() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.cardTitle}>Tempo</Text>
+              <Text style={styles.cardTitle}>
+                Tempo{hasFallbackPhases ? ' (Estimated)' : ''}
+              </Text>
               <Text style={styles.valueText}>
-                Ratio: {typeof analysis?.tempo?.tempoRatio === 'number' ? analysis.tempo.tempoRatio.toFixed(2) : 'N/A'}
+                Ratio: {typeof analysis?.tempo?.tempoRatio === 'number'
+                  ? (hasFallbackPhases ? `~${analysis.tempo.tempoRatio.toFixed(1)}` : analysis.tempo.tempoRatio.toFixed(2))
+                  : 'N/A'}
               </Text>
               <Text style={styles.valueText}>
                 Backswing: {formatMs(analysis?.tempo?.backswingMs)}
