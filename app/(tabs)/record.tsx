@@ -194,12 +194,9 @@ export default function RecordTab() {
   }, []);
 
   const allDevices = useCameraDevices();
-  console.log('[HoneySwing] All devices:', allDevices.map(d => ({ name: d.name, minZoom: d.minZoom, physicalDevices: d.physicalDevices })));
-
   const ultraWide = allDevices.find(d => d.name === 'Back Ultra Wide Camera');
   const fallback = useCameraDevice('back');
   const device = ultraWide || fallback;
-  console.log('[HoneySwing] Camera device:', device?.name, 'minZoom:', device?.minZoom, 'maxZoom:', device?.maxZoom);
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
@@ -277,18 +274,6 @@ export default function RecordTab() {
         </TouchableOpacity>
       )}
 
-      {/* Debug overlay — TEMPORARY */}
-      {device && (
-        <View style={styles.debugOverlay}>
-          <Text style={styles.debugText}>Total devices: {allDevices.length}</Text>
-          {allDevices.slice(0, 9).map((d, i) => (
-            <Text key={i} style={styles.debugText}>{i}: {d.name} (min:{d.minZoom})</Text>
-          ))}
-          <Text style={styles.debugText}>Selected: {device.name}</Text>
-          <Text style={styles.debugText}>minZoom: {device.minZoom} / maxZoom: {device.maxZoom}</Text>
-        </View>
-      )}
-
       {/* Overlay */}
       <View style={styles.overlay}>
         {isInitializing ? (
@@ -338,21 +323,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
-  },
-  debugOverlay: {
-    position: 'absolute',
-    top: 60,
-    left: 16,
-    right: 16,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 8,
-    padding: 10,
-    zIndex: 10,
-  },
-  debugText: {
-    color: '#fff',
-    fontSize: 13,
-    fontFamily: 'Courier',
   },
   placeholder: {
     flex: 1,
