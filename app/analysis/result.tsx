@@ -19,9 +19,7 @@ import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import type { GolfAngles } from '../../packages/domain/swing/angles';
 import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
-
-const MIN_FRAMES_FOR_ANALYSIS = 6;
-const MIN_FRAMES_FOR_TRUST = 20;
+import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 
 function formatDeg(value: number | null | undefined): string {
   return typeof value === 'number' && Number.isFinite(value) ? `${value}°` : '—';
@@ -98,6 +96,11 @@ export default function ResultScreen() {
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
 
+  const classification: CaptureClassification | null = useMemo(
+    () => (motion ? classifyCapture(motion.frames) : null),
+    [motion],
+  );
+
   const sequence: PoseSequence | null = useMemo(() => {
     if (!motion) return null;
     return {
@@ -112,20 +115,17 @@ export default function ResultScreen() {
     };
   }, [motion]);
 
-  const readyForAnalysis = !!sequence && sequence.frames.length >= MIN_FRAMES_FOR_ANALYSIS;
-
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
-    if (!sequence || !readyForAnalysis || storedAnalysis) return null;
+    if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
     return analyzePoseSequence(sequence);
-  }, [sequence, readyForAnalysis, storedAnalysis]);
+  }, [sequence, classification, storedAnalysis]);
 
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
   const angles = analysis?.angles as GolfAngles | undefined;
   const tempo = analysis?.tempo;
   const phases = (analysis?.phases ?? []) as DetectedPhase[];
 
-  const isLowConfidence =
-    !!motion && motion.frames.length < MIN_FRAMES_FOR_TRUST;
+  const isLowConfidence = classification?.validity === 'partial';
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
@@ -175,6 +175,26 @@ export default function ResultScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         {!motion ? (
           <Text style={styles.emptyText}>No swing data available yet.</Text>
+        ) : classification?.validity === 'invalid' ? (
+          <View style={styles.invalidContainer}>
+            <Text style={styles.invalidTitle}>Couldn't capture your swing clearly</Text>
+            {classification.reason && (
+              <Text style={styles.invalidReason}>{classification.reason}</Text>
+            )}
+            <Text style={styles.invalidHint}>
+              Make sure your full body is visible and you complete the swing during the capture window.
+            </Text>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.replace('/(tabs)/record')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Record Again</Text>
+            </TouchableOpacity>
+            <Text style={styles.debugText}>
+              {classification.frameCount} frames · {classification.goodFrameCount} good · {Math.round(classification.poseSuccessRate * 100)}% detection
+            </Text>
+          </View>
         ) : (
           <>
             {/* 1. Score — dominant element */}
@@ -250,7 +270,7 @@ export default function ResultScreen() {
 
             {/* Debug info */}
             <Text style={styles.debugText}>
-              {motion.frames.length} frames · {formatMs(sequence?.metadata?.durationMs)} · {angleEntries.length}/7 angles · {phases.length > 0 ? phases[0].source : 'no'} phases
+              {classification?.frameCount ?? 0} frames · {Math.round((classification?.poseSuccessRate ?? 0) * 100)}% detection · {angleEntries.length}/7 angles · {classification?.validity}
             </Text>
           </>
         )}
@@ -274,6 +294,33 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 60 },
   container: { flexGrow: 1, padding: 24, paddingTop: 0 },
   emptyText: { color: '#fff', fontSize: 16, textAlign: 'center', marginTop: 40 },
+
+  // Invalid capture
+  invalidContainer: {
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  invalidTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  invalidReason: {
+    color: '#F5A623',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  invalidHint: {
+    color: '#999',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 32,
+    paddingHorizontal: 16,
+  },
 
   // Score
   scoreCard: {
