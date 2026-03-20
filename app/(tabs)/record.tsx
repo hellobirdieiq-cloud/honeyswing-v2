@@ -90,6 +90,14 @@ export default function RecordTab() {
         console.log('[HoneySwing] FRAME PROCESSOR frame #' + frameCountRef.current + ' ' + frameWidth + 'x' + frameHeight + ' landmarks=' + (Array.isArray(landmarks) ? landmarks.length : 0));
       }
 
+      // Surface native-side diagnostics
+      if (Array.isArray(landmarks) && landmarks.length === 1 && (landmarks[0] as any)?._diagnostic) {
+        if (frameCountRef.current % 60 === 1) {
+          console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + (landmarks[0] as any)._diagnostic);
+        }
+        return;
+      }
+
       // Update skeleton overlay with raw landmarks every frame
       if (Array.isArray(landmarks)) {
         updateLandmarks(landmarks as Landmark[]);

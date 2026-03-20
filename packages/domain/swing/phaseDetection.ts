@@ -56,6 +56,40 @@ function smoothVelocities(velocities: number[], window: number = 5): number[] {
   });
 }
 
+/**
+ * Find the end of the setup/address phase — the last frame before motion begins.
+ * Scans from the start looking for sustained low velocity (stillness). The last
+ * frame before velocity exceeds the threshold is the address position.
+ */
+function findSetupEndIndex(
+  smoothed: number[],
+  points: SwingTrailPoint[],
+): number {
+  // Compute a threshold: use 20% of the median velocity as the "still" cutoff,
+  // with a floor so we don't get stuck on noise-free data.
+  const sorted = [...smoothed].filter((v) => v > 0).sort((a, b) => a - b);
+  const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
+  const threshold = Math.max(median * 0.2, 0.0001);
+
+  // Walk forward: find the first frame where velocity exceeds threshold
+  // after at least 2 still frames. The frame before that is setup end.
+  let stillCount = 0;
+  for (let i = 0; i < points.length; i++) {
+    if (smoothed[i] <= threshold) {
+      stillCount++;
+    } else if (stillCount >= 2) {
+      // Motion started — previous frame is end of setup
+      return Math.max(0, i - 1);
+    } else {
+      // Not enough still frames yet, likely noise at very start
+      stillCount = 0;
+    }
+  }
+
+  // If the entire capture is still (unlikely), address is near the start
+  return Math.min(2, points.length - 1);
+}
+
 function findMinYIndex(points: SwingTrailPoint[], startIdx: number, endIdx: number): number {
   let minY = Infinity;
   let minIdx = startIdx;
@@ -141,7 +175,10 @@ function tryHeuristicDetection(points: SwingTrailPoint[]): DetectedPhase[] {
   const smoothed = smoothVelocities(velocities, 5);
   const lastIdx = points.length - 1;
 
-  const topSearchStart = Math.floor(lastIdx * 0.2);
+  // Setup/address: find the last still frame before motion begins
+  const addressIdx = findSetupEndIndex(smoothed, points);
+
+  const topSearchStart = Math.max(addressIdx + 2, Math.floor(lastIdx * 0.2));
   const topSearchEnd = Math.floor(lastIdx * 0.6);
 
   if (topSearchStart >= topSearchEnd) return [];
@@ -159,7 +196,6 @@ function tryHeuristicDetection(points: SwingTrailPoint[]): DetectedPhase[] {
   const actualDistance = impactIdx - topIdx;
   if (actualDistance > maxImpactDistance || actualDistance < 2) return [];
 
-  const addressIdx = Math.max(0, Math.floor(lastIdx * 0.02));
   const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
   const finishIdx = Math.min(lastIdx, impactIdx + Math.floor((lastIdx - impactIdx) * 0.7));
@@ -219,4 +255,15 @@ export function getVisiblePhases(
   currentTimeMs: number
 ): DetectedPhase[] {
   return phases.filter((p) => p.timestamp <= currentTimeMs);
+}
+
+/**
+ * Return the trail-point index of the setup/address position for a set of
+ * wrist trail points. Useful for extracting the "still" pose before motion.
+ */
+export function findSetupIndex(points: SwingTrailPoint[]): number {
+  if (points.length < 3) return 0;
+  const velocities = computeVelocities(points);
+  const smoothed = smoothVelocities(velocities, 5);
+  return findSetupEndIndex(smoothed, points);
 }
