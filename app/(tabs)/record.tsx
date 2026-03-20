@@ -2,9 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraDevices, useFrameProcessor } from 'react-native-vision-camera';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 import { Worklets } from 'react-native-worklets-core';
@@ -193,9 +193,12 @@ export default function RecordTab() {
     };
   }, []);
 
-  const device = useCameraDevice('back', {
-    physicalDevices: ['ultra-wide-angle-camera', 'wide-angle-camera'],
-  });
+  const allDevices = useCameraDevices();
+  console.log('[HoneySwing] All devices:', allDevices.map(d => ({ name: d.name, minZoom: d.minZoom, physicalDevices: d.physicalDevices })));
+
+  const ultraWide = allDevices.find(d => d.name === 'Back Ultra Wide Camera');
+  const fallback = useCameraDevice('back');
+  const device = ultraWide || fallback;
   console.log('[HoneySwing] Camera device:', device?.name, 'minZoom:', device?.minZoom, 'maxZoom:', device?.maxZoom);
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
@@ -237,8 +240,9 @@ export default function RecordTab() {
   return (
     <View style={styles.container}>
       {showCamera ? (
-        <GestureDetector gesture={pinchGesture}>
-          <ReanimatedCamera
+        <GestureHandlerRootView style={{flex: 1}}>
+          <GestureDetector gesture={pinchGesture}>
+            <ReanimatedCamera
             style={StyleSheet.absoluteFill}
             device={device}
             isActive={true}
@@ -248,8 +252,9 @@ export default function RecordTab() {
             audio={false}
             frameProcessor={frameProcessor}
             onInitialized={() => setCameraReady(true)}
-          />
-        </GestureDetector>
+            />
+          </GestureDetector>
+        </GestureHandlerRootView>
       ) : (
         <View style={styles.placeholder}>
           <ActivityIndicator size="large" color="#F5A623" />
@@ -275,7 +280,11 @@ export default function RecordTab() {
       {/* Debug overlay — TEMPORARY */}
       {device && (
         <View style={styles.debugOverlay}>
-          <Text style={styles.debugText}>{device.name}</Text>
+          <Text style={styles.debugText}>Total devices: {allDevices.length}</Text>
+          {allDevices.slice(0, 9).map((d, i) => (
+            <Text key={i} style={styles.debugText}>{i}: {d.name} (min:{d.minZoom})</Text>
+          ))}
+          <Text style={styles.debugText}>Selected: {device.name}</Text>
           <Text style={styles.debugText}>minZoom: {device.minZoom} / maxZoom: {device.maxZoom}</Text>
         </View>
       )}
