@@ -36,7 +36,7 @@ const KEY_JOINTS: Array<import('../../packages/pose/PoseTypes').JointName> = [
 const MIN_KEY_JOINTS_PER_FRAME = 4;
 const MIN_GOOD_FRAMES = 4;
 
-type CapturePhase = 'idle' | 'capturing' | 'complete' | 'error' | 'weak';
+type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'complete' | 'error' | 'weak';
 
 export default function RecordTab() {
   const router = useRouter();
@@ -49,11 +49,13 @@ export default function RecordTab() {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(true);
   const [liveLandmarks, setLiveLandmarks] = useState<Landmark[]>([]);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
   const capturePhaseRef = useRef<CapturePhase>('idle');
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function updateCapturePhase(nextPhase: CapturePhase) {
     capturePhaseRef.current = nextPhase;
@@ -64,6 +66,10 @@ export default function RecordTab() {
     if (captureTimeoutRef.current) {
       clearTimeout(captureTimeoutRef.current);
       captureTimeoutRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearTimeout(countdownRef.current);
+      countdownRef.current = null;
     }
   }
 
@@ -162,21 +168,47 @@ export default function RecordTab() {
     router.push('/analysis/result');
   }
 
-  function startSwingCapture() {
-    if (!hasPermission || !device || !cameraReady) return;
-
-    clearTimers();
+  function beginRecording() {
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
 
-    setShowTips(false);
     updateCapturePhase('capturing');
     goPlayer.play();
 
     captureTimeoutRef.current = setTimeout(() => {
       finalizeCapture();
     }, CAPTURE_WINDOW_MS);
+  }
+
+  function startCountdownCapture() {
+    if (!hasPermission || !device || !cameraReady) return;
+
+    clearTimers();
+    setShowTips(false);
+    updateCapturePhase('countdown');
+    setCountdown(3);
+
+    let remaining = 3;
+    const tick = () => {
+      remaining -= 1;
+      if (remaining > 0) {
+        setCountdown(remaining);
+        countdownRef.current = setTimeout(tick, 1000);
+      } else {
+        setCountdown(null);
+        beginRecording();
+      }
+    };
+    countdownRef.current = setTimeout(tick, 1000);
+  }
+
+  function startInstantCapture() {
+    if (!hasPermission || !device || !cameraReady) return;
+
+    clearTimers();
+    setShowTips(false);
+    beginRecording();
   }
 
   useEffect(() => {
@@ -249,10 +281,11 @@ export default function RecordTab() {
   );
 
   const showCamera = hasPermission === true && device != null;
+  const isCountdown = capturePhase === 'countdown';
   const isCapturing = capturePhase === 'capturing';
   const isWeak = capturePhase === 'weak';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak;
+  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown;
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -301,6 +334,13 @@ export default function RecordTab() {
         </TouchableOpacity>
       )}
 
+      {/* Countdown overlay */}
+      {isCountdown && countdown != null && (
+        <View style={styles.countdownOverlay} pointerEvents="none">
+          <Text style={styles.countdownText}>{countdown}</Text>
+        </View>
+      )}
+
       {/* Overlay */}
       <View style={styles.overlay} pointerEvents="box-none">
         {isInitializing ? (
@@ -335,14 +375,24 @@ export default function RecordTab() {
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity
-            style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
-            onPress={startSwingCapture}
-            disabled={!canRecord}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.recordButtonText}>Record</Text>
-          </TouchableOpacity>
+          <View style={styles.recordButtonRow}>
+            <TouchableOpacity
+              style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
+              onPress={startCountdownCapture}
+              disabled={!canRecord}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.recordButtonText}>3-2-1</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
+              onPress={startInstantCapture}
+              disabled={!canRecord}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.recordButtonText}>Record Now</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     </GestureHandlerRootView>
@@ -395,10 +445,14 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
+  recordButtonRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
   recordButton: {
     backgroundColor: '#F5A623',
     paddingVertical: 16,
-    paddingHorizontal: 48,
+    paddingHorizontal: 28,
     borderRadius: 32,
   },
   recordButtonDisabled: {
@@ -468,5 +522,18 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 17,
     fontWeight: '700',
+  },
+  countdownOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countdownText: {
+    color: '#fff',
+    fontSize: 120,
+    fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
   },
 });
