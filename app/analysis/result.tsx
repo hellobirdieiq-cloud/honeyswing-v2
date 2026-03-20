@@ -17,7 +17,8 @@ import {
 } from '../../packages/domain/swing/tempoAnalysis';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import type { GolfAngles } from '../../packages/domain/swing/angles';
-import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
+import type { Landmark } from '../../components/SkeletonOverlay';
+import VisualCoachCard from '../../components/VisualCoachCard';
 
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const MIN_FRAMES_FOR_TRUST = 20;
@@ -227,18 +228,15 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* 5. Skeleton on key frame */}
+            {/* 5. Visual Coach — skeleton with highlighted issue */}
             {keyLandmarks.length > 0 && (
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Key Frame</Text>
-                <View style={[styles.skeletonContainer, { width: skeletonW, height: skeletonH }]}>
-                  <SkeletonOverlay
-                    landmarks={keyLandmarks}
-                    width={skeletonW}
-                    height={skeletonH}
-                  />
-                </View>
-              </View>
+              <VisualCoachCard
+                landmarks={keyLandmarks}
+                angles={angles}
+                width={skeletonW}
+                height={skeletonH}
+                isLowConfidence={isLowConfidence}
+              />
             )}
 
             {/* 6. Record Again CTA */}
@@ -376,14 +374,6 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 12,
     marginTop: 1,
-  },
-
-  // Skeleton
-  skeletonContainer: {
-    backgroundColor: '#000',
-    borderRadius: 10,
-    overflow: 'hidden',
-    alignSelf: 'center',
   },
 
   // CTA
