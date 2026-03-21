@@ -15,8 +15,8 @@ const HERO_GRADIENT = [
 ];
 
 const GHOST_TONE = '#1E2A38';
-const SHOULDER_TONE = '#3A506B';
-const HIP_TONE = '#2E3F55';
+const STRUCTURE_TONE = '#3A506B';
+const IMPACT_COLOR = '#FFF0D0'; // warm white-hot for climax
 
 // ── Joint helpers ────────────────────────────────────────────────────
 const MIN_CONF = 0.2;
@@ -62,35 +62,29 @@ function smoothTrail(
   return result;
 }
 
-// ── Smooth SVG path (cubic Bezier with Catmull-Rom control points) ───
+// ── Smooth SVG path (cubic Bezier with Catmull-Rom) ──────────────────
 function buildSmoothPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return '';
   const f = (n: number) => n.toFixed(1);
-
   if (points.length === 2) {
     return `M ${f(points[0].x)} ${f(points[0].y)} L ${f(points[1].x)} ${f(points[1].y)}`;
   }
-
-  // Catmull-Rom → cubic Bezier conversion for smooth curves
   let d = `M ${f(points[0].x)} ${f(points[0].y)}`;
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[Math.max(i - 1, 0)];
     const p1 = points[i];
     const p2 = points[i + 1];
     const p3 = points[Math.min(i + 2, points.length - 1)];
-
-    // Catmull-Rom tangents scaled by 1/6 for cubic Bezier control points
     const cp1x = p1.x + (p2.x - p0.x) / 6;
     const cp1y = p1.y + (p2.y - p0.y) / 6;
     const cp2x = p2.x - (p3.x - p1.x) / 6;
     const cp2y = p2.y - (p3.y - p1.y) / 6;
-
     d += ` C ${f(cp1x)} ${f(cp1y)} ${f(cp2x)} ${f(cp2y)} ${f(p2.x)} ${f(p2.y)}`;
   }
   return d;
 }
 
-// ── Ghost frame connections: human silhouette (torso + upper limbs) ──
+// ── Ghost frame connections ──────────────────────────────────────────
 const GHOST_CONNECTIONS: [JointName, JointName][] = [
   ['leftShoulder', 'rightShoulder'],
   ['leftShoulder', 'leftHip'],
@@ -102,7 +96,6 @@ const GHOST_CONNECTIONS: [JointName, JointName][] = [
   ['rightHip', 'rightKnee'],
 ];
 
-// ── Props ────────────────────────────────────────────────────────────
 interface Props {
   frames: PoseFrame[];
   phases: DetectedPhase[];
@@ -111,7 +104,7 @@ interface Props {
 
 export default function SwingArtCard({ frames, phases, width }: Props) {
   const size = width;
-  const pad = size * 0.05;
+  const pad = size * 0.03; // minimal — hero owns the space
 
   const art = useMemo(() => {
     if (frames.length < 6) return null;
@@ -119,30 +112,22 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     // ── Extract raw trails ───────────────────────────────────────────
     const rawWrist: { x: number; y: number }[] = [];
     const rawShoulder: { x: number; y: number }[] = [];
-    const rawHip: { x: number; y: number }[] = [];
 
     for (const frame of frames) {
       const w = midpointOf(frame, 'leftWrist', 'rightWrist');
       if (w) rawWrist.push(w);
       const s = midpointOf(frame, 'leftShoulder', 'rightShoulder');
       if (s) rawShoulder.push(s);
-      const h = midpointOf(frame, 'leftHip', 'rightHip');
-      if (h) rawHip.push(h);
     }
 
     if (rawWrist.length < 4) return null;
 
-    // ── Apply temporal smoothing ─────────────────────────────────────
-    // Hero: double-pass to eliminate backswing kink without flattening
     const wristTrail = smoothTrail(rawWrist, 7, 2);
     const shoulderTrail = smoothTrail(rawShoulder, 7, 1);
-    const hipTrail = smoothTrail(rawHip, 7, 1);
 
-    // ── Bounds from hero + structural trails ONLY ────────────────────
-    const boundsPts = [...wristTrail, ...shoulderTrail, ...hipTrail];
-
+    // ── Bounds from HERO trail only — art fills the card boldly ──────
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of boundsPts) {
+    for (const p of wristTrail) {
       if (p.x < minX) minX = p.x;
       if (p.x > maxX) maxX = p.x;
       if (p.y < minY) minY = p.y;
@@ -161,21 +146,22 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     const mapPts = (pts: { x: number; y: number }[]) =>
       pts.map((p) => ({ x: tx(p.x), y: ty(p.y) }));
 
-    // ── Impact timestamp ─────────────────────────────────────────────
-    const impactTs = phases.find((p) => p.phase === 'impact')?.timestamp ?? null;
+    // ── Impact / timing ──────────────────────────────────────────────
+    const impactPhase = phases.find((p) => p.phase === 'impact');
+    const impactTs = impactPhase?.timestamp ?? null;
     const firstTs = frames[0].timestampMs;
     const lastTs = frames[frames.length - 1].timestampMs;
     const duration = lastTs - firstTs || 1;
 
-    // ── Ghost frames: ~18, human silhouette, slightly more visible ───
+    // ── Ghost frames ─────────────────────────────────────────────────
     const ghostElements: React.ReactElement[] = [];
     const ghostStep = Math.max(1, Math.ceil(frames.length / 18));
     for (let i = 0; i < frames.length; i += ghostStep) {
       const frame = frames[i];
-      let opacity = 0.06;
+      let opacity = 0.08;
       if (impactTs != null) {
         const dist = Math.abs(frame.timestampMs - impactTs) / duration;
-        if (dist < 0.10) opacity = 0.10;
+        if (dist < 0.10) opacity = 0.14;
       }
       for (const [a, b] of GHOST_CONNECTIONS) {
         const ja = getJoint(frame, a);
@@ -195,7 +181,7 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
       }
     }
 
-    // ── Continuous paths ─────────────────────────────────────────────
+    // ── Paths ────────────────────────────────────────────────────────
     const heroMapped = mapPts(wristTrail);
     const heroD = buildSmoothPath(heroMapped);
     const heroStart = heroMapped[0];
@@ -204,11 +190,22 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     const shoulderD = shoulderTrail.length >= 4
       ? buildSmoothPath(mapPts(shoulderTrail))
       : '';
-    const hipD = hipTrail.length >= 4
-      ? buildSmoothPath(mapPts(hipTrail))
-      : '';
 
-    return { ghostElements, heroD, heroStart, heroEnd, shoulderD, hipD };
+    // ── Impact accent: short bright segment at the climax ────────────
+    let impactD = '';
+    if (impactTs != null && wristTrail.length > 4) {
+      const impactProgress = (impactTs - firstTs) / duration;
+      const impactIdx = Math.round(impactProgress * (wristTrail.length - 1));
+      const windowSize = Math.max(3, Math.round(wristTrail.length * 0.08));
+      const startIdx = Math.max(0, impactIdx - windowSize);
+      const endIdx = Math.min(wristTrail.length - 1, impactIdx + windowSize);
+      if (endIdx - startIdx >= 2) {
+        const impactSlice = heroMapped.slice(startIdx, endIdx + 1);
+        impactD = buildSmoothPath(impactSlice);
+      }
+    }
+
+    return { ghostElements, heroD, heroStart, heroEnd, shoulderD, impactD };
   }, [frames, phases, size, pad]);
 
   if (!art) return null;
@@ -231,67 +228,79 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
                 <Stop key={stop.offset} offset={stop.offset} stopColor={stop.color} />
               ))}
             </LinearGradient>
-            <LinearGradient
-              id="heroGlow"
-              x1={art.heroStart.x.toString()}
-              y1={art.heroStart.y.toString()}
-              x2={art.heroEnd.x.toString()}
-              y2={art.heroEnd.y.toString()}
-              gradientUnits="userSpaceOnUse"
-            >
-              {HERO_GRADIENT.map((stop) => (
-                <Stop key={`glow-${stop.offset}`} offset={stop.offset} stopColor={stop.color} />
-              ))}
-            </LinearGradient>
           </Defs>
 
-          {/* Layer 1: Ghost frame silhouettes */}
+          {/* Layer 1: Ghost silhouettes */}
           <G>{art.ghostElements}</G>
 
-          {/* Layer 2: Structural trails */}
+          {/* Layer 2: Shoulder structural trail */}
           {art.shoulderD !== '' && (
             <Path
               d={art.shoulderD}
-              stroke={SHOULDER_TONE}
+              stroke={STRUCTURE_TONE}
               strokeWidth={1.0}
               strokeLinecap="round"
               strokeLinejoin="round"
               fill="none"
-              opacity={0.25}
-            />
-          )}
-          {art.hipD !== '' && (
-            <Path
-              d={art.hipD}
-              stroke={HIP_TONE}
-              strokeWidth={1.0}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              opacity={0.2}
+              opacity={0.30}
             />
           )}
 
-          {/* Layer 3: Hero underlay — soft halo */}
-          <Path
-            d={art.heroD}
-            stroke="url(#heroGlow)"
-            strokeWidth={10}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-            opacity={0.10}
-          />
-
-          {/* Layer 4: Hero wrist trail — dominant continuous arc */}
+          {/* Layer 3: Hero ultra-soft outer glow */}
           <Path
             d={art.heroD}
             stroke="url(#heroGrad)"
-            strokeWidth={3.5}
+            strokeWidth={24}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            opacity={0.04}
+          />
+
+          {/* Layer 4: Hero soft inner glow */}
+          <Path
+            d={art.heroD}
+            stroke="url(#heroGrad)"
+            strokeWidth={12}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            opacity={0.12}
+          />
+
+          {/* Layer 5: Hero arc — dominant */}
+          <Path
+            d={art.heroD}
+            stroke="url(#heroGrad)"
+            strokeWidth={4.0}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
           />
+
+          {/* Layer 6: Impact accent — the moment */}
+          {art.impactD !== '' && (
+            <>
+              <Path
+                d={art.impactD}
+                stroke={IMPACT_COLOR}
+                strokeWidth={8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity={0.08}
+              />
+              <Path
+                d={art.impactD}
+                stroke={IMPACT_COLOR}
+                strokeWidth={5.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+                opacity={0.35}
+              />
+            </>
+          )}
         </Svg>
       </View>
     </View>
