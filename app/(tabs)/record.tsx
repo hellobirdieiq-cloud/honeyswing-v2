@@ -239,9 +239,13 @@ export default function RecordTab() {
     beginRecording();
   }
 
-  // Count distinct screen visits for tip display — fires on every focus, not just mount
+  // Reset to idle on focus return (e.g., after Record Again from result screen)
+  // and count distinct screen visits for tip display
   useFocusEffect(
     useCallback(() => {
+      if (capturePhaseRef.current === 'complete') {
+        updateCapturePhase('idle');
+      }
       tipSessionsSeen += 1;
       setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
     }, [])
