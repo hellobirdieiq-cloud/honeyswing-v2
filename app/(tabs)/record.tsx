@@ -136,8 +136,10 @@ export default function RecordTab() {
 
       if (!poseFrame) return;
 
-      const nextFrames = [...motionFramesRef.current, poseFrame].slice(-MAX_BUFFERED_POSE_FRAMES);
-      motionFramesRef.current = nextFrames;
+      motionFramesRef.current.push(poseFrame);
+      if (motionFramesRef.current.length > MAX_BUFFERED_POSE_FRAMES) {
+        motionFramesRef.current = motionFramesRef.current.slice(-MAX_BUFFERED_POSE_FRAMES);
+      }
     }
   );
 
@@ -161,7 +163,7 @@ export default function RecordTab() {
       clearCurrentSwingMotion();
       clearCurrentSwingAnalysis();
       updateCapturePhase('error');
-      setTimeout(() => updateCapturePhase('idle'), 2000);
+      captureTimeoutRef.current = setTimeout(() => updateCapturePhase('idle'), 2000);
       return;
     }
 
@@ -239,11 +241,12 @@ export default function RecordTab() {
     beginRecording();
   }
 
-  // Reset to idle on focus return (e.g., after Record Again from result screen)
+  // Reset stale capture phases on focus return (e.g., after Record Again, tab switch)
   // and count distinct screen visits for tip display
   useFocusEffect(
     useCallback(() => {
-      if (capturePhaseRef.current === 'complete') {
+      const phase = capturePhaseRef.current;
+      if (phase === 'complete' || phase === 'weak' || phase === 'error') {
         updateCapturePhase('idle');
       }
       tipSessionsSeen += 1;
