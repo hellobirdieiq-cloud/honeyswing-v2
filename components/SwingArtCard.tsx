@@ -6,12 +6,12 @@ import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 
 // ── Color palette ────────────────────────────────────────────────────
 const HERO_GRADIENT = [
-  { offset: '0%', color: '#4A7CF7' },   // cool blue — setup
-  { offset: '20%', color: '#3BC4C4' },  // teal — takeaway
-  { offset: '40%', color: '#44CC88' },  // green — top
-  { offset: '60%', color: '#F5A623' },  // amber — transition
-  { offset: '80%', color: '#FF6B35' },  // hot orange — impact
-  { offset: '100%', color: '#C850C0' }, // violet — follow-through
+  { offset: '0%', color: '#4A7CF7' },
+  { offset: '20%', color: '#3BC4C4' },
+  { offset: '40%', color: '#44CC88' },
+  { offset: '60%', color: '#F5A623' },
+  { offset: '80%', color: '#FF6B35' },
+  { offset: '100%', color: '#C850C0' },
 ];
 
 const GHOST_TONE = '#1E2A38';
@@ -37,49 +37,69 @@ function midpointOf(
   return { x: (ja.x + jb.x) / 2, y: (ja.y + jb.y) / 2 };
 }
 
-// ── Temporal smoothing (moving average) ──────────────────────────────
+// ── Temporal smoothing (moving average, multi-pass) ──────────────────
 function smoothTrail(
   pts: { x: number; y: number }[],
   window: number = 5,
+  passes: number = 1,
 ): { x: number; y: number }[] {
   if (pts.length < 3) return pts;
-  const half = Math.floor(window / 2);
-  return pts.map((_, i) => {
-    const start = Math.max(0, i - half);
-    const end = Math.min(pts.length - 1, i + half);
-    let sx = 0, sy = 0, count = 0;
-    for (let j = start; j <= end; j++) {
-      sx += pts[j].x;
-      sy += pts[j].y;
-      count++;
-    }
-    return { x: sx / count, y: sy / count };
-  });
+  let result = pts;
+  for (let p = 0; p < passes; p++) {
+    const half = Math.floor(window / 2);
+    result = result.map((_, i) => {
+      const start = Math.max(0, i - half);
+      const end = Math.min(result.length - 1, i + half);
+      let sx = 0, sy = 0, count = 0;
+      for (let j = start; j <= end; j++) {
+        sx += result[j].x;
+        sy += result[j].y;
+        count++;
+      }
+      return { x: sx / count, y: sy / count };
+    });
+  }
+  return result;
 }
 
-// ── ONE continuous smooth SVG path (quadratic Bezier) ────────────────
+// ── Smooth SVG path (cubic Bezier with Catmull-Rom control points) ───
 function buildSmoothPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return '';
   const f = (n: number) => n.toFixed(1);
-  let d = `M ${f(points[0].x)} ${f(points[0].y)}`;
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const mx = (prev.x + curr.x) / 2;
-    const my = (prev.y + curr.y) / 2;
-    d += ` Q ${f(prev.x)} ${f(prev.y)} ${f(mx)} ${f(my)}`;
+
+  if (points.length === 2) {
+    return `M ${f(points[0].x)} ${f(points[0].y)} L ${f(points[1].x)} ${f(points[1].y)}`;
   }
-  const last = points[points.length - 1];
-  d += ` L ${f(last.x)} ${f(last.y)}`;
+
+  // Catmull-Rom → cubic Bezier conversion for smooth curves
+  let d = `M ${f(points[0].x)} ${f(points[0].y)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(i - 1, 0)];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[Math.min(i + 2, points.length - 1)];
+
+    // Catmull-Rom tangents scaled by 1/6 for cubic Bezier control points
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+    d += ` C ${f(cp1x)} ${f(cp1y)} ${f(cp2x)} ${f(cp2y)} ${f(p2.x)} ${f(p2.y)}`;
+  }
   return d;
 }
 
-// ── Ghost frame connections: torso silhouette only ───────────────────
+// ── Ghost frame connections: human silhouette (torso + upper limbs) ──
 const GHOST_CONNECTIONS: [JointName, JointName][] = [
   ['leftShoulder', 'rightShoulder'],
   ['leftShoulder', 'leftHip'],
   ['rightShoulder', 'rightHip'],
   ['leftHip', 'rightHip'],
+  ['leftShoulder', 'leftElbow'],
+  ['rightShoulder', 'rightElbow'],
+  ['leftHip', 'leftKnee'],
+  ['rightHip', 'rightKnee'],
 ];
 
 // ── Props ────────────────────────────────────────────────────────────
@@ -91,7 +111,7 @@ interface Props {
 
 export default function SwingArtCard({ frames, phases, width }: Props) {
   const size = width;
-  const pad = size * 0.05; // tight padding — fill the card
+  const pad = size * 0.05;
 
   const art = useMemo(() => {
     if (frames.length < 6) return null;
@@ -113,11 +133,12 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     if (rawWrist.length < 4) return null;
 
     // ── Apply temporal smoothing ─────────────────────────────────────
-    const wristTrail = smoothTrail(rawWrist, 5);
-    const shoulderTrail = smoothTrail(rawShoulder, 7);
-    const hipTrail = smoothTrail(rawHip, 7);
+    // Hero: double-pass to eliminate backswing kink without flattening
+    const wristTrail = smoothTrail(rawWrist, 7, 2);
+    const shoulderTrail = smoothTrail(rawShoulder, 7, 1);
+    const hipTrail = smoothTrail(rawHip, 7, 1);
 
-    // ── Bounds from hero + structural trails ONLY (not ghosts) ───────
+    // ── Bounds from hero + structural trails ONLY ────────────────────
     const boundsPts = [...wristTrail, ...shoulderTrail, ...hipTrail];
 
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -146,15 +167,15 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     const lastTs = frames[frames.length - 1].timestampMs;
     const duration = lastTs - firstTs || 1;
 
-    // ── Ghost frames: ~16, torso only, single muted color ────────────
+    // ── Ghost frames: ~18, human silhouette, slightly more visible ───
     const ghostElements: React.ReactElement[] = [];
-    const ghostStep = Math.max(1, Math.ceil(frames.length / 16));
+    const ghostStep = Math.max(1, Math.ceil(frames.length / 18));
     for (let i = 0; i < frames.length; i += ghostStep) {
       const frame = frames[i];
-      let opacity = 0.04;
+      let opacity = 0.06;
       if (impactTs != null) {
         const dist = Math.abs(frame.timestampMs - impactTs) / duration;
-        if (dist < 0.08) opacity = 0.07;
+        if (dist < 0.10) opacity = 0.10;
       }
       for (const [a, b] of GHOST_CONNECTIONS) {
         const ja = getJoint(frame, a);
@@ -166,7 +187,7 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
             x1={tx(ja.x)} y1={ty(ja.y)}
             x2={tx(jb.x)} y2={ty(jb.y)}
             stroke={GHOST_TONE}
-            strokeWidth={0.6}
+            strokeWidth={0.8}
             strokeLinecap="round"
             opacity={opacity}
           />,
@@ -174,15 +195,12 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
       }
     }
 
-    // ── ONE continuous hero path ─────────────────────────────────────
+    // ── Continuous paths ─────────────────────────────────────────────
     const heroMapped = mapPts(wristTrail);
     const heroD = buildSmoothPath(heroMapped);
-
-    // Compute gradient direction from first to last point for natural flow
     const heroStart = heroMapped[0];
     const heroEnd = heroMapped[heroMapped.length - 1];
 
-    // ── Structural trails: ONE continuous path each ──────────────────
     const shoulderD = shoulderTrail.length >= 4
       ? buildSmoothPath(mapPts(shoulderTrail))
       : '';
@@ -213,12 +231,24 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
                 <Stop key={stop.offset} offset={stop.offset} stopColor={stop.color} />
               ))}
             </LinearGradient>
+            <LinearGradient
+              id="heroGlow"
+              x1={art.heroStart.x.toString()}
+              y1={art.heroStart.y.toString()}
+              x2={art.heroEnd.x.toString()}
+              y2={art.heroEnd.y.toString()}
+              gradientUnits="userSpaceOnUse"
+            >
+              {HERO_GRADIENT.map((stop) => (
+                <Stop key={`glow-${stop.offset}`} offset={stop.offset} stopColor={stop.color} />
+              ))}
+            </LinearGradient>
           </Defs>
 
           {/* Layer 1: Ghost frame silhouettes */}
           <G>{art.ghostElements}</G>
 
-          {/* Layer 2: Structural trails — solid, muted, continuous */}
+          {/* Layer 2: Structural trails */}
           {art.shoulderD !== '' && (
             <Path
               d={art.shoulderD}
@@ -242,7 +272,18 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
             />
           )}
 
-          {/* Layer 3: Hero wrist trail — ONE continuous gradient arc */}
+          {/* Layer 3: Hero underlay — soft halo */}
+          <Path
+            d={art.heroD}
+            stroke="url(#heroGlow)"
+            strokeWidth={10}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            opacity={0.10}
+          />
+
+          {/* Layer 4: Hero wrist trail — dominant continuous arc */}
           <Path
             d={art.heroD}
             stroke="url(#heroGrad)"
