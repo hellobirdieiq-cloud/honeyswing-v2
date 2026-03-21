@@ -144,7 +144,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
 
   return (
     <View style={[styles.card, isLowConfidence && styles.lowConf]}>
-      <Text style={styles.cardTitle}>Visual Coach</Text>
+      <Text style={styles.cardTitle}>Here's what to work on</Text>
 
       <View style={[styles.skeletonContainer, { width, height }]}>
         <Svg width={width} height={height}>
@@ -181,7 +181,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
           <View style={[styles.issueDot, { backgroundColor: highlightColor }]} />
           <View style={styles.issueText}>
             <Text style={[styles.issueLabel, { color: highlightColor }]}>
-              {worstDef.label} — {worst.value}°
+              {worstDef.label}
             </Text>
             {coachCue && <Text style={styles.issueCue}>{coachCue}</Text>}
           </View>
@@ -189,7 +189,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
       )}
 
       {isLowConfidence && (
-        <Text style={styles.lowConfText}>Low-confidence capture — take with a grain of salt</Text>
+        <Text style={styles.lowConfText}>Short capture — results may vary</Text>
       )}
     </View>
   );

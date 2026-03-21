@@ -19,7 +19,7 @@ export default function TabsHomeScreen() {
         <Text style={styles.ctaText}>Start Swinging</Text>
       </TouchableOpacity>
 
-      <Text style={styles.hint}>Record a swing and get instant feedback</Text>
+      <Text style={styles.hint}>Let's see that swing</Text>
     </View>
   );
 }

@@ -115,7 +115,7 @@ export default function ResultScreen() {
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Result</Text>
+        <Text style={styles.headerTitle}>Your Swing</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -141,7 +141,7 @@ export default function ResultScreen() {
             {/* 1. Score — dominant, with breathing room */}
             <View style={styles.scoreCard}>
               {isLowConfidence && (
-                <Text style={styles.lowConfBadge}>Low confidence</Text>
+                <Text style={styles.lowConfBadge}>Quick look — try a longer swing next time</Text>
               )}
               <Text style={styles.score}>{analysis?.score ?? 0}</Text>
               {analysis?.honeyBoom && (

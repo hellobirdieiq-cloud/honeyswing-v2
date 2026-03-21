@@ -48,14 +48,14 @@ export function classifyCapture(frames: PoseFrame[]): CaptureClassification {
   if (frameCount >= PARTIAL_MIN_FRAMES && poseSuccessRate >= PARTIAL_MIN_POSE_RATE) {
     const reason =
       frameCount < VALID_MIN_FRAMES
-        ? 'Short capture — move slower through your swing.'
-        : 'Some frames had weak pose detection.';
+        ? 'Try a slower, fuller swing next time.'
+        : 'Step back a bit so we can see you better.';
     return { validity: 'partial', frameCount, goodFrameCount, poseSuccessRate, reason };
   }
 
   const reason =
     frameCount < PARTIAL_MIN_FRAMES
-      ? 'Too few frames captured.'
-      : 'Couldn\u2019t detect your body clearly enough.';
+      ? 'The swing was too quick to catch.'
+      : 'We couldn\u2019t see you clearly enough.';
   return { validity: 'invalid', frameCount, goodFrameCount, poseSuccessRate, reason };
 }

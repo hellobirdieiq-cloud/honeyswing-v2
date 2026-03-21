@@ -401,10 +401,10 @@ export default function RecordTab() {
         ) : isWeak ? (
           <View style={styles.weakCaptureContainer}>
             <Text style={styles.weakCaptureText}>
-              Weak capture — not enough body detected
+              Couldn't see you clearly
             </Text>
             <Text style={styles.weakCaptureHint}>
-              Make sure your full body is visible
+              Step back so your full body is in frame
             </Text>
             <TouchableOpacity
               style={styles.retryButton}
@@ -418,7 +418,7 @@ export default function RecordTab() {
           </View>
         ) : isError ? (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>No swing detected — try again</Text>
+            <Text style={styles.errorText}>Didn't catch that — give it another go</Text>
           </View>
         ) : (
           <View style={styles.recordButtonRow}>
