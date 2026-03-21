@@ -1,6 +1,4 @@
 import { PoseSequence } from "../../pose/PoseTypes";
-import { getPoseProvider } from "../../pose/PoseProviderRegistry";
-
 import { calculateGolfAngles } from "./angles";
 import { detectSwingPhases, SwingTrailPoint } from "./phaseDetection";
 import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
@@ -63,14 +61,4 @@ export function analyzePoseSequence(sequence: PoseSequence): AnalysisResult {
     tempo,
     phases,
   };
-}
-
-export async function analyzeSwing(videoUri: string): Promise<AnalysisResult> {
-  const provider = getPoseProvider();
-
-  const sequence: PoseSequence = await provider.detectFromVideo({
-    videoUri,
-  });
-
-  return analyzePoseSequence(sequence);
 }
