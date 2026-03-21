@@ -3,7 +3,7 @@ import { getPoseProvider } from "../../pose/PoseProviderRegistry";
 
 import { calculateGolfAngles } from "./angles";
 import { detectSwingPhases, SwingTrailPoint } from "./phaseDetection";
-import { calculateTempo } from "./tempoAnalysis";
+import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
 import { scoreSwing } from "./scoring";
 
 export type AnalysisResult = {
@@ -46,7 +46,10 @@ export function analyzePoseSequence(sequence: PoseSequence): AnalysisResult {
 
   const trail = buildTrailPoints(sequence);
   const phases = detectSwingPhases(trail);
-  const tempo = calculateTempo(phases);
+  const rawTempo = calculateTempo(phases);
+
+  // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
+  const tempo = rawTempo && isTempoTrustworthy(rawTempo, phases) ? rawTempo : null;
 
   const scoring = scoreSwing({
     angles,

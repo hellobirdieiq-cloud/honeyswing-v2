@@ -97,6 +97,38 @@ export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
   };
 }
 
+// ── Tempo sanity thresholds (single location, easy to tune) ──────────
+// Minimum phase duration in ms — anything shorter is noise, not a real swing segment
+export const TEMPO_MIN_PHASE_MS = 50;
+// Plausible tempo ratio band — real swings are roughly 2:1 to 4:1 (backswing:downswing)
+// Allow wider band for tolerance, but reject extreme/inverted values
+export const TEMPO_MIN_RATIO = 0.5;
+export const TEMPO_MAX_RATIO = 10;
+
+/**
+ * Sanity-check a computed tempo using EXISTING phase data.
+ * Returns false if the tempo should NOT be shown confidently.
+ */
+export function isTempoTrustworthy(
+  tempo: SwingTempo,
+  phases: { source: "heuristic" | "fallback" }[],
+): boolean {
+  // Fallback phases are fixed-percentage splits with no real motion analysis
+  const allFallback = phases.length > 0 && phases.every((p) => p.source === "fallback");
+  if (allFallback) return false;
+
+  // Phase durations too short to be a real swing segment
+  if (tempo.backswingMs < TEMPO_MIN_PHASE_MS || tempo.downswingMs < TEMPO_MIN_PHASE_MS) return false;
+
+  // Ratio outside plausible band (inverted, extreme, or broken)
+  if (tempo.tempoRatio < TEMPO_MIN_RATIO || tempo.tempoRatio > TEMPO_MAX_RATIO) return false;
+
+  // Non-finite values
+  if (!Number.isFinite(tempo.tempoRatio)) return false;
+
+  return true;
+}
+
 export function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, number> {
   return {
     address: Math.round(timestamps.address),
