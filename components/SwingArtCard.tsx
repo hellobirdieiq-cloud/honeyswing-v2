@@ -7,16 +7,15 @@ import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 // ── Color palette ────────────────────────────────────────────────────
 const HERO_GRADIENT = [
   { offset: '0%', color: '#4A7CF7' },
-  { offset: '20%', color: '#3BC4C4' },
-  { offset: '40%', color: '#44CC88' },
-  { offset: '60%', color: '#F5A623' },
-  { offset: '80%', color: '#FF6B35' },
+  { offset: '25%', color: '#3BC4C4' },
+  { offset: '45%', color: '#44CC88' },
+  { offset: '65%', color: '#F5A623' },
+  { offset: '82%', color: '#FF6B35' },
   { offset: '100%', color: '#C850C0' },
 ];
 
 const GHOST_TONE = '#1E2A38';
-const STRUCTURE_TONE = '#3A506B';
-const IMPACT_COLOR = '#FFF0D0'; // warm white-hot for climax
+const IMPACT_COLOR = '#FFF0D0';
 
 // ── Joint helpers ────────────────────────────────────────────────────
 const MIN_CONF = 0.2;
@@ -62,6 +61,28 @@ function smoothTrail(
   return result;
 }
 
+/** Trim the tail of a trail where velocity drops below threshold (deceleration). */
+function trimDeceleration(
+  pts: { x: number; y: number }[],
+  tailFraction: number = 0.3,
+): { x: number; y: number }[] {
+  if (pts.length < 10) return pts;
+  // Only consider the last tailFraction of points for trimming
+  const searchStart = Math.floor(pts.length * (1 - tailFraction));
+  // Find where velocity drops significantly
+  let trimIdx = pts.length;
+  for (let i = pts.length - 1; i > searchStart; i--) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    const vel = Math.sqrt(dx * dx + dy * dy);
+    if (vel > 0.002) { // still meaningful movement
+      trimIdx = Math.min(pts.length, i + 2); // keep a tiny tail past last movement
+      break;
+    }
+  }
+  return pts.slice(0, trimIdx);
+}
+
 // ── Smooth SVG path (cubic Bezier with Catmull-Rom) ──────────────────
 function buildSmoothPath(points: { x: number; y: number }[]): string {
   if (points.length < 2) return '';
@@ -104,28 +125,24 @@ interface Props {
 
 export default function SwingArtCard({ frames, phases, width }: Props) {
   const size = width;
-  const pad = size * 0.03; // minimal — hero owns the space
+  const pad = size * 0.03;
 
   const art = useMemo(() => {
     if (frames.length < 6) return null;
 
-    // ── Extract raw trails ───────────────────────────────────────────
+    // ── Extract raw wrist trail ──────────────────────────────────────
     const rawWrist: { x: number; y: number }[] = [];
-    const rawShoulder: { x: number; y: number }[] = [];
-
     for (const frame of frames) {
       const w = midpointOf(frame, 'leftWrist', 'rightWrist');
       if (w) rawWrist.push(w);
-      const s = midpointOf(frame, 'leftShoulder', 'rightShoulder');
-      if (s) rawShoulder.push(s);
     }
-
     if (rawWrist.length < 4) return null;
 
-    const wristTrail = smoothTrail(rawWrist, 7, 2);
-    const shoulderTrail = smoothTrail(rawShoulder, 7, 1);
+    // ── Smooth, then trim deceleration tail ──────────────────────────
+    const smoothed = smoothTrail(rawWrist, 7, 2);
+    const wristTrail = trimDeceleration(smoothed);
 
-    // ── Bounds from HERO trail only — art fills the card boldly ──────
+    // ── Bounds from HERO trail only ──────────────────────────────────
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const p of wristTrail) {
       if (p.x < minX) minX = p.x;
@@ -158,10 +175,10 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
     const ghostStep = Math.max(1, Math.ceil(frames.length / 18));
     for (let i = 0; i < frames.length; i += ghostStep) {
       const frame = frames[i];
-      let opacity = 0.08;
+      let opacity = 0.07;
       if (impactTs != null) {
         const dist = Math.abs(frame.timestampMs - impactTs) / duration;
-        if (dist < 0.10) opacity = 0.14;
+        if (dist < 0.10) opacity = 0.13;
       }
       for (const [a, b] of GHOST_CONNECTIONS) {
         const ja = getJoint(frame, a);
@@ -181,31 +198,26 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
       }
     }
 
-    // ── Paths ────────────────────────────────────────────────────────
+    // ── Hero path ────────────────────────────────────────────────────
     const heroMapped = mapPts(wristTrail);
     const heroD = buildSmoothPath(heroMapped);
     const heroStart = heroMapped[0];
     const heroEnd = heroMapped[heroMapped.length - 1];
 
-    const shoulderD = shoulderTrail.length >= 4
-      ? buildSmoothPath(mapPts(shoulderTrail))
-      : '';
-
-    // ── Impact accent: short bright segment at the climax ────────────
+    // ── Impact accent: tight bright segment at the climax ────────────
     let impactD = '';
     if (impactTs != null && wristTrail.length > 4) {
       const impactProgress = (impactTs - firstTs) / duration;
       const impactIdx = Math.round(impactProgress * (wristTrail.length - 1));
-      const windowSize = Math.max(3, Math.round(wristTrail.length * 0.08));
+      const windowSize = Math.max(2, Math.round(wristTrail.length * 0.06));
       const startIdx = Math.max(0, impactIdx - windowSize);
       const endIdx = Math.min(wristTrail.length - 1, impactIdx + windowSize);
       if (endIdx - startIdx >= 2) {
-        const impactSlice = heroMapped.slice(startIdx, endIdx + 1);
-        impactD = buildSmoothPath(impactSlice);
+        impactD = buildSmoothPath(heroMapped.slice(startIdx, endIdx + 1));
       }
     }
 
-    return { ghostElements, heroD, heroStart, heroEnd, shoulderD, impactD };
+    return { ghostElements, heroD, heroStart, heroEnd, impactD };
   }, [frames, phases, size, pad]);
 
   if (!art) return null;
@@ -233,42 +245,29 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
           {/* Layer 1: Ghost silhouettes */}
           <G>{art.ghostElements}</G>
 
-          {/* Layer 2: Shoulder structural trail */}
-          {art.shoulderD !== '' && (
-            <Path
-              d={art.shoulderD}
-              stroke={STRUCTURE_TONE}
-              strokeWidth={1.0}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              opacity={0.30}
-            />
-          )}
-
-          {/* Layer 3: Hero ultra-soft outer glow */}
+          {/* Layer 2: Hero ultra-soft outer glow */}
           <Path
             d={art.heroD}
             stroke="url(#heroGrad)"
-            strokeWidth={24}
+            strokeWidth={22}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
             opacity={0.04}
           />
 
-          {/* Layer 4: Hero soft inner glow */}
+          {/* Layer 3: Hero soft inner glow */}
           <Path
             d={art.heroD}
             stroke="url(#heroGrad)"
-            strokeWidth={12}
+            strokeWidth={10}
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
             opacity={0.12}
           />
 
-          {/* Layer 5: Hero arc — dominant */}
+          {/* Layer 4: Hero arc — dominant */}
           <Path
             d={art.heroD}
             stroke="url(#heroGrad)"
@@ -278,26 +277,26 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
             fill="none"
           />
 
-          {/* Layer 6: Impact accent — the moment */}
+          {/* Layer 5: Impact accent — the moment */}
           {art.impactD !== '' && (
             <>
               <Path
                 d={art.impactD}
                 stroke={IMPACT_COLOR}
-                strokeWidth={8}
+                strokeWidth={7}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 fill="none"
-                opacity={0.08}
+                opacity={0.10}
               />
               <Path
                 d={art.impactD}
                 stroke={IMPACT_COLOR}
-                strokeWidth={5.5}
+                strokeWidth={5.0}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 fill="none"
-                opacity={0.35}
+                opacity={0.45}
               />
             </>
           )}

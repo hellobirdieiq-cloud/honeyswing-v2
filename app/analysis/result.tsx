@@ -104,9 +104,9 @@ export default function ResultScreen() {
     [keyFrame],
   );
 
-  // Skeleton preview dimensions — wide card, 4:3 aspect
+  // Skeleton preview dimensions — compact 3:4 landscape-ish for coaching card
   const skeletonW = screenW - 48;
-  const skeletonH = Math.round(skeletonW * (4 / 3));
+  const skeletonH = Math.round(skeletonW * 0.85);
 
   return (
     <SafeAreaView style={styles.safeArea}>
