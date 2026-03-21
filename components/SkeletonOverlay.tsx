@@ -12,6 +12,12 @@ export interface Landmark {
 
 /** Pairs of joint names to draw lines between (camelCase, matching Swift plugin output). */
 const SKELETON_CONNECTIONS: [string, string][] = [
+  // face
+  ['leftEyeInner', 'leftEye'],
+  ['leftEye', 'leftEyeOuter'],
+  ['rightEyeInner', 'rightEye'],
+  ['rightEye', 'rightEyeOuter'],
+  ['mouthLeft', 'mouthRight'],
   // head → shoulders
   ['nose', 'leftShoulder'],
   ['nose', 'rightShoulder'],
@@ -20,18 +26,30 @@ const SKELETON_CONNECTIONS: [string, string][] = [
   ['leftShoulder', 'leftHip'],
   ['rightShoulder', 'rightHip'],
   ['leftHip', 'rightHip'],
-  // left arm
+  // left arm + hand
   ['leftShoulder', 'leftElbow'],
   ['leftElbow', 'leftWrist'],
-  // right arm
+  ['leftWrist', 'leftThumb'],
+  ['leftWrist', 'leftIndex'],
+  ['leftWrist', 'leftPinky'],
+  // right arm + hand
   ['rightShoulder', 'rightElbow'],
   ['rightElbow', 'rightWrist'],
-  // left leg
+  ['rightWrist', 'rightThumb'],
+  ['rightWrist', 'rightIndex'],
+  ['rightWrist', 'rightPinky'],
+  // left leg + foot
   ['leftHip', 'leftKnee'],
   ['leftKnee', 'leftAnkle'],
-  // right leg
+  ['leftAnkle', 'leftHeel'],
+  ['leftAnkle', 'leftFootIndex'],
+  ['leftHeel', 'leftFootIndex'],
+  // right leg + foot
   ['rightHip', 'rightKnee'],
   ['rightKnee', 'rightAnkle'],
+  ['rightAnkle', 'rightHeel'],
+  ['rightAnkle', 'rightFootIndex'],
+  ['rightHeel', 'rightFootIndex'],
 ];
 
 const MIN_CONFIDENCE = 0.3;

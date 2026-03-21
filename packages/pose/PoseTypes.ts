@@ -1,21 +1,38 @@
 export type JointName =
+  // face
   | "nose"
+  | "leftEyeInner"
   | "leftEye"
+  | "leftEyeOuter"
+  | "rightEyeInner"
   | "rightEye"
+  | "rightEyeOuter"
   | "leftEar"
   | "rightEar"
+  | "mouthLeft"
+  | "mouthRight"
+  // upper body
   | "leftShoulder"
   | "rightShoulder"
   | "leftElbow"
   | "rightElbow"
   | "leftWrist"
   | "rightWrist"
+  // hands
+  | "leftPinky"
+  | "rightPinky"
+  | "leftIndex"
+  | "rightIndex"
+  | "leftThumb"
+  | "rightThumb"
+  // lower body
   | "leftHip"
   | "rightHip"
   | "leftKnee"
   | "rightKnee"
   | "leftAnkle"
   | "rightAnkle"
+  // feet
   | "leftHeel"
   | "rightHeel"
   | "leftFootIndex"
@@ -64,16 +81,28 @@ export type V1MotionFrame = {
 export function createEmptyJoints(): Record<JointName, NormalizedJoint | undefined> {
   return {
     nose: undefined,
+    leftEyeInner: undefined,
     leftEye: undefined,
+    leftEyeOuter: undefined,
+    rightEyeInner: undefined,
     rightEye: undefined,
+    rightEyeOuter: undefined,
     leftEar: undefined,
     rightEar: undefined,
+    mouthLeft: undefined,
+    mouthRight: undefined,
     leftShoulder: undefined,
     rightShoulder: undefined,
     leftElbow: undefined,
     rightElbow: undefined,
     leftWrist: undefined,
     rightWrist: undefined,
+    leftPinky: undefined,
+    rightPinky: undefined,
+    leftIndex: undefined,
+    rightIndex: undefined,
+    leftThumb: undefined,
+    rightThumb: undefined,
     leftHip: undefined,
     rightHip: undefined,
     leftKnee: undefined,
