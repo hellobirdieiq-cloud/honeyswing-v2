@@ -131,6 +131,9 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
     }
   }
 
+  // If too few joints passed confidence filter, don't render a big empty black box
+  if (byName.size < 4) return null;
+
   const px = (lm: Landmark) => lm.x * width;
   const py = (lm: Landmark) => lm.y * height;
 
