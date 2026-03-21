@@ -20,6 +20,8 @@ import type { GolfAngles } from '../../packages/domain/swing/angles';
 import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
+import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
+import SwingArtCard from '../../components/SwingArtCard';
 
 /** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
 function frameToLandmarks(frame: PoseFrame): Landmark[] {
@@ -179,6 +181,15 @@ export default function ResultScreen() {
             >
               <Text style={styles.primaryButtonText}>Record Again</Text>
             </TouchableOpacity>
+
+            {/* 5. Swing Art — valid captures only */}
+            {classification?.validity === 'valid' && motion && (
+              <SwingArtCard
+                frames={motion.frames}
+                phases={(analysis?.phases ?? []) as DetectedPhase[]}
+                width={screenW - 48}
+              />
+            )}
           </>
         )}
       </ScrollView>
