@@ -29,14 +29,16 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   updateRef,
   width,
   height,
+  frameAspect,
 }: {
   updateRef: React.MutableRefObject<((lms: Landmark[]) => void) | null>;
   width: number;
   height: number;
+  frameAspect: number;
 }) {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   updateRef.current = setLandmarks;
-  return <SkeletonOverlay landmarks={landmarks} width={width} height={height} />;
+  return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
 });
 
 /** Session counter for framing tips — show for first 3 record-screen visits only. */
@@ -62,13 +64,15 @@ export default function RecordTab() {
   const router = useRouter();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
 
-  const { width: screenW, height: screenH } = useWindowDimensions();
+  const { width: screenW } = useWindowDimensions();
+  const [containerH, setContainerH] = useState(0);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
+  const [frameAspect, setFrameAspect] = useState(0); // portrait image W/H ratio
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
@@ -116,6 +120,12 @@ export default function RecordTab() {
           console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + (landmarks[0] as any)._diagnostic);
         }
         return;
+      }
+
+      // Capture portrait frame aspect ratio from first valid frame
+      // Sensor reports landscape (w>h); after .right rotation portrait is (h, w)
+      if (frameAspect === 0 && frameWidth > 0 && frameHeight > 0) {
+        setFrameAspect(frameHeight / frameWidth); // portrait width / portrait height
       }
 
       // Update skeleton overlay with raw landmarks every frame
@@ -332,7 +342,10 @@ export default function RecordTab() {
   const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError;
 
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <GestureHandlerRootView
+      style={styles.container}
+      onLayout={(e) => setContainerH(e.nativeEvent.layout.height)}
+    >
       {showCamera ? (
         <>
           <ReanimatedCamera
@@ -350,7 +363,8 @@ export default function RecordTab() {
           <LiveSkeleton
             updateRef={skeletonUpdateRef}
             width={screenW}
-            height={screenH}
+            height={containerH}
+            frameAspect={frameAspect}
           />
           <GestureDetector gesture={pinchGesture}>
             <Animated.View style={StyleSheet.absoluteFill} />
