@@ -72,7 +72,8 @@ export default function RecordTab() {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
-  const [frameAspect, setFrameAspect] = useState(0); // portrait image W/H ratio
+  const frameAspectRef = useRef(0); // portrait image W/H ratio — ref to avoid re-renders
+  const [frameAspectState, setFrameAspectState] = useState(0); // synced once for LiveSkeleton prop
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
@@ -122,10 +123,12 @@ export default function RecordTab() {
         return;
       }
 
-      // Capture portrait frame aspect ratio from first valid frame
+      // Capture portrait frame aspect ratio from first valid frame (once only)
       // Sensor reports landscape (w>h); after .right rotation portrait is (h, w)
-      if (frameAspect === 0 && frameWidth > 0 && frameHeight > 0) {
-        setFrameAspect(frameHeight / frameWidth); // portrait width / portrait height
+      if (frameAspectRef.current === 0 && frameWidth > 0 && frameHeight > 0) {
+        const aspect = frameHeight / frameWidth; // portrait width / portrait height
+        frameAspectRef.current = aspect;
+        setFrameAspectState(aspect); // single state update for LiveSkeleton prop
       }
 
       // Update skeleton overlay with raw landmarks every frame
@@ -344,7 +347,10 @@ export default function RecordTab() {
   return (
     <GestureHandlerRootView
       style={styles.container}
-      onLayout={(e) => setContainerH(e.nativeEvent.layout.height)}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h !== containerH) setContainerH(h);
+      }}
     >
       {showCamera ? (
         <>
@@ -364,7 +370,7 @@ export default function RecordTab() {
             updateRef={skeletonUpdateRef}
             width={screenW}
             height={containerH}
-            frameAspect={frameAspect}
+            frameAspect={frameAspectState}
           />
           <GestureDetector gesture={pinchGesture}>
             <Animated.View style={StyleSheet.absoluteFill} />
