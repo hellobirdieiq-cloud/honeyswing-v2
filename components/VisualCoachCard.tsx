@@ -78,37 +78,49 @@ const METRICS: Record<MetricKey, MetricDef> = {
     segments: [['leftShoulder', 'leftHip'], ['rightShoulder', 'rightHip']],
     ideal: 35, tolerance: 20,
     label: 'Spine tilt',
-    cue: (v, i) => v > i ? 'Stand more upright — less forward lean.' : 'Add a bit more forward tilt.',
+    cue: (v, i) => v > i
+      ? 'You\'re leaning too far forward at address — stand a bit taller'
+      : 'A bit more forward tilt at setup — you\'re standing too upright',
   },
   leftElbowAngle: {
     segments: [['leftShoulder', 'leftElbow'], ['leftElbow', 'leftWrist']],
     ideal: 165, tolerance: 40,
-    label: 'Lead elbow',
-    cue: (v, i) => v < i ? 'Keep your lead arm straighter.' : 'Slight bend is fine — avoid locking out.',
+    label: 'Lead arm',
+    cue: (v, i) => v < i
+      ? 'Your lead arm is too bent through the swing — try to keep it straighter'
+      : 'Your lead arm is locking out — keep a slight bend through impact',
   },
   rightElbowAngle: {
     segments: [['rightShoulder', 'rightElbow'], ['rightElbow', 'rightWrist']],
     ideal: 165, tolerance: 40,
-    label: 'Trail elbow',
-    cue: (v, i) => v < i ? 'Extend your trail arm more.' : 'Slight bend is fine — avoid locking out.',
+    label: 'Trail arm',
+    cue: (v, i) => v < i
+      ? 'Your trail elbow is too bent at the top — extend it more'
+      : 'Your trail arm is too straight — let it fold naturally at the top',
   },
   leftKneeAngle: {
     segments: [['leftHip', 'leftKnee'], ['leftKnee', 'leftAnkle']],
     ideal: 155, tolerance: 35,
     label: 'Lead knee',
-    cue: (v, i) => v < i ? 'Less knee bend — stay athletic, not crouched.' : 'Soften your lead knee slightly.',
+    cue: (v, i) => v < i
+      ? 'Too much knee bend at setup — stay athletic, not crouched'
+      : 'Soften your lead knee at address — a little flex helps your turn',
   },
   rightKneeAngle: {
     segments: [['rightHip', 'rightKnee'], ['rightKnee', 'rightAnkle']],
     ideal: 155, tolerance: 35,
     label: 'Trail knee',
-    cue: (v, i) => v < i ? 'Less knee bend on the trail side.' : 'Soften your trail knee slightly.',
+    cue: (v, i) => v < i
+      ? 'Your trail knee is too bent at setup — straighten up a little'
+      : 'Soften your trail knee at address — stay ready to rotate',
   },
   shoulderTilt: {
     segments: [['leftShoulder', 'rightShoulder']],
     ideal: 0, tolerance: 25,
-    label: 'Shoulder tilt',
-    cue: () => 'Level your shoulders more at address.',
+    label: 'Shoulders',
+    cue: (v) => v > 0
+      ? 'Your lead shoulder is too high at address — try to level them'
+      : 'Your trail shoulder is too high at address — try to level them',
   },
 };
 
