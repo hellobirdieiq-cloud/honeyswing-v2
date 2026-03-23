@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   getCurrentSwingMotion,
   getCurrentSwingAnalysis,
+  computeFocus,
+  saveFocus,
 } from '../../lib/swingMotionStore';
 import {
   analyzePoseSequence,
@@ -90,6 +92,13 @@ export default function ResultScreen() {
   const tempo = analysis?.tempo;
 
   const isLowConfidence = classification?.validity === 'partial';
+
+  // Persist the weakest metric as "Today's Focus" for the home screen
+  useEffect(() => {
+    if (!angles) return;
+    const focus = computeFocus(angles);
+    if (focus) saveFocus(focus);
+  }, [angles]);
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;

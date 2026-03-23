@@ -1,8 +1,23 @@
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
+
+function focusScoreColor(score: number): string {
+  if (score >= 80) return '#00FF66';
+  if (score >= 50) return '#FFB020';
+  return '#FF4444';
+}
 
 export default function TabsHomeScreen() {
   const router = useRouter();
+  const [focus, setFocus] = useState<FocusData | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFocus().then(setFocus);
+    }, []),
+  );
 
   return (
     <View style={styles.container}>
@@ -10,6 +25,19 @@ export default function TabsHomeScreen() {
         <Text style={styles.title}>HoneySwing</Text>
         <Text style={styles.subtitle}>Your pocket swing coach</Text>
       </View>
+
+      {focus && (
+        <View style={styles.focusCard}>
+          <Text style={styles.focusTitle}>Today's Focus</Text>
+          <View style={styles.focusRow}>
+            <View style={[styles.focusDot, { backgroundColor: focusScoreColor(focus.score) }]} />
+            <Text style={[styles.focusLabel, { color: focusScoreColor(focus.score) }]}>
+              {focus.label}
+            </Text>
+          </View>
+          <Text style={styles.focusCue}>{focus.cue}</Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={styles.cta}
@@ -19,7 +47,9 @@ export default function TabsHomeScreen() {
         <Text style={styles.ctaText}>Start Swinging</Text>
       </TouchableOpacity>
 
-      <Text style={styles.hint}>Let's see that swing</Text>
+      <Text style={styles.hint}>
+        {focus ? 'Record a swing to update your focus' : "Let's see that swing"}
+      </Text>
     </View>
   );
 }
@@ -46,6 +76,43 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '500',
+  },
+  focusCard: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    padding: 16,
+    width: '100%',
+    marginBottom: 24,
+  },
+  focusTitle: {
+    color: '#F5A623',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  focusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  focusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  focusLabel: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  focusCue: {
+    color: '#ccc',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4,
+    paddingLeft: 20,
   },
   cta: {
     backgroundColor: '#F5A623',
