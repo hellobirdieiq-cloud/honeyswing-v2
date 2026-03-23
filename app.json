@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HoneySwing V2",
+    "name": "honeyswing",
     "slug": "honeyswing-v2",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -39,7 +39,7 @@
       },
       "supportsTablet": true,
       "bundleIdentifier": "com.honeyswing.honeyswing-v2",
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "permissions": [
