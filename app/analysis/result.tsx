@@ -133,7 +133,7 @@ export default function ResultScreen() {
             </Text>
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => router.replace('/(tabs)/record')}
+              onPress={() => router.back()}
               activeOpacity={0.7}
             >
               <Text style={styles.primaryButtonText}>Record Again</Text>
@@ -176,7 +176,7 @@ export default function ResultScreen() {
             {/* 4. Record Again CTA */}
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={() => router.replace('/(tabs)/record')}
+              onPress={() => router.back()}
               activeOpacity={0.7}
             >
               <Text style={styles.primaryButtonText}>Record Again</Text>

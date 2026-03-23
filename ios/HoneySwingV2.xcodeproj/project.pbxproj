@@ -9,7 +9,10 @@
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
+		7E47E6622F6A735100932D12 /* HoneyVisionCameraPosePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E47E6612F6A735100932D12 /* HoneyVisionCameraPosePlugin.swift */; };
+		7E47E6632F6A735100932D12 /* HoneyVisionCameraPosePlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E47E6602F6A735100932D12 /* HoneyVisionCameraPosePlugin.m */; };
 		8C10804A52ACA46B35C493B1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 90B10B174EE4E1E1B52F30B6 /* PrivacyInfo.xcprivacy */; };
+		AABB001122334455DEADBEEF /* pose_landmarker_full.task in Resources */ = {isa = PBXBuildFile; fileRef = AABB001122334455DEAD0001 /* pose_landmarker_full.task */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C12F3C56FF721FE2D651E375 /* libPods-HoneySwingV2.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C183A917AEC4301D258B8378 /* libPods-HoneySwingV2.a */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
@@ -22,9 +25,12 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HoneySwingV2/Info.plist; sourceTree = "<group>"; };
 		472BEDC8A1185709FC0CE514 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HoneySwingV2/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		70273F7AF0AA3EA9EE8B0AA0 /* Pods-HoneySwingV2.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HoneySwingV2.debug.xcconfig"; path = "Target Support Files/Pods-HoneySwingV2/Pods-HoneySwingV2.debug.xcconfig"; sourceTree = "<group>"; };
+		7E47E6602F6A735100932D12 /* HoneyVisionCameraPosePlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyVisionCameraPosePlugin.m; sourceTree = "<group>"; };
+		7E47E6612F6A735100932D12 /* HoneyVisionCameraPosePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyVisionCameraPosePlugin.swift; sourceTree = "<group>"; };
 		90B10B174EE4E1E1B52F30B6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = HoneySwingV2/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9313FDA4EE7A6987756BFC53 /* Pods-HoneySwingV2.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HoneySwingV2.release.xcconfig"; path = "Target Support Files/Pods-HoneySwingV2/Pods-HoneySwingV2.release.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = HoneySwingV2/SplashScreen.storyboard; sourceTree = "<group>"; };
+		AABB001122334455DEAD0001 /* pose_landmarker_full.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = pose_landmarker_full.task; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		C183A917AEC4301D258B8378 /* libPods-HoneySwingV2.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HoneySwingV2.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -93,6 +99,9 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				7E47E6602F6A735100932D12 /* HoneyVisionCameraPosePlugin.m */,
+				7E47E6612F6A735100932D12 /* HoneyVisionCameraPosePlugin.swift */,
+				AABB001122334455DEAD0001 /* pose_landmarker_full.task */,
 				13B07FAE1A68108700A75B9A /* HoneySwingV2 */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -197,6 +206,7 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				8C10804A52ACA46B35C493B1 /* PrivacyInfo.xcprivacy in Resources */,
+				AABB001122334455DEADBEEF /* pose_landmarker_full.task in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -327,6 +337,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E47E6622F6A735100932D12 /* HoneyVisionCameraPosePlugin.swift in Sources */,
+				7E47E6632F6A735100932D12 /* HoneyVisionCameraPosePlugin.m in Sources */,
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
 				F7749C89B808CA66FAABB190 /* ExpoModulesProvider.swift in Sources */,
 			);
@@ -342,7 +354,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HoneySwingV2/HoneySwingV2.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3774Z5A69;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -378,7 +393,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HoneySwingV2/HoneySwingV2.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3774Z5A69;
 				INFOPLIST_FILE = HoneySwingV2/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
