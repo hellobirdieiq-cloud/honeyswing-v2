@@ -23,6 +23,8 @@ import {
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
+import { persistSwing } from '../../lib/persistSwing';
+import { classifyCapture } from '../../lib/captureValidity';
 
 /** Isolated component — landmark state updates only re-render this subtree, not the parent. */
 const LiveSkeleton = React.memo(function LiveSkeleton({
@@ -208,6 +210,8 @@ export default function RecordTab() {
     setCurrentSwingAnalysis(analysis);
     updateCapturePhase('complete');
 
+    const classification = classifyCapture(frames);
+    persistSwing(frames, analysis, classification).catch(() => {});
     router.push('/analysis/result');
   }
 

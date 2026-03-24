@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,7 @@ import type { GolfAngles } from '../../packages/domain/swing/angles';
 import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
+import { getIsLeftHanded } from '../../lib/handedness';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import SwingArtCard from '../../components/SwingArtCard';
 
@@ -62,6 +63,11 @@ export default function ResultScreen() {
   const { width: screenW } = useWindowDimensions();
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
+  const [isLeftHanded, setIsLeftHanded] = useState(false);
+
+  useEffect(() => {
+    getIsLeftHanded().then(setIsLeftHanded);
+  }, []);
 
   const classification: CaptureClassification | null = useMemo(
     () => (motion ? classifyCapture(motion.frames) : null),
@@ -96,9 +102,9 @@ export default function ResultScreen() {
   // Persist the weakest metric as "Today's Focus" for the home screen
   useEffect(() => {
     if (!angles) return;
-    const focus = computeFocus(angles);
+    const focus = computeFocus(angles, isLeftHanded);
     if (focus) saveFocus(focus);
-  }, [angles]);
+  }, [angles, isLeftHanded]);
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
@@ -169,6 +175,7 @@ export default function ResultScreen() {
                 width={skeletonW}
                 height={skeletonH}
                 isLowConfidence={isLowConfidence}
+                isLeftHanded={isLeftHanded}
               />
             )}
 

@@ -124,15 +124,28 @@ const METRICS: Record<MetricKey, MetricDef> = {
   },
 };
 
+/** Remap metric keys so "Lead" and "Trail" labels match the player's dominant side. */
+function remapKey(key: MetricKey, isLeftHanded: boolean): MetricKey {
+  if (!isLeftHanded) return key;
+  switch (key) {
+    case 'leftElbowAngle': return 'rightElbowAngle';
+    case 'rightElbowAngle': return 'leftElbowAngle';
+    case 'leftKneeAngle': return 'rightKneeAngle';
+    case 'rightKneeAngle': return 'leftKneeAngle';
+    default: return key;
+  }
+}
+
 interface Props {
   landmarks: Landmark[];
   angles: GolfAngles | undefined;
   width: number;
   height: number;
   isLowConfidence: boolean;
+  isLeftHanded?: boolean;
 }
 
-export default function VisualCoachCard({ landmarks, angles, width, height, isLowConfidence }: Props) {
+export default function VisualCoachCard({ landmarks, angles, width, height, isLowConfidence, isLeftHanded = false }: Props) {
   if (landmarks.length === 0 || width === 0 || height === 0) return null;
 
   // Build joint lookup
@@ -150,12 +163,14 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const py = (lm: Landmark) => lm.y * height;
 
   // Score each metric using existing scoring logic
+  // For lefties, remap so "Lead arm" reads from the right-side angle and vice versa
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
-    for (const key of Object.keys(METRICS) as MetricKey[]) {
-      const def = METRICS[key];
-      const value = angles[key];
-      scored.push({ key, score: scoreAngle(value, def.ideal, def.tolerance), value });
+    for (const labelKey of Object.keys(METRICS) as MetricKey[]) {
+      const angleKey = remapKey(labelKey, isLeftHanded);
+      const def = METRICS[labelKey];
+      const value = angles[angleKey];
+      scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
     }
   }
 
