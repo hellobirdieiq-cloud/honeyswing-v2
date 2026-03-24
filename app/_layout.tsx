@@ -16,7 +16,7 @@ export default function RootLayout() {
     AsyncStorage.getItem(ONBOARDING_KEY).then((value) => {
       setReady(true);
       SplashScreen.hideAsync();
-      if (value !== 'true') {
+      if (false) {
         router.replace('/onboarding' as Href);
       }
     });
