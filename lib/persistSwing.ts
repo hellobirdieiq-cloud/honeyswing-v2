@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
+import { supabase, getUserId } from './supabase';
+import { incrementLocalSwingCount } from './swingLimit';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
@@ -47,7 +48,9 @@ export async function persistSwing(
       ? frames[frames.length - 1].timestampMs - frames[0].timestampMs
       : 0;
 
-  const profileId = await AsyncStorage.getItem('honeyswing:profileId');
+  // Prefer auth user ID, fall back to anonymous profileId
+  const authUserId = await getUserId();
+  const profileId = authUserId ?? await AsyncStorage.getItem('honeyswing:profileId');
 
   const row: Record<string, unknown> = {
     ...(profileId ? { user_id: profileId } : {}),
@@ -76,4 +79,7 @@ export async function persistSwing(
   } else {
     console.log('[HoneySwing] Swing persisted, frames:', frames.length);
   }
+
+  // Always increment local count for anonymous limit tracking
+  await incrementLocalSwingCount();
 }

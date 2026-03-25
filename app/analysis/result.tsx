@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import {
   getCurrentSwingMotion,
   getCurrentSwingAnalysis,
   computeFocus,
   saveFocus,
 } from '../../lib/swingMotionStore';
+import { checkSwingLimit } from '../../lib/swingLimit';
+import { getUser } from '../../lib/supabase';
 import {
   analyzePoseSequence,
   type AnalysisResult,
@@ -64,9 +66,18 @@ export default function ResultScreen() {
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
   const [isLeftHanded, setIsLeftHanded] = useState(false);
+  const [limitHit, setLimitHit] = useState(false);
 
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded);
+    // Check swing limit after this swing was persisted
+    checkSwingLimit().then((status) => {
+      if (!status.allowed) {
+        getUser().then((user) => {
+          if (!user) setLimitHit(true);
+        });
+      }
+    });
   }, []);
 
   const classification: CaptureClassification | null = useMemo(
@@ -198,6 +209,21 @@ export default function ResultScreen() {
               <Text style={styles.primaryButtonText}>Record Again</Text>
             </TouchableOpacity>
 
+            {/* 4b. Swing limit — prompt sign-in */}
+            {limitHit && (
+              <TouchableOpacity
+                style={styles.signInPrompt}
+                onPress={() => router.push('/signin' as Href)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.signInPromptTitle}>Want to keep practicing?</Text>
+                <Text style={styles.signInPromptText}>
+                  Create a free account to save your swings and keep going.
+                </Text>
+                <Text style={styles.signInPromptCta}>Sign up free →</Text>
+              </TouchableOpacity>
+            )}
+
             {/* 5. Swing Art — valid captures only */}
             {classification?.validity === 'valid' && motion && (
               <SwingArtCard
@@ -310,6 +336,33 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 18,
     fontWeight: '700',
+  },
+
+  // Sign-in prompt
+  signInPrompt: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    padding: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 166, 35, 0.2)',
+  },
+  signInPromptTitle: {
+    color: '#F5A623',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  signInPromptText: {
+    color: '#999',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  signInPromptCta: {
+    color: '#F5A623',
+    fontSize: 15,
+    fontWeight: '600',
   },
 
 });

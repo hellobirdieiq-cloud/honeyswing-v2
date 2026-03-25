@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
 
 function focusScoreColor(score: number): string {
@@ -21,6 +22,14 @@ export default function TabsHomeScreen() {
 
   return (
     <View style={styles.container}>
+      <TouchableOpacity
+        style={styles.settingsButton}
+        onPress={() => router.push('/settings' as Href)}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="settings-outline" size={24} color="#999" />
+      </TouchableOpacity>
+
       <View style={styles.hero}>
         <Text style={styles.title}>HoneySwing</Text>
         <Text style={styles.subtitle}>Your pocket swing coach</Text>
@@ -50,6 +59,7 @@ export default function TabsHomeScreen() {
       <Text style={styles.hint}>
         {focus ? 'Record a swing to update your focus' : "Let's see that swing"}
       </Text>
+
     </View>
   );
 }
@@ -129,5 +139,11 @@ const styles = StyleSheet.create({
   hint: {
     color: '#666',
     fontSize: 14,
+  },
+  settingsButton: {
+    position: 'absolute',
+    top: 60,
+    right: 24,
+    padding: 8,
   },
 });

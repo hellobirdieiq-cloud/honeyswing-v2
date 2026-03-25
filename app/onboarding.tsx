@@ -2,14 +2,17 @@ import { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import { supabase, getUserId } from '../lib/supabase';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
@@ -17,19 +20,39 @@ const COACH_OPTIONS = ['Dave Donnellan', 'No coach'] as const;
 
 export default function OnboardingScreen() {
   const router = useRouter();
+  const [name, setName] = useState('');
   const [coach, setCoach] = useState<string>('No coach');
   const [isLeftHanded, setIsLeftHanded] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert('Name required', "What's your name?");
+      return;
+    }
+
     setSaving(true);
     try {
+      const userId = await getUserId();
       const coachName = coach === 'No coach' ? null : coach;
 
-      const { data, error } = await supabase.from('profiles').insert({
+      const row: Record<string, unknown> = {
+        display_name: trimmedName,
         coach_name: coachName,
         is_left_handed: isLeftHanded,
-      }).select('id').single();
+      };
+
+      // If authenticated, set profile id = auth uid so it's linked
+      if (userId) {
+        row.id = userId;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(row)
+        .select('id')
+        .single();
 
       if (error) throw error;
 
@@ -48,9 +71,26 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <Text style={styles.title}>Welcome to HoneySwing</Text>
       <Text style={styles.subtitle}>Let's set up your profile</Text>
+
+      {/* Name input */}
+      <Text style={styles.label}>What's your name?</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="First name"
+        placeholderTextColor="#666"
+        value={name}
+        onChangeText={setName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        autoComplete="given-name"
+        returnKeyType="next"
+      />
 
       {/* Coach picker */}
       <Text style={styles.label}>Who's your coach?</Text>
@@ -120,7 +160,7 @@ export default function OnboardingScreen() {
           <Text style={styles.ctaText}>Let's Go</Text>
         )}
       </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -150,6 +190,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 10,
+  },
+  input: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 28,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
   optionGroup: {
     marginBottom: 28,
