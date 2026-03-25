@@ -4,7 +4,6 @@ import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
-import type { Session } from '@supabase/supabase-js';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 

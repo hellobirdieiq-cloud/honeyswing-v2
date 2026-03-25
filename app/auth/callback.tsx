@@ -1,35 +1,16 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../../lib/supabase';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
 
   useEffect(() => {
     async function handleCallback() {
-      // Expo Router delivers the fragment as search params on this screen
-      const accessToken =
-        (params.access_token as string) ?? (params['#access_token'] as string);
-      const refreshToken = params.refresh_token as string;
-
-      if (accessToken && refreshToken) {
-        const { error } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-        if (error) {
-          console.error('[HoneySwing] auth callback setSession error:', error.message);
-          router.replace('/(tabs)' as Href);
-          return;
-        }
-      }
-
+      // Session is already set by _layout.tsx via Linking.getInitialURL()
       const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
       if (onboarded) {
         router.replace('/(tabs)' as Href);
