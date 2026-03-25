@@ -32,11 +32,15 @@ export default function SignInScreen() {
         email: trimmed,
         options: {
           emailRedirectTo: 'honeyswingv2://auth/callback',
+          shouldCreateUser: false,
         },
       });
 
       if (error) {
-        Alert.alert('Error', error.message);
+        Alert.alert(
+          'No account found',
+          'Ask a parent or guardian to create your account at honeyswing.com/signup.html',
+        );
       } else {
         setSent(true);
       }
@@ -81,6 +85,8 @@ export default function SignInScreen() {
       <Text style={styles.subtitle}>
         Enter your parent or guardian's email to create a free account and keep practicing.
       </Text>
+
+      <Text style={styles.guardianNote}>Only a parent or guardian can sign in</Text>
 
       <Text style={styles.label}>Parent's email</Text>
       <TextInput
@@ -140,6 +146,12 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: 22,
     marginBottom: 32,
+  },
+  guardianNote: {
+    color: '#999',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
   },
   label: {
     color: '#999',
