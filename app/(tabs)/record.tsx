@@ -5,7 +5,7 @@ import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { Camera, useCameraDevice, useCameraDevices, useFrameProcessor } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraDevices, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 import { Worklets } from 'react-native-worklets-core';
@@ -25,6 +25,7 @@ import {
 } from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import { persistSwing } from '../../lib/persistSwing';
+import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
 import { classifyCapture } from '../../lib/captureValidity';
 
 /** Isolated component — landmark state updates only re-render this subtree, not the parent. */
@@ -89,6 +90,7 @@ export default function RecordTab() {
   const videoUriRef = useRef<string | null | undefined>(undefined);
   const navigatedRef = useRef(false);
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
 
   function updateCapturePhase(nextPhase: CapturePhase) {
     capturePhaseRef.current = nextPhase;
@@ -236,7 +238,7 @@ export default function RecordTab() {
     updateCapturePhase('complete');
 
     const classification = classifyCapture(frames);
-    persistSwing(frames, analysis, classification).catch(() => {});
+    swingIdPromiseRef.current = persistSwing(frames, analysis, classification).catch(() => null);
 
     analysisReadyRef.current = true;
     safetyTimeoutRef.current = setTimeout(() => {
@@ -253,10 +255,16 @@ export default function RecordTab() {
     analysisReadyRef.current = false;
     videoUriRef.current = undefined;
     navigatedRef.current = false;
+    frameSkipCounter.value = 0;
 
     cameraRef.current?.startRecording({
+      videoCodec: 'h265',
       onRecordingFinished: (video) => {
         videoUriRef.current = video.path;
+        // Background upload — never blocks navigation
+        swingIdPromiseRef.current?.then((swingId) => {
+          if (swingId) uploadSwingVideo(swingId, video.path).catch(() => {});
+        });
         tryNavigate();
       },
       onRecordingError: (e) => console.error('REC ERR:', e),
@@ -351,8 +359,16 @@ export default function RecordTab() {
   const fallback = useCameraDevice('back');
   const device = ultraWide || fallback;
 
+  const format = useCameraFormat(device, [
+    { fps: 120, videoResolution: { width: 1280, height: 720 } },
+  ]);
+  console.log('[HoneySwing] Camera format:', format?.videoWidth, 'x', format?.videoHeight, '@', format?.maxFps, 'fps');
+  const targetFps = Math.min(format?.maxFps ?? 30, 120);
+  const skipInterval = targetFps >= 120 ? 4 : targetFps >= 60 ? 2 : 1;
+
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
+  const frameSkipCounter = useSharedValue(0);
   const frameCountRef = useRef(0);
 
   const pinchGesture = Gesture.Pinch()
@@ -372,6 +388,8 @@ export default function RecordTab() {
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
+      frameSkipCounter.value = frameSkipCounter.value + 1;
+      if (frameSkipCounter.value % skipInterval !== 0) return;
 
       const landmarks = honeyPoseDetect(frame);
 
@@ -379,7 +397,7 @@ export default function RecordTab() {
         appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height);
       }
     },
-    [appendPoseFrame]
+    [appendPoseFrame, skipInterval, frameSkipCounter]
   );
 
   const showCamera = hasPermission === true && device != null;
@@ -407,6 +425,8 @@ export default function RecordTab() {
             device={device}
             isActive={true}
             animatedProps={animatedCameraProps}
+            format={format}
+            fps={targetFps}
             photo={false}
             video={true}
             audio={false}

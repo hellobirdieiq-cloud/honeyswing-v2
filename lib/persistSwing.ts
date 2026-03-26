@@ -5,7 +5,7 @@ import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS = [
@@ -42,7 +42,7 @@ export async function persistSwing(
   frames: PoseFrame[],
   analysis: AnalysisResult,
   classification: CaptureClassification | null,
-): Promise<void> {
+): Promise<string | null> {
   const durationMs =
     frames.length > 1
       ? frames[frames.length - 1].timestampMs - frames[0].timestampMs
@@ -72,7 +72,7 @@ export async function persistSwing(
     app_version: APP_VERSION,
   };
 
-  const { error } = await supabase.from('swings').insert(row);
+  const { data, error } = await supabase.from('swings').insert(row).select('id').single();
 
   if (error) {
     console.error('[HoneySwing] persistSwing error:', error.message);
@@ -82,4 +82,6 @@ export async function persistSwing(
 
   // Always increment local count for anonymous limit tracking
   await incrementLocalSwingCount();
+
+  return data?.id ?? null;
 }
