@@ -17,6 +17,7 @@ import {
   clearCurrentSwingMotion,
   setCurrentSwingAnalysis,
   setCurrentSwingMotion,
+  setCurrentSwingVideoUri,
 } from '../../lib/swingMotionStore';
 import {
   analyzePoseSequence,
@@ -80,9 +81,14 @@ export default function RecordTab() {
 
   const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
+  const cameraRef = useRef<Camera>(null);
   const capturePhaseRef = useRef<CapturePhase>('idle');
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisReadyRef = useRef(false);
+  const videoUriRef = useRef<string | null | undefined>(undefined);
+  const navigatedRef = useRef(false);
+  const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function updateCapturePhase(nextPhase: CapturePhase) {
     capturePhaseRef.current = nextPhase;
@@ -98,6 +104,24 @@ export default function RecordTab() {
       clearTimeout(countdownRef.current);
       countdownRef.current = null;
     }
+    if (safetyTimeoutRef.current) {
+      clearTimeout(safetyTimeoutRef.current);
+      safetyTimeoutRef.current = null;
+    }
+  }
+
+  function tryNavigate() {
+    if (capturePhaseRef.current !== 'complete') return;
+    if (!analysisReadyRef.current) return;
+    if (videoUriRef.current === undefined) return;
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    if (safetyTimeoutRef.current) {
+      clearTimeout(safetyTimeoutRef.current);
+      safetyTimeoutRef.current = null;
+    }
+    setCurrentSwingVideoUri(videoUriRef.current);
+    router.push('/analysis/result');
   }
 
   const updateLandmarks = useCallback((lms: Landmark[]) => {
@@ -171,6 +195,7 @@ export default function RecordTab() {
 
   function finalizeCapture() {
     clearTimers();
+    cameraRef.current?.stopRecording();
 
     const frames = [...motionFramesRef.current];
 
@@ -212,13 +237,30 @@ export default function RecordTab() {
 
     const classification = classifyCapture(frames);
     persistSwing(frames, analysis, classification).catch(() => {});
-    router.push('/analysis/result');
+
+    analysisReadyRef.current = true;
+    safetyTimeoutRef.current = setTimeout(() => {
+      videoUriRef.current = null;
+      tryNavigate();
+    }, 3000);
+    tryNavigate();
   }
 
   function beginRecording() {
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
+    analysisReadyRef.current = false;
+    videoUriRef.current = undefined;
+    navigatedRef.current = false;
+
+    cameraRef.current?.startRecording({
+      onRecordingFinished: (video) => {
+        videoUriRef.current = video.path;
+        tryNavigate();
+      },
+      onRecordingError: (e) => console.error('REC ERR:', e),
+    });
 
     updateCapturePhase('capturing');
     goPlayer.play();
@@ -359,6 +401,7 @@ export default function RecordTab() {
       {showCamera ? (
         <>
           <ReanimatedCamera
+            ref={cameraRef}
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
             device={device}

@@ -11,6 +11,7 @@ export type LiveSwingMotionData = {
 
 let currentMotion: LiveSwingMotionData | null = null;
 let currentAnalysis: AnalysisResult | null = null;
+let currentVideoUri: string | null = null;
 
 export function setCurrentSwingMotion(data: LiveSwingMotionData): void {
   currentMotion = data;
@@ -23,6 +24,15 @@ export function getCurrentSwingMotion(): LiveSwingMotionData | null {
 export function clearCurrentSwingMotion(): void {
   currentMotion = null;
   currentAnalysis = null;
+  currentVideoUri = null;
+}
+
+export function setCurrentSwingVideoUri(uri: string | null): void {
+  currentVideoUri = uri;
+}
+
+export function getCurrentSwingVideoUri(): string | null {
+  return currentVideoUri;
 }
 
 export function setCurrentSwingAnalysis(result: AnalysisResult): void {

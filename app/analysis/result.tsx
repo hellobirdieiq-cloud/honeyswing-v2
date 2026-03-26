@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   getCurrentSwingMotion,
   getCurrentSwingAnalysis,
+  getCurrentSwingVideoUri,
   computeFocus,
   saveFocus,
 } from '../../lib/swingMotionStore';
@@ -65,8 +67,20 @@ export default function ResultScreen() {
   const { width: screenW } = useWindowDimensions();
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
+  const videoUri = getCurrentSwingVideoUri();
   const [isLeftHanded, setIsLeftHanded] = useState(false);
   const [limitHit, setLimitHit] = useState(false);
+  const [speed, setSpeed] = useState(0.25);
+
+  const player = useVideoPlayer(videoUri, (p) => {
+    p.loop = true;
+    p.playbackRate = 0.25;
+    p.play();
+  });
+
+  useEffect(() => {
+    if (player) player.playbackRate = speed;
+  }, [speed, player]);
 
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded);
@@ -178,7 +192,32 @@ export default function ResultScreen() {
               )}
             </View>
 
-            {/* 2. Visual Coach — ONE issue, skeleton + coaching cue */}
+            {/* 2. Video Replay */}
+            {videoUri && player && (
+              <View style={styles.videoSection}>
+                <VideoView
+                  player={player}
+                  style={styles.videoPlayer}
+                  nativeControls={false}
+                />
+                <View style={styles.speedRow}>
+                  {([0.25, 0.5, 1] as const).map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={[styles.speedButton, speed === s && styles.speedButtonActive]}
+                      onPress={() => setSpeed(s)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.speedButtonText, speed === s && styles.speedButtonTextActive]}>
+                        {s}x
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* 3. Visual Coach — ONE issue, skeleton + coaching cue */}
             {keyLandmarks.length > 0 && (
               <VisualCoachCard
                 landmarks={keyLandmarks}
@@ -190,7 +229,7 @@ export default function ResultScreen() {
               />
             )}
 
-            {/* 3. Tempo — simplified to rating only */}
+            {/* 4. Tempo — simplified to rating only */}
             {tempo && (
               <View style={styles.tempoChip}>
                 <Text style={styles.tempoChipLabel}>Tempo</Text>
@@ -200,7 +239,7 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* 4. Record Again CTA */}
+            {/* 5. Record Again CTA */}
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => router.back()}
@@ -274,6 +313,40 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 32,
     paddingHorizontal: 16,
+  },
+
+  // Video replay
+  videoSection: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  videoPlayer: {
+    width: '100%',
+    aspectRatio: 9 / 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  speedRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  speedButton: {
+    backgroundColor: '#1A1A1C',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  speedButtonActive: {
+    backgroundColor: '#F5A623',
+  },
+  speedButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  speedButtonTextActive: {
+    color: '#111',
   },
 
   // Score
