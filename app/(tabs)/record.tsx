@@ -362,7 +362,6 @@ export default function RecordTab() {
   const format = useCameraFormat(device, [
     { fps: 120, videoResolution: { width: 1280, height: 720 } },
   ]);
-  console.log('[HoneySwing] Camera format:', format?.videoWidth, 'x', format?.videoHeight, '@', format?.maxFps, 'fps');
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
   const skipInterval = targetFps >= 120 ? 4 : targetFps >= 60 ? 2 : 1;
 
