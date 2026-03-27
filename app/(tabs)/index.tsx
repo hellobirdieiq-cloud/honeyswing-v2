@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
+import { getGrip } from '../../lib/gripStore';
 
 function focusScoreColor(score: number): string {
   if (score >= 80) return '#00FF66';
@@ -13,10 +14,13 @@ function focusScoreColor(score: number): string {
 export default function TabsHomeScreen() {
   const router = useRouter();
   const [focus, setFocus] = useState<FocusData | null>(null);
+  const [gripUri, setGripUri] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       loadFocus().then(setFocus);
+      const grip = getGrip();
+      setGripUri(grip?.photoUri ?? null);
     }, []),
   );
 
@@ -54,6 +58,19 @@ export default function TabsHomeScreen() {
         activeOpacity={0.8}
       >
         <Text style={styles.ctaText}>Start Swinging</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.gripBtn}
+        onPress={() => router.push('/grip/capture' as Href)}
+        activeOpacity={0.8}
+      >
+        {gripUri ? (
+          <Image source={{ uri: gripUri }} style={styles.gripThumb} />
+        ) : null}
+        <Text style={styles.gripBtnText}>
+          {gripUri ? 'Update Grip Photo' : 'Capture Grip'}
+        </Text>
       </TouchableOpacity>
 
       <Text style={styles.hint}>
@@ -135,6 +152,28 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 20,
     fontWeight: '700',
+  },
+  gripBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F5A623',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 12,
+  },
+  gripBtnText: {
+    color: '#F5A623',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  gripThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: '#333',
   },
   hint: {
     color: '#666',
