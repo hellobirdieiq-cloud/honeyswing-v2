@@ -222,13 +222,18 @@ export default function GripCaptureScreen() {
 
         {/* Capture button — only in camera phase */}
         {phase === 'camera' && (
-          <TouchableOpacity
-            style={[styles.captureBtn, !cameraReady && styles.captureBtnDisabled]}
-            onPress={startCountdown}
-            disabled={!cameraReady}
-          >
-            <Text style={styles.captureBtnText}>Start Capture</Text>
-          </TouchableOpacity>
+          <>
+            <View style={styles.hintPill}>
+              <Text style={styles.hintText}>Show the top of your hands — knuckles facing camera</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.captureBtn, !cameraReady && styles.captureBtnDisabled]}
+              onPress={startCountdown}
+              disabled={!cameraReady}
+            >
+              <Text style={styles.captureBtnText}>Start Capture</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
     </View>
@@ -319,4 +324,12 @@ const styles = StyleSheet.create({
   btnSecondary: { backgroundColor: '#555' },
   btnDisabled: { opacity: 0.4 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  hintPill: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  hintText: { color: '#fff', fontSize: 13, fontWeight: '500' },
 });
