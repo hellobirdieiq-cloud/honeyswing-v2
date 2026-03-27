@@ -85,6 +85,7 @@ export default function RootLayout() {
       <Stack.Screen name="auth/callback" />
       <Stack.Screen name="analysis/result" />
       <Stack.Screen name="grip/capture" />
+      <Stack.Screen name="grip/result" />
     </Stack>
   );
 }

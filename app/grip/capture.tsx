@@ -8,7 +8,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Camera, useCameraDevice } from 'react-native-vision-camera';
 import { setGrip } from '../../lib/gripStore';
 
@@ -27,6 +27,7 @@ export default function GripCaptureScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Permission — mirrors record.tsx pattern
   useEffect(() => {
@@ -108,13 +109,15 @@ export default function GripCaptureScreen() {
   function handleRetake() {
     setPhotoUri(null);
     setError(null);
+    setSubmitting(false);
     setPhase('camera');
   }
 
   function handleUseThis() {
-    if (!photoUri) return;
+    if (!photoUri || submitting) return;
+    setSubmitting(true);
     setGrip(photoUri);
-    router.back();
+    router.push('/grip/result' as Href);
   }
 
   // --- Permission not yet resolved ---
@@ -158,7 +161,11 @@ export default function GripCaptureScreen() {
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={handleRetake}>
               <Text style={styles.btnText}>Retake</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.btn} onPress={handleUseThis}>
+            <TouchableOpacity
+              style={[styles.btn, submitting && styles.btnDisabled]}
+              onPress={handleUseThis}
+              disabled={submitting}
+            >
               <Text style={styles.btnText}>Use This</Text>
             </TouchableOpacity>
           </View>
@@ -310,5 +317,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5A623',
   },
   btnSecondary: { backgroundColor: '#555' },
+  btnDisabled: { opacity: 0.4 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });
