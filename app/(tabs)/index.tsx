@@ -66,7 +66,7 @@ export default function TabsHomeScreen() {
         activeOpacity={0.8}
       >
         {gripUri ? (
-          <Image source={{ uri: gripUri }} style={styles.gripThumb} />
+          <Image source={{ uri: gripUri }} style={styles.gripThumb} resizeMode="cover" />
         ) : null}
         <Text style={styles.gripBtnText}>
           {gripUri ? 'Update Grip Photo' : 'Capture Grip'}

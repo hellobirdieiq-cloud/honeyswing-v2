@@ -95,6 +95,7 @@ export default function GripCaptureScreen() {
 
       const uri = photo.path.startsWith('file://') ? photo.path : `file://${photo.path}`;
       console.log('[GripCapture] preview URI:', uri);
+      setError(null);
       setPhotoUri(uri);
       setPhase('preview');
     } catch (e: any) {
