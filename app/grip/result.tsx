@@ -56,7 +56,12 @@ export default function GripResultScreen() {
     }
 
     classifyGrip(grip.photoUri, landmarks)
-      .then((data) => setState({ status: 'success', data }))
+      .then((data) => {
+        if (data.analysis_failed) {
+          console.log('[grip/result] analysis_failed triggered, data:', JSON.stringify(data));
+        }
+        setState({ status: 'success', data });
+      })
       .catch((err) => {
         const errorType: GripError =
           err instanceof GripClassifyError ? err.type : 'server';

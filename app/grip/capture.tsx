@@ -52,7 +52,7 @@ export default function GripCaptureScreen() {
 
   const updateHandDebug = useCallback((results: HandResult[]) => {
     handResultsRef.current = results;
-    const ALPHA = 0.4;
+    const ALPHA = 0.25;
     const smoothed = results.map((hand) => {
       if (!hand.landmarks || hand.landmarks.length === 0) return hand;
       const smoothedLms = hand.landmarks.map((lm) => {

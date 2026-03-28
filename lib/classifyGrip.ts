@@ -91,6 +91,8 @@ export async function classifyGrip(
     throw new GripClassifyError('server');
   }
 
+  console.log('[classifyGrip] raw response:', JSON.stringify(body));
+
   if (!body.success || !body.classification) {
     throw new GripClassifyError('server');
   }
