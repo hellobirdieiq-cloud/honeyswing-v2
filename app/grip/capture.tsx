@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,31 @@ import {
   TouchableWithoutFeedback,
   Image,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
+import { Worklets } from 'react-native-worklets-core';
+import Svg, { Circle, Line } from 'react-native-svg';
 import { setGrip } from '../../lib/gripStore';
+import { detectHands, type HandResult } from '../../lib/handDetection';
+
+const HAND_CONNECTIONS: [number, number][] = [
+  [0, 1], [0, 5], [0, 9], [0, 13], [0, 17],
+  [1, 2], [2, 3], [3, 4],
+  [5, 6], [6, 7], [7, 8],
+  [9, 10], [10, 11], [11, 12],
+  [13, 14], [14, 15], [15, 16],
+  [17, 18], [18, 19], [19, 20],
+];
+
+const HAND_COLORS = ['#00FF88', '#FF8800'];
 
 type Phase = 'camera' | 'countdown' | 'preview';
 
 export default function GripCaptureScreen() {
   const router = useRouter();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const cameraRef = useRef<Camera>(null);
   const device = useCameraDevice('back');
   const countdownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,6 +44,57 @@ export default function GripCaptureScreen() {
   const [error, setError] = useState<string | null>(null);
   const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const handResultsRef = useRef<HandResult[]>([]);
+  const frozenHandsRef = useRef<HandResult[]>([]);
+  const [handDebug, setHandDebug] = useState<HandResult[]>([]);
+  const smoothedRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  const updateHandDebug = useCallback((results: HandResult[]) => {
+    handResultsRef.current = results;
+    const ALPHA = 0.4;
+    const smoothed = results.map((hand) => {
+      if (!hand.landmarks || hand.landmarks.length === 0) return hand;
+      const smoothedLms = hand.landmarks.map((lm) => {
+        const key = `${hand.handIndex}-${lm.id}`;
+        const prev = smoothedRef.current[key];
+        let sx: number, sy: number;
+        if (prev) {
+          sx = ALPHA * lm.x + (1 - ALPHA) * prev.x;
+          sy = ALPHA * lm.y + (1 - ALPHA) * prev.y;
+        } else {
+          sx = lm.x;
+          sy = lm.y;
+        }
+        smoothedRef.current[key] = { x: sx, y: sy };
+        return { ...lm, x: sx, y: sy };
+      });
+      return { ...hand, landmarks: smoothedLms };
+    });
+    setHandDebug(smoothed);
+  }, []);
+
+  const onHandResults = Worklets.createRunOnJS(
+    (raw: unknown) => {
+      if (!Array.isArray(raw) || raw.length === 0) {
+        updateHandDebug([]);
+        return;
+      }
+      if (raw.length === 1 && (raw[0] as any)?._diagnostic) {
+        return;
+      }
+      updateHandDebug(raw as HandResult[]);
+    }
+  );
+
+  const frameProcessor = useFrameProcessor(
+    (frame) => {
+      'worklet';
+      const results = detectHands(frame);
+      onHandResults(results);
+    },
+    [onHandResults]
+  );
 
   // Permission — mirrors record.tsx pattern
   useEffect(() => {
@@ -98,6 +165,7 @@ export default function GripCaptureScreen() {
       console.log('[GripCapture] preview URI:', uri);
       setError(null);
       setPhotoUri(uri);
+      frozenHandsRef.current = [...handResultsRef.current];
       setPhase('preview');
     } catch (e: any) {
       console.error('[GripCapture] takePhoto error:', e);
@@ -107,6 +175,8 @@ export default function GripCaptureScreen() {
   }
 
   function handleRetake() {
+    frozenHandsRef.current = [];
+    smoothedRef.current = {};
     setPhotoUri(null);
     setError(null);
     setSubmitting(false);
@@ -153,9 +223,52 @@ export default function GripCaptureScreen() {
 
   // --- Preview phase ---
   if (phase === 'preview' && photoUri) {
+    const frozenHands = frozenHandsRef.current;
     return (
       <View style={styles.container}>
         <Image source={{ uri: photoUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        {frozenHands.length > 0 && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={screenW} height={screenH}>
+              {frozenHands.map((hand, hi) => {
+                const color = HAND_COLORS[hi] ?? HAND_COLORS[0];
+                const lms = hand.landmarks;
+                if (!lms || lms.length === 0) return null;
+                return (
+                  <React.Fragment key={`frozen-hand-${hi}`}>
+                    {HAND_CONNECTIONS.map(([a, b]) => {
+                      const la = lms[a];
+                      const lb = lms[b];
+                      if (!la || !lb) return null;
+                      return (
+                        <Line
+                          key={`${hi}-${a}-${b}`}
+                          x1={la.x * screenW}
+                          y1={la.y * screenH}
+                          x2={lb.x * screenW}
+                          y2={lb.y * screenH}
+                          stroke={color}
+                          strokeWidth={2}
+                          opacity={0.6}
+                        />
+                      );
+                    })}
+                    {lms.map((lm, li) => (
+                      <Circle
+                        key={`${hi}-${li}`}
+                        cx={lm.x * screenW}
+                        cy={lm.y * screenH}
+                        r={5}
+                        fill={color}
+                        opacity={0.8}
+                      />
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+            </Svg>
+          </View>
+        )}
         <View style={styles.overlay}>
           <View style={styles.previewButtons}>
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={handleRetake}>
@@ -186,6 +299,7 @@ export default function GripCaptureScreen() {
         video={false}
         audio={false}
         onInitialized={() => setCameraReady(true)}
+        frameProcessor={frameProcessor}
       />
 
       <TouchableWithoutFeedback onPress={handleTapToFocus}>
@@ -236,6 +350,71 @@ export default function GripCaptureScreen() {
           </>
         )}
       </View>
+
+      {/* Hand skeleton overlay */}
+      {handDebug.length > 0 && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={screenW} height={screenH}>
+            {handDebug.map((hand, hi) => {
+              const color = HAND_COLORS[hi] ?? HAND_COLORS[0];
+              const lms = hand.landmarks;
+              if (!lms || lms.length === 0) return null;
+              return (
+                <React.Fragment key={`hand-${hi}`}>
+                  {HAND_CONNECTIONS.map(([a, b]) => {
+                    const la = lms[a];
+                    const lb = lms[b];
+                    if (!la || !lb) return null;
+                    return (
+                      <Line
+                        key={`${hi}-${a}-${b}`}
+                        x1={la.x * screenW}
+                        y1={la.y * screenH}
+                        x2={lb.x * screenW}
+                        y2={lb.y * screenH}
+                        stroke={color}
+                        strokeWidth={2}
+                        opacity={0.6}
+                      />
+                    );
+                  })}
+                  {lms.map((lm, li) => (
+                    <Circle
+                      key={`${hi}-${li}`}
+                      cx={lm.x * screenW}
+                      cy={lm.y * screenH}
+                      r={5}
+                      fill={color}
+                      opacity={0.8}
+                    />
+                  ))}
+                </React.Fragment>
+              );
+            })}
+          </Svg>
+        </View>
+      )}
+
+      {/* Hand detection debug panel — dev only */}
+      {__DEV__ && (
+        <View style={styles.handDebugPanel} pointerEvents="none">
+          <Text style={styles.handDebugText}>
+            Hands: {handDebug.length}
+            {handDebug.length > 0 && handDebug[0].debugInferenceMs != null
+              ? `  (${handDebug[0].debugInferenceMs}ms)`
+              : ''}
+          </Text>
+          {handDebug.map((hand) => {
+            const wrist = hand.landmarks?.[0];
+            return (
+              <Text key={hand.handIndex} style={styles.handDebugText}>
+                [{hand.handIndex}] {hand.label} ({(hand.score * 100).toFixed(0)}%)
+                {wrist ? `  wrist: ${wrist.x.toFixed(3)}, ${wrist.y.toFixed(3)}` : ''}
+              </Text>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -332,4 +511,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   hintText: { color: '#fff', fontSize: 13, fontWeight: '500' },
+  handDebugPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingBottom: 24,
+  },
+  handDebugText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: 'Courier',
+    lineHeight: 18,
+  },
 });

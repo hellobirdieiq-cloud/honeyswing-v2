@@ -50,6 +50,10 @@ export async function persistSwing(
 
   // Prefer auth user ID, fall back to anonymous profileId
   const authUserId = await getUserId();
+  if (!authUserId) {
+    console.log('[persistSwing] No user, skipping DB write')
+    return
+  }
   const profileId = authUserId ?? await AsyncStorage.getItem('honeyswing:profileId');
 
   const row: Record<string, unknown> = {
