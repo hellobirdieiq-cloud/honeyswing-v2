@@ -27,6 +27,7 @@ import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
+import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import SwingArtCard from '../../components/SwingArtCard';
 
@@ -69,6 +70,7 @@ export default function ResultScreen() {
   const storedAnalysis = getCurrentSwingAnalysis();
   const videoUri = getCurrentSwingVideoUri();
   const [isLeftHanded, setIsLeftHanded] = useState(false);
+  const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
 
@@ -84,6 +86,7 @@ export default function ResultScreen() {
 
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded);
+    getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
     // Check swing limit after this swing was persisted
     checkSwingLimit().then((status) => {
       if (!status.allowed) {
@@ -236,6 +239,14 @@ export default function ResultScreen() {
                 <Text style={[styles.tempoChipValue, { color: tempoColor }]}>
                   {tempoLabel}
                 </Text>
+              </View>
+            )}
+
+            {/* 4b. Coach attribution */}
+            {coachName && (
+              <View style={styles.coachChip}>
+                <Text style={styles.coachChipLabel}>Coach</Text>
+                <Text style={styles.coachChipValue}>{coachName}</Text>
               </View>
             )}
 
@@ -392,6 +403,28 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   tempoChipValue: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+
+  // Coach chip
+  coachChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 16,
+  },
+  coachChipLabel: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  coachChipValue: {
+    color: '#fff',
     fontSize: 17,
     fontWeight: '700',
   },

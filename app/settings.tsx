@@ -32,6 +32,7 @@ export default function SettingsScreen() {
                 'honeyswing:onboardingComplete',
                 'honeyswing:profileId',
                 'honeyswing:isLeftHanded',
+                'honeyswing:coachCode',
               ]);
               router.replace('/(tabs)' as Href);
             } catch (err: unknown) {

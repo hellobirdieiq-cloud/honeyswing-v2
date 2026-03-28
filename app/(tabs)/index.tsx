@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
 import { getGrip } from '../../lib/gripStore';
+import { getCoachCode, setCoachCode, resolveCoachName } from '../../lib/coachCode';
 
 function focusScoreColor(score: number): string {
   if (score >= 80) return '#00FF66';
@@ -15,12 +16,16 @@ export default function TabsHomeScreen() {
   const router = useRouter();
   const [focus, setFocus] = useState<FocusData | null>(null);
   const [gripUri, setGripUri] = useState<string | null>(null);
+  const [coachName, setCoachName] = useState<string | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [codeInput, setCodeInput] = useState('');
 
   useFocusEffect(
     useCallback(() => {
       loadFocus().then(setFocus);
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
     }, []),
   );
 
@@ -73,10 +78,56 @@ export default function TabsHomeScreen() {
         </Text>
       </TouchableOpacity>
 
+      <TouchableOpacity
+        style={styles.coachBtn}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="person-outline" size={22} color="#F5A623" />
+        <Text style={styles.coachBtnText}>
+          {coachName ?? 'Link a Coach'}
+        </Text>
+      </TouchableOpacity>
+
       <Text style={styles.hint}>
         {focus ? 'Record a swing to update your focus' : "Let's see that swing"}
       </Text>
 
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Enter Coach Code</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={codeInput}
+              onChangeText={setCodeInput}
+              placeholder="Coach code"
+              placeholderTextColor="#666"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => { setModalVisible(false); setCodeInput(''); }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirm}
+                onPress={async () => {
+                  await setCoachCode(codeInput);
+                  setCoachName(resolveCoachName(codeInput));
+                  setModalVisible(false);
+                  setCodeInput('');
+                }}
+              >
+                <Text style={styles.modalConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -174,6 +225,73 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 6,
     backgroundColor: '#333',
+  },
+  coachBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  coachBtnText: {
+    color: '#F5A623',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    padding: 24,
+    width: '80%',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  modalInput: {
+    backgroundColor: '#333',
+    color: '#fff',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  modalCancelText: {
+    color: '#999',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalConfirm: {
+    backgroundColor: '#F5A623',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  modalConfirmText: {
+    color: '#111',
+    fontSize: 16,
+    fontWeight: '700',
   },
   hint: {
     color: '#666',

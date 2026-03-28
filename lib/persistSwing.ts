@@ -4,8 +4,9 @@ import { incrementLocalSwingCount } from './swingLimit';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
+import { getCoachCode, resolveCoachName } from './coachCode';
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4';
 
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS = [
@@ -51,10 +52,13 @@ export async function persistSwing(
   // Prefer auth user ID, fall back to anonymous profileId
   const authUserId = await getUserId();
   if (!authUserId) {
-    console.log('[persistSwing] No user, skipping DB write')
-    return
+    console.log("[persistSwing] No user, skipping DB write");
+    return null;
   }
-  const profileId = authUserId ?? await AsyncStorage.getItem('honeyswing:profileId');
+  const profileId = authUserId;
+
+  const coachCode = await getCoachCode();
+  const coachName = resolveCoachName(coachCode);
 
   const row: Record<string, unknown> = {
     ...(profileId ? { user_id: profileId } : {}),
@@ -71,9 +75,15 @@ export async function persistSwing(
     tempo_ratio: analysis.tempo?.ratio ?? null,
     pose_success_rate: calcPoseSuccessRate(frames),
     phase_source: extractPhaseSource(analysis.phases),
-    failure_reason: null,
+    failure_reason: classification?.reason ?? null,
     capture_validity: classification?.validity ?? 'unknown',
     app_version: APP_VERSION,
+    coach_name: coachName ?? null,
+    swing_debug: {
+      app_version: APP_VERSION,
+      capture_validity: classification?.validity ?? 'unknown',
+      classification_reason: classification?.reason ?? null,
+    },
   };
 
   const { data, error } = await supabase.from('swings').insert(row).select('id').single();
