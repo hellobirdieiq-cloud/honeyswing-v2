@@ -7,17 +7,17 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const PRIMARY_MODEL = 'claude-sonnet-4-6';
 const FALLBACK_MODEL = 'claude-haiku-4-5-20251001';
-const PROMPT_VERSION = 'grip-v1';
+const PROMPT_VERSION = 'grip-v2';
 
 const SYSTEM_PROMPT = `You are a strict, repeatable golf grip classification system.
 
 You must return only a strict JSON object.
-You are doing coarse visual classification only.
+You are doing coarse visual classification, optionally supplemented by MediaPipe hand-tracking geometry.
 
 Core rules:
-- Use ONLY visible evidence in the image.
-- Do NOT guess precision that is not clearly visible.
-- Do NOT estimate angles numerically.
+- Use ONLY visible evidence in the image and any provided landmark geometry.
+- Do NOT guess precision that is not clearly visible or measured.
+- Do NOT estimate angles numerically unless landmark data is provided.
 - Do NOT make biomechanics claims.
 - Do NOT mention swing outcomes.
 - Do NOT provide coaching paragraphs.
@@ -47,6 +47,14 @@ Evidence hierarchy (strict):
 5. Hand position on grip (top / side / under)
 
 Never override a higher-priority signal with a lower-priority signal.
+
+Landmark geometry rule (when provided):
+- Hand-tracking data may be included with computed features: knuckle plane normal, wrist rotation, V-line direction, finger curl angles, and MCP z-depth spread.
+- Use landmark geometry to confirm or disambiguate visual signals — especially hand rotation and V-line direction.
+- Knuckle plane normal z > 0.15 with the lead hand suggests the back of the hand faces the camera (weaker grip); z < -0.15 suggests it faces away (stronger grip).
+- V-line direction in degrees: positive values point toward the trail side. For a right-handed golfer, V pointing 10-20 deg right = toward trail shoulder = neutral; > 25 deg = strong.
+- Finger curl PIP angles < 80 deg = very tight; 80-120 deg = moderate; > 120 deg = loose/extended.
+- If landmark data conflicts with clear visual evidence, trust the image. If the image is ambiguous, landmark data can increase confidence.
 
 Angle adaptation (internal only — do not mention in output):
 - From above: prioritize knuckle count and V direction
@@ -123,11 +131,149 @@ Critical rules:
 
 Return JSON only. No markdown. No extra text.`;
 
-function buildUserPrompt(handedness: 'left' | 'right'): string {
+function buildUserPrompt(handedness: 'left' | 'right', geometricHints?: string): string {
+  let base: string;
   if (handedness === 'left') {
-    return 'The golfer is left-handed. Lead hand = right hand. Trail hand = left hand.';
+    base = 'The golfer is left-handed. Lead hand = right hand. Trail hand = left hand.';
+  } else {
+    base = 'The golfer is right-handed. Lead hand = left hand. Trail hand = right hand.';
   }
-  return 'The golfer is right-handed. Lead hand = left hand. Trail hand = right hand.';
+  if (geometricHints) {
+    base += `\n\nMediaPipe hand-tracking detected the following geometric features (use as supporting evidence only — visual evidence from the image always takes priority):\n${geometricHints}`;
+  }
+  return base;
+}
+
+// ── Vector math helpers (normalized 0-1 coords from MediaPipe) ──
+
+interface Vec3 { x: number; y: number; z: number }
+
+function v3sub(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+function v3dot(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+function v3cross(a: Vec3, b: Vec3): Vec3 {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+function v3len(v: Vec3): number {
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+function v3norm(v: Vec3): Vec3 {
+  const l = v3len(v);
+  return l > 1e-9 ? { x: v.x / l, y: v.y / l, z: v.z / l } : { x: 0, y: 0, z: 0 };
+}
+/** Angle in degrees at vertex B formed by points A-B-C. */
+function angleDeg3(a: Vec3, b: Vec3, c: Vec3): number {
+  const ba = v3norm(v3sub(a, b));
+  const bc = v3norm(v3sub(c, b));
+  const d = Math.max(-1, Math.min(1, v3dot(ba, bc)));
+  return Math.acos(d) * (180 / Math.PI);
+}
+
+// ── Geometric feature extraction from MediaPipe landmarks ──
+
+interface LandmarkPt { id: number; x: number; y: number; z: number; name?: string }
+interface HandData { handIndex: number; label: string; score: number; landmarks: LandmarkPt[] }
+
+// MediaPipe 21-point hand model indices
+const LM = {
+  WRIST: 0,
+  THUMB_CMC: 1, THUMB_MCP: 2, THUMB_IP: 3, THUMB_TIP: 4,
+  INDEX_MCP: 5, INDEX_PIP: 6, INDEX_DIP: 7, INDEX_TIP: 8,
+  MIDDLE_MCP: 9, MIDDLE_PIP: 10, MIDDLE_DIP: 11, MIDDLE_TIP: 12,
+  RING_MCP: 13, RING_PIP: 14, RING_DIP: 15, RING_TIP: 16,
+  PINKY_MCP: 17, PINKY_PIP: 18, PINKY_DIP: 19, PINKY_TIP: 20,
+} as const;
+
+function computeGeometricFeatures(
+  hands: HandData[],
+  handedness: 'left' | 'right',
+): string | undefined {
+  if (!hands || hands.length === 0) return undefined;
+
+  const leadLabel = handedness === 'right' ? 'Left' : 'Right';
+  const lines: string[] = [];
+
+  for (const hand of hands) {
+    const lms = hand.landmarks;
+    if (!lms || lms.length < 21) continue;
+
+    const sorted = [...lms].sort((a, b) => a.id - b.id);
+    const pt = (idx: number): Vec3 => {
+      const p = sorted[idx];
+      return { x: p.x, y: p.y, z: p.z };
+    };
+
+    const isLead = hand.label === leadLabel;
+    const role = isLead ? 'LEAD' : 'TRAIL';
+    lines.push(`${role} HAND (${hand.label}, ${(hand.score * 100).toFixed(0)}% tracking confidence):`);
+
+    // 1. Knuckle plane normal — cross(INDEX_MCP→PINKY_MCP, INDEX_MCP→WRIST)
+    //    z > 0 → back of hand faces camera; z < 0 → palm faces camera
+    const idxMcp = pt(LM.INDEX_MCP);
+    const normal = v3norm(v3cross(
+      v3sub(pt(LM.PINKY_MCP), idxMcp),
+      v3sub(pt(LM.WRIST), idxMcp),
+    ));
+    if (isLead) {
+      const dir = normal.z > 0.15 ? 'back of hand faces camera (toward target)'
+        : normal.z < -0.15 ? 'back of hand faces away from camera (away from target)'
+        : 'back of hand roughly sideways';
+      lines.push(`  back-of-hand direction: ${dir} (normal z=${normal.z.toFixed(2)})`);
+    } else {
+      const dir = normal.z > 0.15 ? 'palm faces away from camera'
+        : normal.z < -0.15 ? 'palm faces toward camera'
+        : 'palm roughly sideways';
+      lines.push(`  palm direction: ${dir} (normal z=${normal.z.toFixed(2)})`);
+    }
+
+    // 2. Wrist rotation — angle of WRIST→MIDDLE_MCP from vertical
+    const wrist = pt(LM.WRIST);
+    const midMcp = pt(LM.MIDDLE_MCP);
+    const rotDeg = Math.atan2(midMcp.x - wrist.x, -(midMcp.y - wrist.y)) * (180 / Math.PI);
+    lines.push(`  wrist rotation: ${rotDeg.toFixed(1)} deg from vertical (positive=clockwise)`);
+
+    // 3. V-line direction — bisector of thumb and index vectors from THUMB_CMC
+    const thumbCmc = pt(LM.THUMB_CMC);
+    const thumbTip = pt(LM.THUMB_TIP);
+    const indexTip = pt(LM.INDEX_TIP);
+    const vThumbN = v3norm(v3sub(thumbTip, thumbCmc));
+    const vIndexN = v3norm(v3sub(indexTip, thumbCmc));
+    const bisector = { x: vThumbN.x + vIndexN.x, y: vThumbN.y + vIndexN.y };
+    const vAngle = Math.atan2(bisector.x, -bisector.y) * (180 / Math.PI);
+    const vOpenAngle = angleDeg3(thumbTip, thumbCmc, indexTip);
+    lines.push(`  V-line direction: ${vAngle.toFixed(1)} deg from vertical (positive=toward trail side)`);
+    lines.push(`  V opening angle: ${vOpenAngle.toFixed(0)} deg`);
+
+    // 4. Finger curl angles at PIP joints (straight ≈ 180°, curled ≈ 60-90°)
+    const fingers = [
+      { name: 'index', mcp: LM.INDEX_MCP, pip: LM.INDEX_PIP, dip: LM.INDEX_DIP },
+      { name: 'middle', mcp: LM.MIDDLE_MCP, pip: LM.MIDDLE_PIP, dip: LM.MIDDLE_DIP },
+      { name: 'ring', mcp: LM.RING_MCP, pip: LM.RING_PIP, dip: LM.RING_DIP },
+      { name: 'pinky', mcp: LM.PINKY_MCP, pip: LM.PINKY_PIP, dip: LM.PINKY_DIP },
+    ];
+    const curls = fingers.map((f) =>
+      `${f.name} ${angleDeg3(pt(f.mcp), pt(f.pip), pt(f.dip)).toFixed(0)}`
+    );
+    lines.push(`  finger curls (PIP angle): ${curls.join(', ')} deg`);
+
+    // 5. MCP z-depth spread (index vs pinky — indicates rotation in depth)
+    const zSpread = pt(LM.INDEX_MCP).z - pt(LM.PINKY_MCP).z;
+    lines.push(`  MCP z-depth spread (index minus pinky): ${zSpread.toFixed(3)}`);
+    lines.push('');
+  }
+
+  if (lines.length === 0) return undefined;
+
+  lines.push('Use these as supplementary quantitative signals alongside the image.');
+  lines.push('If landmark geometry conflicts with what you clearly see, trust the image.');
+  return lines.join('\n');
 }
 
 interface GripClassification {
@@ -178,6 +324,7 @@ async function callClaude(
   model: string,
   imageBase64: string,
   handedness: 'left' | 'right',
+  geometricHints?: string,
 ): Promise<{ text: string; model: string }> {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -203,7 +350,7 @@ async function callClaude(
             },
             {
               type: 'text',
-              text: buildUserPrompt(handedness),
+              text: buildUserPrompt(handedness, geometricHints),
             },
           ],
         },
@@ -267,7 +414,7 @@ Deno.serve(async (req) => {
 
   try {
     // 1. Parse and validate input
-    const { image_base64, handedness } = await req.json();
+    const { image_base64, handedness, landmarks } = await req.json();
     if (!image_base64 || typeof image_base64 !== 'string') {
       return new Response(
         JSON.stringify({ success: false, error: 'image_base64 is required' }),
@@ -316,16 +463,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 5. Call Claude Vision — primary model, fallback on failure
+    // 5. Compute geometric features from landmarks (if provided)
+    const geometricHints = Array.isArray(landmarks)
+      ? computeGeometricFeatures(landmarks as HandData[], handedness)
+      : undefined;
+
+    // 6. Call Claude Vision — primary model, fallback on failure
     let claudeResult: { text: string; model: string };
     try {
-      claudeResult = await callClaude(PRIMARY_MODEL, image_base64, handedness);
+      claudeResult = await callClaude(PRIMARY_MODEL, image_base64, handedness, geometricHints);
     } catch (primaryErr) {
       console.error('[classify-grip] Primary model failed:', primaryErr);
-      claudeResult = await callClaude(FALLBACK_MODEL, image_base64, handedness);
+      claudeResult = await callClaude(FALLBACK_MODEL, image_base64, handedness, geometricHints);
     }
 
-    // 6. Parse and validate response
+    // 7. Parse and validate response
     let classification = extractJson(claudeResult.text);
     if (!classification || !validateClassification(classification)) {
       // One repair attempt
@@ -347,7 +499,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 7. Log to database (auth only)
+    // 8. Log to database (auth only)
     if (userId) {
       try {
         const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -376,7 +528,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 8. Return classification
+    // 9. Return classification
     return new Response(
       JSON.stringify({ success: true, classification }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },

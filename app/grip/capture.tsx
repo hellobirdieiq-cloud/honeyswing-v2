@@ -187,7 +187,31 @@ export default function GripCaptureScreen() {
     if (!photoUri || submitting) return;
     setSubmitting(true);
     setGrip(photoUri);
-    router.push('/grip/result' as Href);
+
+    // Serialize frozen hand landmarks for the result screen (not stored in gripStore).
+    const frozen = frozenHandsRef.current;
+    const landmarksParam =
+      frozen.length > 0
+        ? JSON.stringify(
+            frozen.map((h) => ({
+              handIndex: h.handIndex,
+              label: h.label,
+              score: h.score,
+              landmarks: h.landmarks.map((lm) => ({
+                id: lm.id,
+                name: lm.name,
+                x: lm.x,
+                y: lm.y,
+                z: lm.z,
+              })),
+            })),
+          )
+        : undefined;
+
+    router.push({
+      pathname: '/grip/result' as Href,
+      params: landmarksParam ? { landmarks: landmarksParam } : {},
+    } as any);
   }
 
   // --- Permission not yet resolved ---

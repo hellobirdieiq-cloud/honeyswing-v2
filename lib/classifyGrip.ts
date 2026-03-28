@@ -25,7 +25,10 @@ export class GripClassifyError extends Error {
 
 const TIMEOUT_MS = 10_000;
 
-export async function classifyGrip(photoUri: string): Promise<GripClassification> {
+export async function classifyGrip(
+  photoUri: string,
+  landmarks?: unknown[],
+): Promise<GripClassification> {
   // 1. Resize to ~800px width, JPEG 80%
   const resized = await manipulateAsync(
     photoUri,
@@ -63,6 +66,7 @@ export async function classifyGrip(photoUri: string): Promise<GripClassification
       body: JSON.stringify({
         image_base64: imageBase64,
         handedness: isLeftHanded ? 'left' : 'right',
+        ...(landmarks && landmarks.length > 0 ? { landmarks } : {}),
       }),
       signal: controller.signal,
     });

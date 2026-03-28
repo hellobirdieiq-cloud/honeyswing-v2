@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { getGrip } from '../../lib/gripStore';
 import {
   classifyGrip,
@@ -36,6 +36,7 @@ const CONFIDENCE_COLORS: Record<string, string> = {
 
 export default function GripResultScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ landmarks?: string }>();
   const [state, setState] = useState<ResultState>({ status: 'loading' });
 
   useEffect(() => {
@@ -45,7 +46,16 @@ export default function GripResultScreen() {
       return;
     }
 
-    classifyGrip(grip.photoUri)
+    let landmarks: unknown[] | undefined;
+    if (params.landmarks) {
+      try {
+        landmarks = JSON.parse(params.landmarks);
+      } catch {
+        // landmarks unavailable — classify without them
+      }
+    }
+
+    classifyGrip(grip.photoUri, landmarks)
       .then((data) => setState({ status: 'success', data }))
       .catch((err) => {
         const errorType: GripError =
