@@ -6,7 +6,7 @@ import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
 
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS = [

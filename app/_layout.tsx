@@ -4,6 +4,7 @@ import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
@@ -41,9 +42,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function init() {
-      // Check for magic link that opened the app (cold start)
+      // Check for magic link or referral link that opened the app (cold start)
       const initialUrl = await Linking.getInitialURL();
       if (initialUrl) await handleAuthUrl(initialUrl);
+      if (initialUrl) await handleReferralUrl(initialUrl);
+      await commitPendingReferral();
 
       // Determine auth + onboarding state
       const { data: { session } } = await supabase.auth.getSession();
@@ -71,9 +74,21 @@ export default function RootLayout() {
           router.replace('/(tabs)' as Href);
         }
       }
+      await handleReferralUrl(url);
     });
 
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event) => {
+        if (event === 'SIGNED_IN') {
+          await commitPendingReferral();
+        }
+      }
+    );
+    return () => subscription.unsubscribe();
   }, []);
 
   return (
