@@ -1,12 +1,12 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from './supabase';
 import { incrementLocalSwingCount } from './swingLimit';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
+import { getIsLeftHanded } from './handedness';
 
-const APP_VERSION = '1.5';
+const APP_VERSION = '1.8';
 
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS = [
@@ -59,6 +59,7 @@ export async function persistSwing(
 
   const coachCode = await getCoachCode();
   const coachName = resolveCoachName(coachCode);
+  const isLeftHanded = await getIsLeftHanded();
 
   const row: Record<string, unknown> = {
     ...(profileId ? { user_id: profileId } : {}),
@@ -83,6 +84,7 @@ export async function persistSwing(
       app_version: APP_VERSION,
       capture_validity: classification?.validity ?? 'unknown',
       classification_reason: classification?.reason ?? null,
+      handedness: isLeftHanded ? 'left' : 'right',
     },
   };
 

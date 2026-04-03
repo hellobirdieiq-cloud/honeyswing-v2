@@ -76,10 +76,10 @@ export default function OnboardingScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Text style={styles.title}>Welcome to HoneySwing</Text>
-      <Text style={styles.subtitle}>Let's set up your profile</Text>
+      <Text style={styles.subtitle}>Let&apos;s set up your profile</Text>
 
       {/* Name input */}
-      <Text style={styles.label}>What's your name?</Text>
+      <Text style={styles.label}>What&apos;s your name?</Text>
       <TextInput
         style={styles.input}
         placeholder="First name"
@@ -93,7 +93,7 @@ export default function OnboardingScreen() {
       />
 
       {/* Coach picker */}
-      <Text style={styles.label}>Who's your coach?</Text>
+      <Text style={styles.label}>Who&apos;s your coach?</Text>
       <View style={styles.optionGroup}>
         {COACH_OPTIONS.map((option) => (
           <TouchableOpacity
@@ -157,7 +157,7 @@ export default function OnboardingScreen() {
         {saving ? (
           <ActivityIndicator color="#111" />
         ) : (
-          <Text style={styles.ctaText}>Let's Go</Text>
+          <Text style={styles.ctaText}>Let&apos;s Go</Text>
         )}
       </TouchableOpacity>
     </KeyboardAvoidingView>

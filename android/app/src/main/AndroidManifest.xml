@@ -26,6 +26,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="honeyswingv2"/>
+        <data android:scheme="exp+honeyswing-v2"/>
       </intent-filter>
     </activity>
   </application>

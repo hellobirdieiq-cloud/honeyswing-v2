@@ -1,5 +1,6 @@
 import { PoseSequence } from "../../pose/PoseTypes";
 import { calculateGolfAngles } from "./angles";
+import { toCanonicalSequence } from "./canonicalTransform";
 import { detectSwingPhases, SwingTrailPoint } from "./phaseDetection";
 import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
 import { scoreSwing } from "./scoring";
@@ -31,18 +32,23 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   return points;
 }
 
-export function analyzePoseSequence(sequence: PoseSequence): AnalysisResult {
-  if (!sequence.frames || sequence.frames.length === 0) {
+export function analyzePoseSequence(
+  sequence: PoseSequence,
+  isLeftHanded = false,
+): AnalysisResult {
+  const canonical = toCanonicalSequence(sequence, isLeftHanded);
+
+  if (!canonical.frames || canonical.frames.length === 0) {
     return {
       score: 0,
       honeyBoom: false,
     };
   }
 
-  const midFrame = sequence.frames[Math.floor(sequence.frames.length / 2)];
+  const midFrame = canonical.frames[Math.floor(canonical.frames.length / 2)];
   const angles = calculateGolfAngles(midFrame);
 
-  const trail = buildTrailPoints(sequence);
+  const trail = buildTrailPoints(canonical);
   const phases = detectSwingPhases(trail);
   const rawTempo = calculateTempo(phases);
 

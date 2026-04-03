@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,60 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { deleteAccount } from '../lib/supabase';
+import { getCoachCode, clearCoachCode, resolveCoachName } from '../lib/coachCode';
+import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
+import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [coachName, setCoachName] = useState<string | null>(null);
+  const [isLeftHanded, setIsLeftHandedState] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
+      getIsLeftHanded().then(setIsLeftHandedState);
+    }, []),
+  );
+
+  function handleRemoveCoach() {
+    Alert.alert(
+      'Remove Coach?',
+      'This will disconnect you from your coach.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            await clearCoachCode();
+            setCoachName(null);
+          },
+        },
+      ],
+    );
+  }
+
+  async function handleRestore() {
+    setRestoring(true);
+    try {
+      const info = await restorePurchases();
+      if (info?.entitlements.active[ENTITLEMENT_ID]) {
+        Alert.alert('Restored', 'Your subscription has been restored.');
+      } else {
+        Alert.alert('No Previous Purchases', 'No previous purchases found.');
+      }
+    } catch {
+      Alert.alert('Restore Failed', 'Something went wrong. Please try again.');
+    } finally {
+      setRestoring(false);
+    }
+  }
 
   function handleDelete() {
     Alert.alert(
@@ -61,6 +108,65 @@ export default function SettingsScreen() {
         <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
 
+      <View style={styles.coachSection}>
+        <Text style={styles.coachLabel}>Coach</Text>
+        <Text style={styles.coachStatus}>
+          {coachName ? `Connected to Coach ${coachName}` : 'No coach linked'}
+        </Text>
+        {coachName ? (
+          <TouchableOpacity
+            style={styles.removeCoachButton}
+            onPress={handleRemoveCoach}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.removeCoachText}>Remove Coach</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
+      <View style={styles.handednessSection}>
+        <Text style={styles.coachLabel}>Dominant hand</Text>
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            style={[styles.toggleOption, !isLeftHanded && styles.optionSelected]}
+            onPress={() => {
+              setIsLeftHandedState(false);
+              setIsLeftHanded(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.optionText, !isLeftHanded && styles.optionTextSelected]}>
+              Right-handed
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleOption, isLeftHanded && styles.optionSelected]}
+            onPress={() => {
+              setIsLeftHandedState(true);
+              setIsLeftHanded(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.optionText, isLeftHanded && styles.optionTextSelected]}>
+              Left-handed
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.restoreSection}>
+        <TouchableOpacity
+          style={styles.restoreButton}
+          onPress={handleRestore}
+          disabled={restoring}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.restoreText}>
+            {restoring ? 'Restoring...' : 'Restore Purchases'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.section}>
         <TouchableOpacity
           style={styles.deleteButton}
@@ -101,6 +207,79 @@ const styles = StyleSheet.create({
   backText: {
     color: '#999',
     fontSize: 15,
+    fontWeight: '500',
+  },
+  coachSection: {
+    marginTop: 32,
+  },
+  coachLabel: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  coachStatus: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  removeCoachButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  removeCoachText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  handednessSection: {
+    marginTop: 32,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  toggleOption: {
+    flex: 1,
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  optionSelected: {
+    borderColor: '#F5A623',
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#999',
+  },
+  optionTextSelected: {
+    color: '#fff',
+  },
+  restoreSection: {
+    marginTop: 32,
+  },
+  restoreButton: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  restoreText: {
+    color: '#999',
+    fontSize: 14,
     fontWeight: '500',
   },
   section: {

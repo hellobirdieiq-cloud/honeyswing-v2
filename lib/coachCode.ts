@@ -4,6 +4,7 @@ const KEY = 'honeyswing:coachCode';
 
 const CODE_TO_NAME: Record<string, string> = {
   'dave': 'Dave Donnellan',
+  'rafael': 'Rafael Test',
 };
 
 export async function getCoachCode(): Promise<string | null> {
@@ -20,5 +21,6 @@ export async function clearCoachCode(): Promise<void> {
 
 export function resolveCoachName(code: string | null): string | null {
   if (!code) return null;
-  return CODE_TO_NAME[code.toLowerCase().trim()] ?? null;
+  const key = code.toLowerCase().trim();
+  return CODE_TO_NAME[key] ?? key;
 }

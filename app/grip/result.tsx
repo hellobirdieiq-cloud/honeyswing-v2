@@ -102,7 +102,7 @@ export default function GripResultScreen() {
 
         {state.status === 'success' && state.data.analysis_failed && (
           <View style={styles.centerContent}>
-            <Text style={styles.errorTitle}>Couldn't classify your grip</Text>
+            <Text style={styles.errorTitle}>Couldn&apos;t classify your grip</Text>
             <Text style={styles.errorHint}>
               Try a clearer photo with both hands visible on the club.
             </Text>

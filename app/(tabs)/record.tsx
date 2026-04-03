@@ -2,12 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useCameraDevices, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
-
-const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 import { Worklets } from 'react-native-worklets-core';
 import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
 import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
@@ -27,6 +25,10 @@ import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay
 import { persistSwing } from '../../lib/persistSwing';
 import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
 import { classifyCapture } from '../../lib/captureValidity';
+import { getIsLeftHanded } from '../../lib/handedness';
+import { checkSwingLimit } from '../../lib/swingLimit';
+
+const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
 /** Isolated component — landmark state updates only re-render this subtree, not the parent. */
 const LiveSkeleton = React.memo(function LiveSkeleton({
@@ -55,7 +57,7 @@ const CAPTURE_WINDOW_MS = 4000;
 
 /** Quality gate: a frame is "good" if at least this many key joints have confidence above threshold */
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
-const KEY_JOINTS: Array<import('../../packages/pose/PoseTypes').JointName> = [
+const KEY_JOINTS: import('../../packages/pose/PoseTypes').JointName[] = [
   'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
   'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
 ];
@@ -200,7 +202,7 @@ export default function RecordTab() {
     return confidentJoints >= MIN_KEY_JOINTS_PER_FRAME;
   }
 
-  function finalizeCapture() {
+  async function finalizeCapture() {
     clearTimers();
     cameraRef.current?.stopRecording();
 
@@ -232,7 +234,8 @@ export default function RecordTab() {
       },
     };
 
-    const analysis = analyzePoseSequence(sequence);
+    const isLeftHanded = await getIsLeftHanded();
+    const analysis = analyzePoseSequence(sequence, isLeftHanded);
 
     setCurrentSwingMotion({
       frames,
@@ -334,6 +337,14 @@ export default function RecordTab() {
     clearCurrentSwingAnalysis();
 
     async function setupScreen() {
+      // Paywall gate — check before camera init to avoid permission prompt for gated users
+      const limitStatus = await checkSwingLimit();
+      if (!mounted) return;
+      if (!limitStatus.allowed) {
+        router.replace('/paywall' as Href);
+        return;
+      }
+
       await setAudioModeAsync({
         playsInSilentMode: true,
         shouldPlayInBackground: false,
@@ -464,8 +475,7 @@ export default function RecordTab() {
           activeOpacity={0.8}
         >
           <Text style={styles.tipText}>Step back so your full body is visible</Text>
-          <Text style={styles.tipText}>Face the camera</Text>
-          <Text style={styles.tipText}>Hold the phone steady</Text>
+          <Text style={styles.tipTextSecondary}>Face the camera</Text>
           <Text style={styles.tipDismiss}>Tap to dismiss</Text>
         </TouchableOpacity>
       )}
@@ -495,7 +505,7 @@ export default function RecordTab() {
         ) : isWeak ? (
           <View style={styles.weakCaptureContainer}>
             <Text style={styles.weakCaptureText}>
-              Couldn't see you clearly
+              Couldn&apos;t see you clearly
             </Text>
             <Text style={styles.weakCaptureHint}>
               Step back so your full body is in frame
@@ -512,17 +522,17 @@ export default function RecordTab() {
           </View>
         ) : isError ? (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Didn't catch that — give it another go</Text>
+            <Text style={styles.errorText}>Didn&apos;t catch that — give it another go</Text>
           </View>
         ) : (
           <View style={styles.recordButtonRow}>
             <TouchableOpacity
-              style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
+              style={[styles.countdownButton, !canRecord && styles.recordButtonDisabled]}
               onPress={startCountdownCapture}
               disabled={!canRecord}
               activeOpacity={0.7}
             >
-              <Text style={styles.recordButtonText}>3-2-1</Text>
+              <Text style={styles.countdownButtonText}>3-2-1</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
@@ -560,9 +570,9 @@ const styles = StyleSheet.create({
     top: 80,
     left: 24,
     right: 24,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 16,
-    paddingVertical: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 14,
+    paddingVertical: 12,
     paddingHorizontal: 20,
     alignItems: 'center',
   },
@@ -570,13 +580,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '500',
-    marginBottom: 6,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  tipTextSecondary: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 4,
     textAlign: 'center',
   },
   tipDismiss: {
-    color: '#999',
+    color: 'rgba(255,255,255,0.4)',
     fontSize: 12,
-    marginTop: 6,
+    marginTop: 4,
   },
   overlay: {
     position: 'absolute',
@@ -589,10 +606,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
   },
+  countdownButton: {
+    backgroundColor: 'rgba(245,166,35,0.15)',
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(245,166,35,0.3)',
+  },
+  countdownButtonText: {
+    color: '#F5A623',
+    fontSize: 17,
+    fontWeight: '600',
+  },
   recordButton: {
     backgroundColor: '#F5A623',
     paddingVertical: 16,
-    paddingHorizontal: 28,
+    paddingHorizontal: 36,
     borderRadius: 32,
   },
   recordButtonDisabled: {

@@ -124,16 +124,17 @@ const METRICS: Record<MetricKey, MetricDef> = {
   },
 };
 
-/** Remap metric keys so "Lead" and "Trail" labels match the player's dominant side. */
-function remapKey(key: MetricKey, isLeftHanded: boolean): MetricKey {
-  if (!isLeftHanded) return key;
-  switch (key) {
-    case 'leftElbowAngle': return 'rightElbowAngle';
-    case 'rightElbowAngle': return 'leftElbowAngle';
-    case 'leftKneeAngle': return 'rightKneeAngle';
-    case 'rightKneeAngle': return 'leftKneeAngle';
-    default: return key;
-  }
+/**
+ * Remap segment joint names for lefty skeleton highlight.
+ * The skeleton shows REAL pose (not canonical). For a lefty, the canonical
+ * "leftElbow" (lead arm) is their anatomical RIGHT elbow. Swap left↔right
+ * so the highlight lands on the correct physical joint.
+ */
+function remapSegmentJoint(name: string, isLeftHanded: boolean): string {
+  if (!isLeftHanded) return name;
+  if (name.startsWith('left')) return 'right' + name.slice(4);
+  if (name.startsWith('right')) return 'left' + name.slice(5);
+  return name;
 }
 
 interface Props {
@@ -162,14 +163,12 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const px = (lm: Landmark) => lm.x * width;
   const py = (lm: Landmark) => lm.y * height;
 
-  // Score each metric using existing scoring logic
-  // For lefties, remap so "Lead arm" reads from the right-side angle and vice versa
+  // Score each metric — canonical transform already normalized angles
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
     for (const labelKey of Object.keys(METRICS) as MetricKey[]) {
-      const angleKey = remapKey(labelKey, isLeftHanded);
       const def = METRICS[labelKey];
-      const value = angles[angleKey];
+      const value = angles[labelKey];
       scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
     }
   }
@@ -180,11 +179,13 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
     ? withValues.reduce((min, s) => (s.score < min.score ? s : min), withValues[0])
     : null;
 
-  // Build set of highlighted segments
+  // Build set of highlighted segments — remap joint names for lefty display
   const highlightedSegments = new Set<string>();
   if (worst) {
-    for (const seg of METRICS[worst.key].segments) {
-      highlightedSegments.add(`${seg[0]}-${seg[1]}`);
+    for (const [a, b] of METRICS[worst.key].segments) {
+      const ra = remapSegmentJoint(a, isLeftHanded);
+      const rb = remapSegmentJoint(b, isLeftHanded);
+      highlightedSegments.add(`${ra}-${rb}`);
     }
   }
 
@@ -198,7 +199,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
 
   return (
     <View style={[styles.card, isLowConfidence && styles.lowConf]}>
-      <Text style={styles.cardTitle}>Here's what to work on</Text>
+      <Text style={styles.cardTitle}>Here&apos;s what to work on</Text>
 
       <View style={[styles.skeletonContainer, { width, height }]}>
         <Svg width={width} height={height}>

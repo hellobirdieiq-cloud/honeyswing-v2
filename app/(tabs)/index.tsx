@@ -19,6 +19,7 @@ export default function TabsHomeScreen() {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [codeInput, setCodeInput] = useState('');
+  const [codeError, setCodeError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,13 +47,8 @@ export default function TabsHomeScreen() {
 
       {focus && (
         <View style={styles.focusCard}>
-          <Text style={styles.focusTitle}>Today's Focus</Text>
-          <View style={styles.focusRow}>
-            <View style={[styles.focusDot, { backgroundColor: focusScoreColor(focus.score) }]} />
-            <Text style={[styles.focusLabel, { color: focusScoreColor(focus.score) }]}>
-              {focus.label}
-            </Text>
-          </View>
+          <Text style={styles.focusTitle}>Today&apos;s Focus</Text>
+          <Text style={styles.focusLabel}>{focus.label}</Text>
           <Text style={styles.focusCue}>{focus.cue}</Text>
         </View>
       )}
@@ -78,20 +74,21 @@ export default function TabsHomeScreen() {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.coachBtn}
-        onPress={() => setModalVisible(true)}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="person-outline" size={22} color="#F5A623" />
-        <Text style={styles.coachBtnText}>
-          {coachName ?? 'Link a Coach'}
-        </Text>
-      </TouchableOpacity>
-
-      <Text style={styles.hint}>
-        {focus ? 'Record a swing to update your focus' : "Let's see that swing"}
-      </Text>
+      {coachName ? (
+        <View style={styles.coachStatus}>
+          <Ionicons name="checkmark-circle-outline" size={14} color="#999" />
+          <Text style={styles.coachStatusText}>Connected to Coach {coachName}</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.coachBtn}
+          onPress={() => setModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="person-outline" size={18} color="#F5A623" />
+          <Text style={styles.coachBtnText}>Link a Coach</Text>
+        </TouchableOpacity>
+      )}
 
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -100,26 +97,38 @@ export default function TabsHomeScreen() {
             <TextInput
               style={styles.modalInput}
               value={codeInput}
-              onChangeText={setCodeInput}
+              onChangeText={(t) => { setCodeInput(t); setCodeError(false); }}
               placeholder="Coach code"
               placeholderTextColor="#666"
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {codeError && (
+              <View style={styles.codeErrorContainer}>
+                <Text style={styles.codeErrorText}>We couldn&apos;t find that coach</Text>
+                <Text style={styles.codeErrorHint}>Check the code and try again</Text>
+              </View>
+            )}
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={styles.modalCancel}
-                onPress={() => { setModalVisible(false); setCodeInput(''); }}
+                onPress={() => { setModalVisible(false); setCodeInput(''); setCodeError(false); }}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalConfirm}
                 onPress={async () => {
+                  const resolved = resolveCoachName(codeInput);
+                  if (!resolved) {
+                    setCodeError(true);
+                    return;
+                  }
                   await setCoachCode(codeInput);
-                  setCoachName(resolveCoachName(codeInput));
+                  setCoachName(resolved);
                   setModalVisible(false);
                   setCodeInput('');
+                  setCodeError(false);
                 }}
               >
                 <Text style={styles.modalConfirmText}>Confirm</Text>
@@ -136,13 +145,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     backgroundColor: '#111',
     padding: 24,
+    paddingTop: 80,
   },
   hero: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 36,
   },
   title: {
     color: '#F5A623',
@@ -164,11 +174,11 @@ const styles = StyleSheet.create({
   },
   focusTitle: {
     color: '#F5A623',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   focusRow: {
     flexDirection: 'row',
@@ -182,22 +192,23 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   focusLabel: {
+    color: '#FFFFFF',
     fontSize: 17,
     fontWeight: '700',
+    marginBottom: 4,
   },
   focusCue: {
-    color: '#ccc',
+    color: '#999999',
     fontSize: 14,
     lineHeight: 20,
-    marginTop: 4,
-    paddingLeft: 20,
   },
   cta: {
     backgroundColor: '#F5A623',
     paddingVertical: 18,
     paddingHorizontal: 48,
     borderRadius: 16,
-    marginBottom: 20,
+    marginTop: 24,
+    marginBottom: 16,
   },
   ctaText: {
     color: '#111',
@@ -208,16 +219,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#F5A623',
+    borderColor: 'rgba(245, 166, 35, 0.2)',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 12,
     gap: 12,
   },
   gripBtnText: {
     color: '#F5A623',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   gripThumb: {
@@ -230,16 +241,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: 'rgba(245, 166, 35, 0.2)',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   coachBtnText: {
     color: '#F5A623',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  coachStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  coachStatusText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
@@ -267,6 +289,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     marginBottom: 20,
+  },
+  codeErrorContainer: {
+    marginTop: -12,
+    marginBottom: 16,
+  },
+  codeErrorText: {
+    color: '#CC6666',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  codeErrorHint: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 2,
   },
   modalButtons: {
     flexDirection: 'row',

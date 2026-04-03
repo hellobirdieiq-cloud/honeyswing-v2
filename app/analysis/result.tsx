@@ -118,8 +118,8 @@ export default function ResultScreen() {
 
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
     if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
-    return analyzePoseSequence(sequence);
-  }, [sequence, classification, storedAnalysis]);
+    return analyzePoseSequence(sequence, isLeftHanded);
+  }, [sequence, classification, storedAnalysis, isLeftHanded]);
 
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
   const angles = analysis?.angles as GolfAngles | undefined;
@@ -130,9 +130,9 @@ export default function ResultScreen() {
   // Persist the weakest metric as "Today's Focus" for the home screen
   useEffect(() => {
     if (!angles) return;
-    const focus = computeFocus(angles, isLeftHanded);
+    const focus = computeFocus(angles);
     if (focus) saveFocus(focus);
-  }, [angles, isLeftHanded]);
+  }, [angles]);
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
@@ -153,6 +153,7 @@ export default function ResultScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* 1. Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -170,7 +171,7 @@ export default function ResultScreen() {
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : classification?.validity === 'invalid' ? (
           <View style={styles.invalidContainer}>
-            <Text style={styles.invalidTitle}>Couldn't clearly capture your swing</Text>
+            <Text style={styles.invalidTitle}>Couldn&apos;t clearly capture your swing</Text>
             <Text style={styles.invalidHint}>
               Make sure your full body is in frame and try again
             </Text>
@@ -184,18 +185,7 @@ export default function ResultScreen() {
           </View>
         ) : (
           <>
-            {/* 1. Score — dominant, with breathing room */}
-            <View style={styles.scoreCard}>
-              {isLowConfidence && (
-                <Text style={styles.lowConfBadge}>Quick look — try a longer swing next time</Text>
-              )}
-              <Text style={styles.score}>{analysis?.score ?? 0}</Text>
-              {analysis?.honeyBoom && (
-                <Text style={styles.honeyBoom}>Honey Boom!</Text>
-              )}
-            </View>
-
-            {/* 2. Video Replay */}
+            {/* 2. Video */}
             {videoUri && player && (
               <View style={styles.videoSection}>
                 <VideoView
@@ -220,7 +210,21 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* 3. Visual Coach — ONE issue, skeleton + coaching cue */}
+            {/* 3. Score */}
+            <View style={styles.scoreCard}>
+              {isLowConfidence && (
+                <Text style={styles.lowConfBadge}>Quick look — try a longer swing next time</Text>
+              )}
+              <Text style={styles.score}>{analysis?.score ?? 0}</Text>
+              {analysis?.honeyBoom && (
+                <Text style={styles.honeyBoom}>Honey Boom!</Text>
+              )}
+              {tempoLabel && (
+                <Text style={styles.tempoSubLabel}>{tempoLabel}</Text>
+              )}
+            </View>
+
+            {/* 4. Coaching */}
             {keyLandmarks.length > 0 && (
               <VisualCoachCard
                 landmarks={keyLandmarks}
@@ -232,17 +236,7 @@ export default function ResultScreen() {
               />
             )}
 
-            {/* 4. Tempo — simplified to rating only */}
-            {tempo && (
-              <View style={styles.tempoChip}>
-                <Text style={styles.tempoChipLabel}>Tempo</Text>
-                <Text style={[styles.tempoChipValue, { color: tempoColor }]}>
-                  {tempoLabel}
-                </Text>
-              </View>
-            )}
-
-            {/* 4b. Coach attribution */}
+            {/* 5. Coach */}
             {coachName && (
               <View style={styles.coachChip}>
                 <Text style={styles.coachChipLabel}>Coach</Text>
@@ -250,7 +244,7 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* 5. Record Again CTA */}
+            {/* 6. CTA */}
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={() => router.back()}
@@ -259,7 +253,7 @@ export default function ResultScreen() {
               <Text style={styles.primaryButtonText}>Record Again</Text>
             </TouchableOpacity>
 
-            {/* 4b. Swing limit — prompt sign-in */}
+            {/* 7. Sign-in */}
             {limitHit && (
               <TouchableOpacity
                 style={styles.signInPrompt}
@@ -274,13 +268,15 @@ export default function ResultScreen() {
               </TouchableOpacity>
             )}
 
-            {/* 5. Swing Art — valid captures only */}
+            {/* 8. Swing Art */}
             {classification?.validity === 'valid' && motion && (
-              <SwingArtCard
-                frames={motion.frames}
-                phases={(analysis?.phases ?? []) as DetectedPhase[]}
-                width={screenW - 48}
-              />
+              <View style={{ marginTop: 8 }}>
+                <SwingArtCard
+                  frames={motion.frames}
+                  phases={(analysis?.phases ?? []) as DetectedPhase[]}
+                  width={screenW - 48}
+                />
+              </View>
             )}
           </>
         )}
@@ -299,8 +295,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   backButton: { padding: 8 },
-  backButtonText: { color: '#F5A623', fontSize: 16, fontWeight: '600' },
-  headerTitle: { color: '#F5A623', fontSize: 18, fontWeight: '700' },
+  backButtonText: { color: '#CCCCCC', fontSize: 16, fontWeight: '600' },
+  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   headerSpacer: { width: 60 },
   container: { flexGrow: 1, padding: 24, paddingTop: 0 },
   emptyText: { color: '#fff', fontSize: 16, textAlign: 'center', marginTop: 40 },
@@ -328,7 +324,7 @@ const styles = StyleSheet.create({
 
   // Video replay
   videoSection: {
-    marginBottom: 16,
+    marginBottom: 20,
     alignItems: 'center',
   },
   videoPlayer: {
@@ -363,11 +359,11 @@ const styles = StyleSheet.create({
   // Score
   scoreCard: {
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
     paddingVertical: 28,
   },
   lowConfBadge: {
-    color: '#F5A623',
+    color: '#AAAAAA',
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -384,6 +380,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     marginTop: 4,
+  },
+  tempoSubLabel: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 6,
   },
 
   // Tempo chip
@@ -425,8 +427,8 @@ const styles = StyleSheet.create({
   },
   coachChipValue: {
     color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   // CTA
@@ -435,7 +437,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 20,
     marginBottom: 12,
   },
   primaryButtonText: {
@@ -451,10 +453,10 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(245, 166, 35, 0.2)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   signInPromptTitle: {
-    color: '#F5A623',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,

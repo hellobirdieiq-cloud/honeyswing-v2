@@ -83,12 +83,12 @@ export default function SignInScreen() {
     >
       <Text style={styles.title}>Save your swings</Text>
       <Text style={styles.subtitle}>
-        Enter your parent or guardian's email to create a free account and keep practicing.
+        Enter your parent or guardian&apos;s email to create a free account and keep practicing.
       </Text>
 
       <Text style={styles.guardianNote}>Only a parent or guardian can sign in</Text>
 
-      <Text style={styles.label}>Parent's email</Text>
+      <Text style={styles.label}>Parent&apos;s email</Text>
       <TextInput
         style={styles.input}
         placeholder="you@example.com"

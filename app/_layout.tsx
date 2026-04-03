@@ -5,6 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
+import { configurePurchases, syncAuthState } from '../lib/purchases';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
@@ -42,10 +43,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     async function init() {
+      configurePurchases();
+
       // Check for magic link or referral link that opened the app (cold start)
       const initialUrl = await Linking.getInitialURL();
       if (initialUrl) await handleAuthUrl(initialUrl);
-      if (initialUrl) await handleReferralUrl(initialUrl);
+      if (initialUrl) {
+        await handleReferralUrl(initialUrl);
+        router.replace('/(tabs)' as Href);
+      }
       await commitPendingReferral();
 
       // Determine auth + onboarding state
@@ -75,6 +81,7 @@ export default function RootLayout() {
         }
       }
       await handleReferralUrl(url);
+      router.replace('/(tabs)' as Href);
     });
 
     return () => subscription.remove();
@@ -85,6 +92,11 @@ export default function RootLayout() {
       async (event) => {
         if (event === 'SIGNED_IN') {
           await commitPendingReferral();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) await syncAuthState(user.id);
+          router.replace('/(tabs)' as Href);
+        } else if (event === 'SIGNED_OUT') {
+          await syncAuthState(null);
         }
       }
     );
@@ -97,6 +109,7 @@ export default function RootLayout() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="signin" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="paywall" />
       <Stack.Screen name="auth/callback" />
       <Stack.Screen name="analysis/result" />
       <Stack.Screen name="grip/capture" />

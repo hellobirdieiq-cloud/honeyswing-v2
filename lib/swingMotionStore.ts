@@ -106,23 +106,11 @@ const FOCUS_METRICS: Record<MetricKey, { ideal: number; tolerance: number; label
   },
 };
 
-function remapKey(key: MetricKey, isLeftHanded: boolean): MetricKey {
-  if (!isLeftHanded) return key;
-  switch (key) {
-    case 'leftElbowAngle': return 'rightElbowAngle';
-    case 'rightElbowAngle': return 'leftElbowAngle';
-    case 'leftKneeAngle': return 'rightKneeAngle';
-    case 'rightKneeAngle': return 'leftKneeAngle';
-    default: return key;
-  }
-}
-
-export function computeFocus(angles: GolfAngles, isLeftHanded = false): FocusData | null {
+export function computeFocus(angles: GolfAngles): FocusData | null {
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   for (const labelKey of Object.keys(FOCUS_METRICS) as MetricKey[]) {
-    const angleKey = remapKey(labelKey, isLeftHanded);
     const def = FOCUS_METRICS[labelKey];
-    const value = angles[angleKey];
+    const value = angles[labelKey];
     scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
   }
 
