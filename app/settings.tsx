@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { deleteAccount } from '../lib/supabase';
+import { supabase, deleteAccount } from '../lib/supabase';
 import { getCoachCode, clearCoachCode, resolveCoachName } from '../lib/coachCode';
 import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
@@ -20,11 +20,14 @@ export default function SettingsScreen() {
   const [restoring, setRestoring] = useState(false);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
       getIsLeftHanded().then(setIsLeftHandedState);
+      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
+      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
     }, []),
   );
 
@@ -108,6 +111,25 @@ export default function SettingsScreen() {
         <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
 
+      {userEmail ? (
+        <View style={styles.accountSection}>
+          <Text style={styles.coachLabel}>Account</Text>
+          <Text style={styles.coachStatus}>{userEmail}</Text>
+        </View>
+      ) : (
+        <View style={styles.accountSection}>
+          <Text style={styles.coachLabel}>Account</Text>
+          <Text style={styles.coachStatus}>Not signed in</Text>
+          <TouchableOpacity
+            style={styles.signInButton}
+            onPress={() => router.push('/signin' as Href)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signInText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.coachSection}>
         <Text style={styles.coachLabel}>Coach</Text>
         <Text style={styles.coachStatus}>
@@ -189,6 +211,22 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  accountSection: {
+    marginTop: 0,
+  },
+  signInButton: {
+    marginTop: 12,
+    backgroundColor: '#F5A623',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignSelf: 'flex-start',
+  },
+  signInText: {
+    color: '#111',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   container: {
     flex: 1,
     backgroundColor: '#111',
