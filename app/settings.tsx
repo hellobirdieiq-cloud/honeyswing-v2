@@ -27,7 +27,6 @@ export default function SettingsScreen() {
       getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
       getIsLeftHanded().then(setIsLeftHandedState);
       supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
-      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
     }, []),
   );
 
@@ -83,7 +82,8 @@ export default function SettingsScreen() {
                 'honeyswing:profileId',
                 'honeyswing:isLeftHanded',
                 'honeyswing:coachCode',
-              'honeyswing:pendingReferralCode',
+                'honeyswing:pendingReferralCode',
+                'honeyswing:subscriptionStatus',
               ]);
               router.replace('/(tabs)' as Href);
             } catch (err: unknown) {
@@ -129,6 +129,15 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <TouchableOpacity
+        style={styles.subscriptionButton}
+        onPress={() => router.push('/paywall' as Href)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.subscriptionText}>Subscription</Text>
+        <Text style={styles.subscriptionHint}>Go Pro — unlimited swing analysis</Text>
+      </TouchableOpacity>
 
       <View style={styles.coachSection}>
         <Text style={styles.coachLabel}>Coach</Text>
@@ -226,6 +235,25 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 15,
     fontWeight: '700',
+  },
+  subscriptionButton: {
+    marginTop: 32,
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderWidth: 2,
+    borderColor: '#F5A623',
+  },
+  subscriptionText: {
+    color: '#F5A623',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  subscriptionHint: {
+    color: '#999',
+    fontSize: 13,
+    marginTop: 4,
   },
   container: {
     flex: 1,

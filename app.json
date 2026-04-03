@@ -41,7 +41,7 @@
       },
       "supportsTablet": false,
       "bundleIdentifier": "com.honeyswing.honeyswing-v2",
-      "buildNumber": "27"
+      "buildNumber": "29"
     },
     "android": {
       "permissions": [

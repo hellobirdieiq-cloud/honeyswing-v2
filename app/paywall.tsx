@@ -8,6 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
+import { Linking } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { getOfferings, restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
 
@@ -152,6 +153,16 @@ export default function PaywallScreen() {
         Payment will be charged to your Apple ID account at confirmation of purchase. Subscription
         automatically renews unless cancelled at least 24 hours before the end of the current period.
       </Text>
+
+      <View style={styles.legalLinks}>
+        <TouchableOpacity onPress={() => Linking.openURL('https://honeyswing.com/terms')}>
+          <Text style={styles.legalLinkText}>Terms of Use</Text>
+        </TouchableOpacity>
+        <Text style={styles.legalSeparator}>|</Text>
+        <TouchableOpacity onPress={() => Linking.openURL('https://honeyswing.com/privacy')}>
+          <Text style={styles.legalLinkText}>Privacy Policy</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -280,7 +291,22 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
     marginTop: 'auto',
-    marginBottom: 20,
+    marginBottom: 8,
     paddingHorizontal: 12,
+  },
+  legalLinks: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  legalLinkText: {
+    color: '#999',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+  },
+  legalSeparator: {
+    color: '#666',
+    fontSize: 12,
   },
 });

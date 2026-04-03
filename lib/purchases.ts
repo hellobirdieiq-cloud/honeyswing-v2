@@ -3,11 +3,13 @@ import Purchases, {
   type PurchasesOfferings,
   LOG_LEVEL,
 } from 'react-native-purchases';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const REVENUECAT_API_KEY = 'appl_UTzTUForArVybmyrdCmPOnGErQo';
 export const ENTITLEMENT_ID = 'pro';
 export const OFFERING_ID = 'default';
+const CACHE_KEY = 'honeyswing:subscriptionStatus';
 
 // ── SDK Init ─────────────────────────────────────────────────────────────────
 
@@ -36,17 +38,37 @@ export async function syncAuthState(userId: string | null): Promise<void> {
   }
 }
 
+// ── Entitlement Cache ────────────────────────────────────────────────────────
+
+async function cacheStatus(isSubscribed: boolean): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(isSubscribed));
+  } catch {
+    // Cache write failure is non-critical
+  }
+}
+
+async function getCachedStatus(): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    if (raw === null) return false;
+    return JSON.parse(raw) === true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Entitlement Check ────────────────────────────────────────────────────────
 
 export async function getSubscriptionStatus(): Promise<boolean> {
   try {
     const info: CustomerInfo = await Purchases.getCustomerInfo();
-    return info.entitlements.active[ENTITLEMENT_ID] !== undefined;
+    const isSubscribed = info.entitlements.active[ENTITLEMENT_ID] !== undefined;
+    await cacheStatus(isSubscribed);
+    return isSubscribed;
   } catch (e) {
-    console.error('[HoneySwing] RevenueCat getCustomerInfo error:', e);
-    // Default-allow: a paying user with bad signal must never see the paywall.
-    // Existing tier logic in swingLimit.ts is the safety net for non-subscribers.
-    return true;
+    console.error('[HoneySwing] RevenueCat getCustomerInfo error, using cached status:', e);
+    return getCachedStatus();
   }
 }
 
