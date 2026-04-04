@@ -10,31 +10,46 @@ export interface GolfAngles {
   shoulderTilt: number | null;
 }
 
-function angleBetween(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-  c: { x: number; y: number }
-): number {
-  const ba = { x: a.x - b.x, y: a.y - b.y };
-  const bc = { x: c.x - b.x, y: c.y - b.y };
-  const dot = ba.x * bc.x + ba.y * bc.y;
-  const magBA = Math.sqrt(ba.x * ba.x + ba.y * ba.y);
-  const magBC = Math.sqrt(bc.x * bc.x + bc.y * bc.y);
+type Point = { x: number; y: number; z?: number };
+
+/** Z is considered reliable when the range across joints exceeds this threshold */
+const Z_RANGE_THRESHOLD = 0.02;
+
+function isZReliable(...joints: (Point | undefined)[]): boolean {
+  const zValues = joints
+    .map(j => j?.z)
+    .filter((v): v is number => v != null && Number.isFinite(v));
+  if (zValues.length < 2) return false;
+  return Math.max(...zValues) - Math.min(...zValues) >= Z_RANGE_THRESHOLD;
+}
+
+function angleBetween(a: Point, b: Point, c: Point): number {
+  const use3D = isZReliable(a, b, c);
+  const ba = { x: a.x - b.x, y: a.y - b.y, z: use3D ? (a.z! - b.z!) : 0 };
+  const bc = { x: c.x - b.x, y: c.y - b.y, z: use3D ? (c.z! - b.z!) : 0 };
+  const dot = ba.x * bc.x + ba.y * bc.y + ba.z * bc.z;
+  const magBA = Math.sqrt(ba.x * ba.x + ba.y * ba.y + ba.z * ba.z);
+  const magBC = Math.sqrt(bc.x * bc.x + bc.y * bc.y + bc.z * bc.z);
   if (magBA === 0 || magBC === 0) return 0;
   const cosAngle = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
   return Math.round((Math.acos(cosAngle) * 180) / Math.PI);
 }
 
-function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+function midpoint(a: Point, b: Point): Point {
+  const result: Point = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  if (a.z != null && b.z != null) result.z = (a.z + b.z) / 2;
+  return result;
 }
 
-function angleToVertical(a: { x: number; y: number }, b: { x: number; y: number }): number {
+function angleToVertical(a: Point, b: Point): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const mag = Math.sqrt(dx * dx + dy * dy);
+  const use3D = isZReliable(a, b);
+  const dz = use3D ? (b.z! - a.z!) : 0;
+  const mag = Math.sqrt(dx * dx + dy * dy + dz * dz);
   if (mag === 0) return 0;
-  return Math.round((Math.acos(Math.abs(dy) / mag) * 180) / Math.PI);
+  const cosAngle = Math.max(-1, Math.min(1, Math.abs(dy) / mag));
+  return Math.round((Math.acos(cosAngle) * 180) / Math.PI);
 }
 
 const MIN_CONFIDENCE = 0.5;
@@ -97,7 +112,8 @@ export function calculateGolfAngles(frame: PoseFrame): GolfAngles {
   if (isGood(ls) && isGood(rs)) {
     const dx = rs!.x - ls!.x;
     const dy = rs!.y - ls!.y;
-    shoulderTilt = Math.round((Math.atan2(dy, dx) * 180) / Math.PI);
+    const absDx = Math.abs(dx);
+    shoulderTilt = Math.round((Math.atan2(dy, absDx) * 180) / Math.PI);
   }
 
   return {

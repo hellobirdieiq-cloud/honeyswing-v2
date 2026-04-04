@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
+import { tipFrequencyLimiter } from '../lib/tipFrequency';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
@@ -101,6 +102,16 @@ export default function RootLayout() {
       }
     );
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Task 7: reset tip frequency limiter when app returns from background
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        tipFrequencyLimiter.reset();
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   return (

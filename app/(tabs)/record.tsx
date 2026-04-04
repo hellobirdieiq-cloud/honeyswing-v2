@@ -243,6 +243,7 @@ export default function RecordTab() {
       source: 'live-camera',
     });
     setCurrentSwingAnalysis(analysis);
+
     updateCapturePhase('complete');
 
     const classification = classifyCapture(frames);

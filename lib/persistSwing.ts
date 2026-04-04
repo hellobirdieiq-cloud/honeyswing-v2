@@ -5,6 +5,7 @@ import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
 import { getIsLeftHanded } from './handedness';
+import { getFrequencyDebugInfo } from './tipFrequency';
 
 const APP_VERSION = '1.8';
 
@@ -85,6 +86,8 @@ export async function persistSwing(
       capture_validity: classification?.validity ?? 'unknown',
       classification_reason: classification?.reason ?? null,
       handedness: isLeftHanded ? 'left' : 'right',
+      ...analysis.swing_debug,
+      ...getFrequencyDebugInfo(),
     },
   };
 

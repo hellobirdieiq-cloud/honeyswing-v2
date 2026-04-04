@@ -28,6 +28,9 @@ import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
 import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
+import { processSwingTips, type RawCoachingTip, type ProcessedCoachingTip, type ShouldShowMetricFn } from '../../lib/tipFrequency';
+import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
+import type { ScoringBreakdownEntry } from '../../packages/domain/swing/scoring';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import SwingArtCard from '../../components/SwingArtCard';
 
@@ -61,6 +64,91 @@ function pickKeyFrame(frames: PoseFrame[]): PoseFrame {
     }
   }
   return best;
+}
+
+// ---------------------------------------------------------------------------
+// Tip adapter: scoring breakdown → RawCoachingTip[]
+// ---------------------------------------------------------------------------
+
+const TIP_SCORE_THRESHOLD = 80;
+
+/** Mapping from scoring metric names to tipFrequency metricKeys */
+const METRIC_KEY_MAP: Record<string, string> = {
+  spineAngle: 'spineAngle',
+  leftElbowAngle: 'elbow',
+  rightElbowAngle: 'elbow',
+  leftKneeAngle: 'kneeFlex',
+  rightKneeAngle: 'kneeFlex',
+  shoulderTilt: 'shoulderTilt',
+  tempo: 'tempo',
+};
+
+/** Static coaching text keyed by scoring metric name */
+const COACHING_TEXT: Record<string, { title: string; body: string }> = {
+  spineAngle: {
+    title: 'Spine Tilt',
+    body: 'Check your spine angle at address — aim for an athletic tilt, not too upright or hunched.',
+  },
+  leftElbowAngle: {
+    title: 'Lead Arm',
+    body: 'Keep your lead arm straighter through the swing for better extension.',
+  },
+  rightElbowAngle: {
+    title: 'Trail Arm',
+    body: 'Let your trail arm fold naturally at the top and extend through impact.',
+  },
+  leftKneeAngle: {
+    title: 'Lead Knee',
+    body: 'Check your lead knee flex at setup — stay athletic, not locked or crouched.',
+  },
+  rightKneeAngle: {
+    title: 'Trail Knee',
+    body: 'Soften your trail knee at address to help your rotation.',
+  },
+  shoulderTilt: {
+    title: 'Shoulders',
+    body: 'Work on leveling your shoulders at address for a more consistent swing.',
+  },
+  tempo: {
+    title: 'Tempo',
+    body: 'Smooth out your tempo — aim for a controlled backswing and accelerating downswing.',
+  },
+};
+
+/**
+ * Convert scoring breakdown entries into RawCoachingTip[].
+ * Pre-filters to score < TIP_SCORE_THRESHOLD. Deduplicates mapped keys
+ * (e.g. leftElbowAngle + rightElbowAngle both map to 'elbow') by keeping
+ * the worse-scoring entry.
+ */
+function buildRawTips(breakdown: ScoringBreakdownEntry[]): RawCoachingTip[] {
+  // Collect worst score per mapped metricKey
+  const best: Map<string, { scoringMetric: string; score: number }> = new Map();
+
+  for (const entry of breakdown) {
+    if (entry.score >= TIP_SCORE_THRESHOLD) continue;
+    const mappedKey = METRIC_KEY_MAP[entry.metric];
+    if (!mappedKey) continue;
+    const text = COACHING_TEXT[entry.metric];
+    if (!text) continue;
+
+    const existing = best.get(mappedKey);
+    if (!existing || entry.score < existing.score) {
+      best.set(mappedKey, { scoringMetric: entry.metric, score: entry.score });
+    }
+  }
+
+  const tips: RawCoachingTip[] = [];
+  for (const [mappedKey, { scoringMetric }] of best) {
+    const text = COACHING_TEXT[scoringMetric]!;
+    tips.push({
+      metricKey: mappedKey,
+      title: text.title,
+      body: text.body,
+      shortBody: '', // resolveShortBody will use SHORT_BODY_FALLBACKS
+    });
+  }
+  return tips;
 }
 
 export default function ResultScreen() {
@@ -126,6 +214,27 @@ export default function ResultScreen() {
   const tempo = analysis?.tempo;
 
   const isLowConfidence = classification?.validity === 'partial';
+
+  // Task 7: frequency-limited coaching tips
+  const processedTips: ProcessedCoachingTip[] = useMemo(() => {
+    if (!analysis) return [];
+    const breakdown = analysis.swing_debug?.scoring_breakdown;
+    if (!breakdown) return [];
+    const rawTips = buildRawTips(breakdown);
+    return processSwingTips(
+      rawTips,
+      shouldShowMetric as unknown as ShouldShowMetricFn,
+      analysis.swingConfidence,
+      analysis.cameraAngleResult as any,
+    );
+  }, [analysis]);
+
+  // Metro log for verification before tip UI exists
+  useEffect(() => {
+    if (processedTips.length > 0) {
+      console.log('[tipFrequency]', processedTips.map(t => `${t.metricKey}:${t.displayTier}`));
+    }
+  }, [processedTips]);
 
   // Persist the weakest metric as "Today's Focus" for the home screen
   useEffect(() => {
