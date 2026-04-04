@@ -33,6 +33,8 @@ import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import type { ScoringBreakdownEntry } from '../../packages/domain/swing/scoring';
 import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import SwingArtCard from '../../components/SwingArtCard';
+import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
+import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 
 /** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
 function frameToLandmarks(frame: PoseFrame): Landmark[] {
@@ -215,18 +217,45 @@ export default function ResultScreen() {
 
   const isLowConfidence = classification?.validity === 'partial';
 
-  // Task 7: frequency-limited coaching tips
-  const processedTips: ProcessedCoachingTip[] = useMemo(() => {
-    if (!analysis) return [];
+  // Task 7: frequency-limited coaching tips + Task 8: positive reinforcement
+  const { processedTips, positiveResult } = useMemo<{
+    processedTips: ProcessedCoachingTip[];
+    positiveResult: ProcessSwingResult;
+  }>(() => {
+    if (!analysis) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
     const breakdown = analysis.swing_debug?.scoring_breakdown;
-    if (!breakdown) return [];
+    if (!breakdown) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
     const rawTips = buildRawTips(breakdown);
-    return processSwingTips(
+    const tips = processSwingTips(
       rawTips,
       shouldShowMetric as unknown as ShouldShowMetricFn,
       analysis.swingConfidence,
       analysis.cameraAngleResult as any,
     );
+
+    // Build deduped metric scores (same metricKey mapping as buildRawTips, keep worst score)
+    const worstByKey = new Map<string, number>();
+    for (const entry of breakdown) {
+      const mappedKey = METRIC_KEY_MAP[entry.metric];
+      if (!mappedKey) continue;
+      const existing = worstByKey.get(mappedKey);
+      if (existing === undefined || entry.score < existing) {
+        worstByKey.set(mappedKey, entry.score);
+      }
+    }
+    const dedupedScores = Array.from(worstByKey.entries()).map(([metricKey, score]) => ({ metricKey, score }));
+
+    const swingConfidence = analysis.swingConfidence ?? { tier: 'low' as const, overall: 0 };
+    const posResult = positiveReinforcementEngine.processSwing(
+      { tier: swingConfidence.tier, overall: swingConfidence.overall },
+      dedupedScores,
+      tips.length,
+    );
+    if (posResult.card) {
+      console.log('[positiveReinforcement]', posResult.card);
+    }
+
+    return { processedTips: tips, positiveResult: posResult };
   }, [analysis]);
 
   // Metro log for verification before tip UI exists
@@ -334,15 +363,21 @@ export default function ResultScreen() {
             </View>
 
             {/* 4. Coaching */}
-            {keyLandmarks.length > 0 && (
-              <VisualCoachCard
-                landmarks={keyLandmarks}
-                angles={angles}
-                width={skeletonW}
-                height={skeletonH}
-                isLowConfidence={isLowConfidence}
-                isLeftHanded={isLeftHanded}
-              />
+            {positiveResult.card ? (
+              <View style={styles.positiveCard}>
+                <Text style={styles.positiveCardText}>{positiveResult.card.message}</Text>
+              </View>
+            ) : (
+              keyLandmarks.length > 0 && (
+                <VisualCoachCard
+                  landmarks={keyLandmarks}
+                  angles={angles}
+                  width={skeletonW}
+                  height={skeletonH}
+                  isLowConfidence={isLowConfidence}
+                  isLeftHanded={isLeftHanded}
+                />
+              )
             )}
 
             {/* 5. Coach */}
@@ -580,6 +615,23 @@ const styles = StyleSheet.create({
     color: '#F5A623',
     fontSize: 15,
     fontWeight: '600',
+  },
+
+  // Positive reinforcement card
+  positiveCard: {
+    backgroundColor: '#1a472a',
+    borderWidth: 1,
+    borderColor: '#c8a951',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: 'center' as const,
+  },
+  positiveCardText: {
+    color: '#c8a951',
+    fontSize: 24,
+    fontWeight: '700' as const,
+    textAlign: 'center' as const,
   },
 
 });

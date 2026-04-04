@@ -6,6 +6,7 @@ import type { CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
 import { getIsLeftHanded } from './handedness';
 import { getFrequencyDebugInfo } from './tipFrequency';
+import { positiveReinforcementEngine } from './positiveReinforcement';
 
 const APP_VERSION = '1.8';
 
@@ -88,6 +89,7 @@ export async function persistSwing(
       handedness: isLeftHanded ? 'left' : 'right',
       ...analysis.swing_debug,
       ...getFrequencyDebugInfo(),
+      positiveReinforcement: positiveReinforcementEngine.buildDebugInfo(),
     },
   };
 

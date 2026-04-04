@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
+import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
 
 const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
 
@@ -109,6 +110,7 @@ export default function RootLayout() {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         tipFrequencyLimiter.reset();
+        positiveReinforcementEngine.reset();
       }
     });
     return () => sub.remove();
