@@ -2,6 +2,7 @@ import { JointName, PoseFrame } from "../../pose/PoseTypes";
 import { PoseSequence } from "../../pose/PoseTypes";
 import { calculateGolfAngles, GolfAngles } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle } from "./cameraAngle";
+import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
 import { detectSwingPhases, DetectedPhase, SwingTrailPoint } from "./phaseDetection";
 import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
@@ -26,6 +27,7 @@ export type FrameSelectionDebug = {
   confidence_overall?: number;
   confidence_tier?: string;
   confidence_components?: ConfidenceComponents;
+  foreshortening?: ForeshorteningDebug;
 };
 
 export type AnalysisResult = {
@@ -234,6 +236,9 @@ export function analyzePoseSequence(
 
   const cameraAngle = detectCameraAngle(addressFrame);
 
+  const foreshorteningResult = correctForeshortening(angles, cameraAngle);
+  angles = foreshorteningResult.angles;
+
   const rawTempo = calculateTempo(phases);
 
   // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
@@ -269,6 +274,7 @@ export function analyzePoseSequence(
       confidence_overall: swingConfidence.overall,
       confidence_tier: swingConfidence.tier,
       confidence_components: swingConfidence.components,
+      foreshortening: foreshorteningResult.debug,
     },
   };
 }
