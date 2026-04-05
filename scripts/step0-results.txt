@@ -1,0 +1,115 @@
+Fetching last 30 swings...
+Fetched 30 swings.
+
+Global medians:
+┌─────────────────────┬────────────────────┐
+│ (index)             │ Values             │
+├─────────────────────┼────────────────────┤
+│ upperArm/torso      │ 0.5750590740308918 │
+│ forearm/upperArm    │ 0.9401695151359344 │
+│ shoulderWidth/torso │ 1.026431297510098  │
+└─────────────────────┴────────────────────┘
+Total valid ratio samples: 1610
+
+================================================================================
+  STEP 0 DIAGNOSTIC — Body Proportion Calibration (Task 12)
+================================================================================
+
+--- Per-Swing Frame Flagging ---
+
+┌─────────┬───────┬────────┬─────────┬──────────┬───────────────────────┐
+│ (index) │ swing │ frames │ flagged │ %flagged │ topTrigger            │
+├─────────┼───────┼────────┼─────────┼──────────┼───────────────────────┤
+│ 0       │ 0     │ 57     │ 38      │ 66.7     │ 'shoulderWidth/torso' │
+│ 1       │ 1     │ 79     │ 43      │ 54.4     │ 'shoulderWidth/torso' │
+│ 2       │ 2     │ 72     │ 36      │ 50       │ 'upperArm/torso'      │
+│ 3       │ 3     │ 79     │ 11      │ 13.9     │ 'forearm/upperArm'    │
+│ 4       │ 4     │ 80     │ 16      │ 20       │ 'upperArm/torso'      │
+│ 5       │ 5     │ 93     │ 24      │ 25.8     │ 'forearm/upperArm'    │
+│ 6       │ 6     │ 80     │ 16      │ 20       │ 'upperArm/torso'      │
+│ 7       │ 7     │ 93     │ 18      │ 19.4     │ 'forearm/upperArm'    │
+│ 8       │ 8     │ 93     │ 15      │ 16.1     │ 'forearm/upperArm'    │
+│ 9       │ 9     │ 80     │ 15      │ 18.8     │ 'upperArm/torso'      │
+│ 10      │ 10    │ 80     │ 18      │ 22.5     │ 'upperArm/torso'      │
+│ 11      │ 11    │ 80     │ 18      │ 22.5     │ 'upperArm/torso'      │
+│ 12      │ 12    │ 79     │ 23      │ 29.1     │ 'forearm/upperArm'    │
+│ 13      │ 13    │ 77     │ 16      │ 20.8     │ 'upperArm/torso'      │
+│ 14      │ 14    │ 80     │ 23      │ 28.8     │ 'upperArm/torso'      │
+│ 15      │ 15    │ 80     │ 18      │ 22.5     │ 'forearm/upperArm'    │
+│ 16      │ 16    │ 80     │ 18      │ 22.5     │ 'forearm/upperArm'    │
+│ 17      │ 17    │ 80     │ 16      │ 20       │ 'forearm/upperArm'    │
+│ 18      │ 18    │ 94     │ 34      │ 36.2     │ 'forearm/upperArm'    │
+│ 19      │ 19    │ 89     │ 67      │ 75.3     │ 'shoulderWidth/torso' │
+│ 20      │ 20    │ 47     │ 38      │ 80.9     │ 'shoulderWidth/torso' │
+│ 21      │ 21    │ 86     │ 66      │ 76.7     │ 'forearm/upperArm'    │
+│ 22      │ 22    │ 87     │ 49      │ 56.3     │ 'forearm/upperArm'    │
+│ 23      │ 23    │ 74     │ 51      │ 68.9     │ 'forearm/upperArm'    │
+│ 24      │ 24    │ 71     │ 28      │ 39.4     │ 'shoulderWidth/torso' │
+│ 25      │ 25    │ 26     │ 10      │ 38.5     │ 'forearm/upperArm'    │
+│ 26      │ 26    │ 67     │ 15      │ 22.4     │ 'forearm/upperArm'    │
+│ 27      │ 27    │ 64     │ 42      │ 65.6     │ 'shoulderWidth/torso' │
+│ 28      │ 28    │ 78     │ 36      │ 46.2     │ 'forearm/upperArm'    │
+│ 29      │ 29    │ 50     │ 30      │ 60       │ 'forearm/upperArm'    │
+└─────────┴───────┴────────┴─────────┴──────────┴───────────────────────┘
+
+--- Per-Swing Angle Deltas (degrees) ---
+
+┌─────────┬───────┬────────────┬────────────┬───────────┬───────────┬───────────┬───────────┬───────────┬───────────┬──────────┐
+│ (index) │ swing │ addr:spine │ addr:elbow │ addr:knee │ addr:hip  │ imp:spine │ imp:elbow │ imp:knee  │ imp:hip   │ maxDelta │
+├─────────┼───────┼────────────┼────────────┼───────────┼───────────┼───────────┼───────────┼───────────┼───────────┼──────────┤
+│ 0       │ 0     │ '3.0'      │ '10.0'     │ '2.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '10.0'   │
+│ 1       │ 1     │ '0.0'      │ '1.0'      │ '19.0'    │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '19.0'   │
+│ 2       │ 2     │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ '5.0'     │ '21.0'    │ '21.0'    │ '2.0'     │ '21.0'   │
+│ 3       │ 3     │ '3.0'      │ '3.0'      │ '2.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '3.0'    │
+│ 4       │ 4     │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ '6.0'     │ '41.0'    │ '10.0'    │ '0.0'     │ '41.0'   │
+│ 5       │ 5     │ '2.0'      │ '9.0'      │ '1.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '9.0'    │
+│ 6       │ 6     │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 7       │ 7     │ '6.0'      │ '4.0'      │ '10.0'    │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '10.0'   │
+│ 8       │ 8     │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ '3.0'     │ '52.0'    │ '1.0'     │ '0.0'     │ '52.0'   │
+│ 9       │ 9     │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 10      │ 10    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 11      │ 11    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 12      │ 12    │ '3.0'      │ '2.0'      │ '0.0'     │ '0.0'     │ '6.0'     │ '1.0'     │ '14.0'    │ '1.0'     │ '14.0'   │
+│ 13      │ 13    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 14      │ 14    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 15      │ 15    │ '3.0'      │ '9.0'      │ '6.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '9.0'    │
+│ 16      │ 16    │ '4.0'      │ '4.0'      │ '4.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '4.0'    │
+│ 17      │ 17    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ '0.0'     │ 'insuff.' │ '0.0'     │ '0.0'     │ '0.0'    │
+│ 18      │ 18    │ '0.0'      │ '0.0'      │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 19      │ 19    │ 'insuff.'  │ 'insuff.'  │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'n/a'    │
+│ 20      │ 20    │ 'insuff.'  │ 'insuff.'  │ 'insuff.' │ 'insuff.' │ '0.0'     │ 'insuff.' │ '0.0'     │ '0.0'     │ '0.0'    │
+│ 21      │ 21    │ '1.0'      │ 'insuff.'  │ '1.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '1.0'    │
+│ 22      │ 22    │ '0.0'      │ 'insuff.'  │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 23      │ 23    │ 'insuff.'  │ 'insuff.'  │ 'insuff.' │ 'insuff.' │ '1.0'     │ '28.0'    │ '0.0'     │ '1.0'     │ '28.0'   │
+│ 24      │ 24    │ '0.0'      │ 'insuff.'  │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 25      │ 25    │ '1.0'      │ 'insuff.'  │ '9.0'     │ '1.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '9.0'    │
+│ 26      │ 26    │ '0.0'      │ 'insuff.'  │ '0.0'     │ '0.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '0.0'    │
+│ 27      │ 27    │ 'insuff.'  │ 'insuff.'  │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'n/a'    │
+│ 28      │ 28    │ '0.0'      │ 'insuff.'  │ '0.0'     │ '0.0'     │ '3.0'     │ 'insuff.' │ '10.0'    │ '0.0'     │ '10.0'   │
+│ 29      │ 29    │ '6.0'      │ '54.0'     │ '7.0'     │ '1.0'     │ 'insuff.' │ 'insuff.' │ 'insuff.' │ 'insuff.' │ '54.0'   │
+└─────────┴───────┴────────────┴────────────┴───────────┴───────────┴───────────┴───────────┴───────────┴───────────┴──────────┘
+
+--- Summary ---
+
+┌─────────┬──────────────────┬────────────┬───────────┬─────────┐
+│ (index) │ metric           │ mean delta │ max delta │ samples │
+├─────────┼──────────────────┼────────────┼───────────┼─────────┤
+│ 0       │ 'spineAngle'     │ '1.65'     │ '6.0'     │ 34      │
+│ 1       │ 'leftElbowAngle' │ '9.56'     │ '54.0'    │ 25      │
+│ 2       │ 'leftKneeAngle'  │ '3.44'     │ '21.0'    │ 34      │
+│ 3       │ 'hipRotation'    │ '0.18'     │ '2.0'     │ 34      │
+└─────────┴──────────────────┴────────────┴───────────┴─────────┘
+Swings with any metric ≥2°: 15/30 (50%)
+Swings with any metric ≥5°: 13/30 (43%)
+
+Flagged frames in address windows: 81
+Flagged frames in impact windows:  92
+More flags in: IMPACT
+
+Median % flagged per swing: 29.0%
+Most commonly flagged ratio: forearm/upperArm (top trigger in 16 swings)
+
+================================================================================
+  VERDICT: BUILD — >20% of swings show ≥2° movement. Calibration is warranted.
+================================================================================
+
