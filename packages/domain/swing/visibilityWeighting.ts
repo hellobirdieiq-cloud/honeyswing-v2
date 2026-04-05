@@ -108,6 +108,11 @@ export interface FrameAngleData {
    * Missing/undefined entries treated as 0 (excluded).
    */
   readonly landmarkVisibilities: readonly number[];
+  /**
+   * Plausibility score (0-1) from implausible frame filter (Task 12).
+   * 0 = implausible limb proportions, 1 = plausible. Default: 1.0.
+   */
+  readonly plausibility?: number;
 }
 
 /** Per-metric result from visibility weighting */
@@ -161,14 +166,22 @@ export function sanitizeVisibility(v: number | undefined | null): number {
  * If any visibility is below MIN_VISIBILITY_THRESHOLD, the entire frame
  * is excluded (returns 0).
  */
-export function computeFrameWeight(landmarkVisibilities: readonly number[]): number {
+export function computeFrameWeight(
+  landmarkVisibilities: readonly number[],
+  plausibility?: number,
+): number {
   if (landmarkVisibilities.length === 0) return 0;
 
   const sanitized = landmarkVisibilities.map(sanitizeVisibility);
   const minVis = Math.min(...sanitized);
 
   if (minVis < MIN_VISIBILITY_THRESHOLD) return 0;
-  return minVis;
+
+  // Task 12: Implausible frames get zero weight
+  const p = plausibility ?? 1.0;
+  if (p <= 0) return 0;
+
+  return minVis * p;
 }
 
 /**
@@ -266,7 +279,7 @@ export function computeMetricWeighting(
 
   for (let i = 0; i < frames.length; i++) {
     const frame = frames[i];
-    const w = computeFrameWeight(frame.landmarkVisibilities);
+    const w = computeFrameWeight(frame.landmarkVisibilities, frame.plausibility);
     angles.push(frame.angle);
     weights.push(w);
     if (w === 0) framesExcluded++;

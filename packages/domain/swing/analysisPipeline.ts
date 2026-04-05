@@ -15,6 +15,12 @@ import {
 } from './confidenceScore';
 import { computeAngleGating, type AngleGatingResult } from './angleGating';
 import {
+  scoreFramePlausibility,
+  METRIC_LIMB_CHECKS,
+  type ImplausibleFrameDebug,
+  type PlausibilityDebugMetric,
+} from './implausibleFrameFilter';
+import {
   computeVisibilityWeighting,
   computeMetricWeighting,
   type FrameAngleData,
@@ -41,6 +47,7 @@ export type FrameSelectionDebug = {
   tilt_correction?: TiltCorrectionDebug;
   angle_gating?: AngleGatingResult;
   visibility_weighting?: VisibilityWeightingResult;
+  implausible_frame_filter?: ImplausibleFrameDebug;
 };
 
 export type AnalysisResult = {
@@ -239,9 +246,16 @@ function buildPipelineFrameData(
   for (let i = s; i <= e; i++) {
     const value = extractAngle(calculateGolfAngles(frames[i]));
     if (value == null) continue;
+    // Task 12: Compute plausibility score for this frame
+    const limbCheck = METRIC_LIMB_CHECKS[metricKey];
+    const plausibility = limbCheck
+      ? scoreFramePlausibility(frames[i], limbCheck).score
+      : 1.0;
+
     result.push({
       angle: value,
       landmarkVisibilities: extractLandmarkVisibilities(frames[i], metricKey),
+      plausibility,
     });
   }
   return result;
@@ -252,7 +266,7 @@ function applyVisibilityWeighting(
   frames: PoseFrame[],
   phases: DetectedPhase[],
   currentAngles: GolfAngles,
-): { angles: GolfAngles; debug: VisibilityWeightingResult } {
+): { angles: GolfAngles; debug: VisibilityWeightingResult; implausibleDebug: ImplausibleFrameDebug } {
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
@@ -306,7 +320,41 @@ function applyVisibilityWeighting(
     weightedAngles.hipRotation = Math.round(impResult.weightedValue - addrResult.weightedValue);
   }
 
-  return { angles: weightedAngles, debug: weightingResult };
+  // Task 12: Build implausible frame debug from already-computed plausibility scores
+  const implausibleMetrics: Record<string, PlausibilityDebugMetric> = {};
+  let anyImplausible = false;
+
+  const allMetricKeys = [...config.map(c => c.key), 'hipRotation_address', 'hipRotation_impact'];
+  for (const key of allMetricKeys) {
+    const frameData = metricFrames[key];
+    if (!frameData) continue;
+
+    const implausibleIndices: number[] = [];
+    let worstRatio: number | null = null;
+
+    for (let i = 0; i < frameData.length; i++) {
+      if ((frameData[i].plausibility ?? 1.0) <= 0) {
+        implausibleIndices.push(i);
+      }
+    }
+
+    if (implausibleIndices.length > 0) anyImplausible = true;
+
+    implausibleMetrics[key] = {
+      framesChecked: frameData.length,
+      framesImplausible: implausibleIndices.length,
+      implausibleIndices,
+      worstRatio,
+    };
+  }
+
+  const implausibleDebug: ImplausibleFrameDebug = {
+    version: '12.1.0',
+    applied: anyImplausible,
+    metrics: implausibleMetrics,
+  };
+
+  return { angles: weightedAngles, debug: weightingResult, implausibleDebug };
 }
 
 export function analyzePoseSequence(
@@ -356,11 +404,14 @@ export function analyzePoseSequence(
   }
 
   // Task 11: Visibility-weighted angle calculation (phase-windowed path only)
+  // Task 12: Implausible frame filter integrated into visibility weighting
   let visibilityWeightingDebug: VisibilityWeightingResult | undefined;
+  let implausibleFrameDebug: ImplausibleFrameDebug | undefined;
   if (isHeuristicPhases) {
     const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles);
     angles = visWeighting.angles;
     visibilityWeightingDebug = visWeighting.debug;
+    implausibleFrameDebug = visWeighting.implausibleDebug;
   }
 
   const cameraAngle = detectCameraAngle(addressFrame);
@@ -414,6 +465,7 @@ export function analyzePoseSequence(
       tilt_correction: tiltResult.debug,
       angle_gating: angleGating,
       visibility_weighting: visibilityWeightingDebug,
+      implausible_frame_filter: implausibleFrameDebug,
     },
   };
 }
