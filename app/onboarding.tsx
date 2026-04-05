@@ -13,8 +13,9 @@ import {
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from '../lib/supabase';
+import { STORAGE_KEYS } from '../lib/storageKeys';
 
-const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
+const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
 const COACH_OPTIONS = ['Dave Donnellan', 'No coach'] as const;
 
@@ -57,9 +58,9 @@ export default function OnboardingScreen() {
       if (error) throw error;
 
       await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
-      await AsyncStorage.setItem('honeyswing:isLeftHanded', String(isLeftHanded));
+      await AsyncStorage.setItem(STORAGE_KEYS.isLeftHanded, String(isLeftHanded));
       if (data?.id) {
-        await AsyncStorage.setItem('honeyswing:profileId', data.id);
+        await AsyncStorage.setItem(STORAGE_KEYS.profileId, data.id);
       }
       router.replace('/(tabs)');
     } catch (err: unknown) {

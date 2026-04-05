@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUser } from './supabase';
 import { getSubscriptionStatus } from './purchases';
+import { STORAGE_KEYS } from './storageKeys';
 
-const LOCAL_SWING_COUNT_KEY = 'honeyswing:localSwingCount';
+const LOCAL_SWING_COUNT_KEY = STORAGE_KEYS.localSwingCount;
 const FREE_SWING_LIMIT = 15;
 const REFERRED_SWING_LIMIT = 50;
 const WEEKS_LIMIT = 6;

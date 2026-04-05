@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../lib/storageKeys';
 import { supabase, deleteAccount } from '../lib/supabase';
 import { getCoachCode, clearCoachCode, resolveCoachName } from '../lib/coachCode';
 import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
@@ -24,9 +25,9 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
-      getIsLeftHanded().then(setIsLeftHandedState);
-      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
+      getIsLeftHanded().then(setIsLeftHandedState).catch(() => {});
+      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch(() => {});
     }, []),
   );
 
@@ -78,12 +79,12 @@ export default function SettingsScreen() {
             try {
               await deleteAccount();
               await AsyncStorage.multiRemove([
-                'honeyswing:onboardingComplete',
-                'honeyswing:profileId',
-                'honeyswing:isLeftHanded',
-                'honeyswing:coachCode',
-                'honeyswing:pendingReferralCode',
-                'honeyswing:subscriptionStatus',
+                STORAGE_KEYS.onboardingComplete,
+                STORAGE_KEYS.profileId,
+                STORAGE_KEYS.isLeftHanded,
+                STORAGE_KEYS.coachCode,
+                STORAGE_KEYS.pendingReferralCode,
+                STORAGE_KEYS.subscriptionStatus,
               ]);
               router.replace('/(tabs)' as Href);
             } catch (err: unknown) {

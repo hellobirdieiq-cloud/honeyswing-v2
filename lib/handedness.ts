@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const KEY = 'honeyswing:isLeftHanded';
+const KEY = STORAGE_KEYS.isLeftHanded;
 
 export async function getIsLeftHanded(): Promise<boolean> {
   const value = await AsyncStorage.getItem(KEY);

@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from './supabase';
 import { setCoachCode } from './coachCode';
+import { STORAGE_KEYS } from './storageKeys';
 
-const PENDING_KEY = 'honeyswing:pendingReferralCode';
+const PENDING_KEY = STORAGE_KEYS.pendingReferralCode;
 
 export async function storePendingReferral(code: string): Promise<void> {
   await AsyncStorage.setItem(PENDING_KEY, code.toLowerCase().trim());

@@ -4,12 +4,13 @@ import Purchases, {
   LOG_LEVEL,
 } from 'react-native-purchases';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from './storageKeys';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const REVENUECAT_API_KEY = 'appl_UTzTUForArVybmyrdCmPOnGErQo';
 export const ENTITLEMENT_ID = 'pro';
 export const OFFERING_ID = 'default';
-const CACHE_KEY = 'honeyswing:subscriptionStatus';
+const CACHE_KEY = STORAGE_KEYS.subscriptionStatus;
 
 // ── SDK Init ─────────────────────────────────────────────────────────────────
 

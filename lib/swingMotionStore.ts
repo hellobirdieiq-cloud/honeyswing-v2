@@ -56,7 +56,9 @@ export type FocusData = {
   savedAt: number;
 };
 
-const FOCUS_KEY = 'honeyswing:todaysFocus';
+import { STORAGE_KEYS } from './storageKeys';
+
+const FOCUS_KEY = STORAGE_KEYS.todaysFocus;
 
 function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
   if (value == null) return 50;

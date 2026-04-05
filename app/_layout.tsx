@@ -8,8 +8,9 @@ import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribu
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
 import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
+import { STORAGE_KEYS } from '../lib/storageKeys';
 
-const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
+const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
 // Keep splash visible while we initialize
 SplashScreen.preventAutoHideAsync();

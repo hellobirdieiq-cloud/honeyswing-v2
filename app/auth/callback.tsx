@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '../../lib/storageKeys';
 
-const ONBOARDING_KEY = 'honeyswing:onboardingComplete';
+const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
 export default function AuthCallbackScreen() {
   const router = useRouter();

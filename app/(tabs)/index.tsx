@@ -23,10 +23,10 @@ export default function TabsHomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadFocus().then(setFocus);
+      loadFocus().then(setFocus).catch(() => {});
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
     }, []),
   );
 

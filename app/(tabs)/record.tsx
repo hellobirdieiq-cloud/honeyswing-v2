@@ -281,7 +281,7 @@ export default function RecordTab() {
         // Background upload — never blocks navigation
         swingIdPromiseRef.current?.then((swingId) => {
           if (swingId) uploadSwingVideo(swingId, video.path).catch(() => {});
-        });
+        }).catch(() => {});
         tryNavigate();
       },
       onRecordingError: (e) => console.error('REC ERR:', e),

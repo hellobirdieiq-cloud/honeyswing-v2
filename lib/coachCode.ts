@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from './storageKeys';
 
-const KEY = 'honeyswing:coachCode';
+const KEY = STORAGE_KEYS.coachCode;
 
 const CODE_TO_NAME: Record<string, string> = {
   'dave': 'Dave Donnellan',
