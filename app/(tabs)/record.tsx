@@ -27,6 +27,7 @@ import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
 import { classifyCapture } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
 import { checkSwingLimit } from '../../lib/swingLimit';
+import { useTiltCapture } from '../../lib/useTiltCapture';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
@@ -93,6 +94,7 @@ export default function RecordTab() {
   const navigatedRef = useRef(false);
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
+  const { startCapture, stopCapture, getReadings } = useTiltCapture();
 
   function updateCapturePhase(nextPhase: CapturePhase) {
     capturePhaseRef.current = nextPhase;
@@ -204,6 +206,8 @@ export default function RecordTab() {
 
   async function finalizeCapture() {
     clearTimers();
+    stopCapture();
+    const gravityReadings = getReadings();
     cameraRef.current?.stopRecording();
 
     const frames = [...motionFramesRef.current];
@@ -235,7 +239,7 @@ export default function RecordTab() {
     };
 
     const isLeftHanded = await getIsLeftHanded();
-    const analysis = analyzePoseSequence(sequence, isLeftHanded);
+    const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
 
     setCurrentSwingMotion({
       frames,
@@ -266,6 +270,7 @@ export default function RecordTab() {
     navigatedRef.current = false;
     frameSkipCounter.value = 0;
 
+    startCapture();
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
       onRecordingFinished: (video) => {

@@ -3,6 +3,7 @@ import { PoseSequence } from "../../pose/PoseTypes";
 import { calculateGolfAngles, GolfAngles } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
+import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
 import { detectSwingPhases, DetectedPhase, SwingTrailPoint } from "./phaseDetection";
 import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
@@ -28,6 +29,7 @@ export type FrameSelectionDebug = {
   confidence_tier?: string;
   confidence_components?: ConfidenceComponents;
   foreshortening?: ForeshorteningDebug;
+  tilt_correction?: TiltCorrectionDebug;
 };
 
 export type AnalysisResult = {
@@ -192,6 +194,7 @@ function shouldFallback(
 export function analyzePoseSequence(
   sequence: PoseSequence,
   isLeftHanded = false,
+  gravityReadings: GravityReading[] = [],
 ): AnalysisResult {
   const canonical = toCanonicalSequence(sequence, isLeftHanded);
 
@@ -239,6 +242,11 @@ export function analyzePoseSequence(
   const foreshorteningResult = correctForeshortening(angles, cameraAngle);
   angles = foreshorteningResult.angles;
 
+  const tiltResult = applyTiltCorrection(angles, gravityReadings);
+  if (tiltResult.debug.correctionApplied) {
+    angles = { ...angles, ...tiltResult.corrected };
+  }
+
   const rawTempo = calculateTempo(phases);
 
   // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
@@ -275,6 +283,7 @@ export function analyzePoseSequence(
       confidence_tier: swingConfidence.tier,
       confidence_components: swingConfidence.components,
       foreshortening: foreshorteningResult.debug,
+      tilt_correction: tiltResult.debug,
     },
   };
 }
