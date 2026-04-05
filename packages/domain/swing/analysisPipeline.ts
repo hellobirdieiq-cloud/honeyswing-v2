@@ -293,7 +293,7 @@ function applyVisibilityWeighting(
   for (const { key } of config) {
     const result = weightingResult.metrics[key];
     if (result?.applied && Number.isFinite(result.weightedValue)) {
-      (weightedAngles as any)[key] = Math.round(result.weightedValue);
+      weightedAngles[key] = Math.round(result.weightedValue);
     }
   }
 
