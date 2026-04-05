@@ -14,6 +14,14 @@ import {
   type SwingConfidence,
 } from './confidenceScore';
 import { computeAngleGating, type AngleGatingResult } from './angleGating';
+import {
+  computeVisibilityWeighting,
+  computeMetricWeighting,
+  type FrameAngleData,
+  type GatedMetricKey,
+  type VisibilityWeightingResult,
+  METRIC_LANDMARKS,
+} from './visibilityWeighting';
 import type { ConfidenceComponents } from './confidenceScore';
 
 export type FrameSelectionDebug = {
@@ -32,6 +40,7 @@ export type FrameSelectionDebug = {
   foreshortening?: ForeshorteningDebug;
   tilt_correction?: TiltCorrectionDebug;
   angle_gating?: AngleGatingResult;
+  visibility_weighting?: VisibilityWeightingResult;
 };
 
 export type AnalysisResult = {
@@ -193,6 +202,113 @@ function shouldFallback(
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Task 11: Visibility-weighted angle calculation helpers
+// ---------------------------------------------------------------------------
+
+/** Map from MediaPipe landmark index → pipeline JointName (only indices used by visibility weighting) */
+const LANDMARK_INDEX_TO_JOINT: Partial<Record<number, JointName>> = {
+  11: 'leftShoulder', 12: 'rightShoulder',
+  13: 'leftElbow',    14: 'rightElbow',
+  15: 'leftWrist',    16: 'rightWrist',
+  23: 'leftHip',      24: 'rightHip',
+  25: 'leftKnee',     26: 'rightKnee',
+  27: 'leftAnkle',    28: 'rightAnkle',
+};
+
+/** Extract landmark visibilities (confidence values) from a PoseFrame for a given metric. */
+function extractLandmarkVisibilities(frame: PoseFrame, metricKey: GatedMetricKey): number[] {
+  return METRIC_LANDMARKS[metricKey].map(idx => {
+    const jointName = LANDMARK_INDEX_TO_JOINT[idx];
+    if (!jointName) return 0;
+    return frame.joints[jointName]?.confidence ?? 0;
+  });
+}
+
+/** Build per-frame angle + visibility data for a metric across a window of frames. */
+function buildPipelineFrameData(
+  frames: PoseFrame[],
+  start: number,
+  end: number,
+  metricKey: GatedMetricKey,
+  extractAngle: (a: GolfAngles) => number | null,
+): FrameAngleData[] {
+  const s = Math.max(0, start);
+  const e = Math.min(frames.length - 1, end);
+  const result: FrameAngleData[] = [];
+  for (let i = s; i <= e; i++) {
+    const value = extractAngle(calculateGolfAngles(frames[i]));
+    if (value == null) continue;
+    result.push({
+      angle: value,
+      landmarkVisibilities: extractLandmarkVisibilities(frames[i], metricKey),
+    });
+  }
+  return result;
+}
+
+/** Apply visibility weighting to phase-windowed angles. */
+function applyVisibilityWeighting(
+  frames: PoseFrame[],
+  phases: DetectedPhase[],
+  currentAngles: GolfAngles,
+): { angles: GolfAngles; debug: VisibilityWeightingResult } {
+  const topPhase = phases.find(p => p.phase === 'top')!;
+  const impactPhase = phases.find(p => p.phase === 'impact')!;
+
+  const addressRange: [number, number] = [0, Math.min(9, frames.length - 1)];
+  const impactRange: [number, number] = [impactPhase.index - 2, impactPhase.index + 2];
+  const topRange: [number, number] = [topPhase.index - 2, topPhase.index + 2];
+
+  const config: { key: GatedMetricKey; range: [number, number]; extract: (a: GolfAngles) => number | null }[] = [
+    { key: 'spineAngle',      range: addressRange, extract: a => a.spineAngle },
+    { key: 'leftElbowAngle',  range: impactRange,  extract: a => a.leftElbowAngle },
+    { key: 'rightElbowAngle', range: impactRange,  extract: a => a.rightElbowAngle },
+    { key: 'leftKneeAngle',   range: addressRange, extract: a => a.leftKneeAngle },
+    { key: 'rightKneeAngle',  range: addressRange, extract: a => a.rightKneeAngle },
+    { key: 'shoulderTilt',    range: topRange,      extract: a => a.shoulderTilt },
+  ];
+
+  const metricFrames: Record<string, FrameAngleData[]> = {};
+
+  for (const { key, range, extract } of config) {
+    if (currentAngles[key] == null) continue;
+    metricFrames[key] = buildPipelineFrameData(frames, range[0], range[1], key, extract);
+  }
+
+  // hipRotation is a delta (impact - address) — weight each component separately
+  if (currentAngles.hipRotation != null) {
+    metricFrames['hipRotation_address'] = buildPipelineFrameData(
+      frames, addressRange[0], addressRange[1], 'hipRotation', a => a.hipRotation,
+    );
+    metricFrames['hipRotation_impact'] = buildPipelineFrameData(
+      frames, impactRange[0], impactRange[1], 'hipRotation', a => a.hipRotation,
+    );
+  }
+
+  const weightingResult = computeVisibilityWeighting(metricFrames);
+  const weightedAngles = { ...currentAngles };
+
+  // Apply weighted values for simple metrics
+  for (const { key } of config) {
+    const result = weightingResult.metrics[key];
+    if (result?.applied && Number.isFinite(result.weightedValue)) {
+      (weightedAngles as any)[key] = Math.round(result.weightedValue);
+    }
+  }
+
+  // Apply weighted hipRotation delta
+  const addrResult = weightingResult.metrics['hipRotation_address'];
+  const impResult = weightingResult.metrics['hipRotation_impact'];
+  if (addrResult && impResult &&
+      (addrResult.applied || impResult.applied) &&
+      Number.isFinite(addrResult.weightedValue) && Number.isFinite(impResult.weightedValue)) {
+    weightedAngles.hipRotation = Math.round(impResult.weightedValue - addrResult.weightedValue);
+  }
+
+  return { angles: weightedAngles, debug: weightingResult };
+}
+
 export function analyzePoseSequence(
   sequence: PoseSequence,
   isLeftHanded = false,
@@ -237,6 +353,14 @@ export function analyzePoseSequence(
     angles = result.angles;
     frameDebug = result.debug;
     isHeuristicPhases = true;
+  }
+
+  // Task 11: Visibility-weighted angle calculation (phase-windowed path only)
+  let visibilityWeightingDebug: VisibilityWeightingResult | undefined;
+  if (isHeuristicPhases) {
+    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles);
+    angles = visWeighting.angles;
+    visibilityWeightingDebug = visWeighting.debug;
   }
 
   const cameraAngle = detectCameraAngle(addressFrame);
@@ -289,6 +413,7 @@ export function analyzePoseSequence(
       foreshortening: foreshorteningResult.debug,
       tilt_correction: tiltResult.debug,
       angle_gating: angleGating,
+      visibility_weighting: visibilityWeightingDebug,
     },
   };
 }
