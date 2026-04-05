@@ -25,6 +25,8 @@
  *   - Call getFrequencyDebugInfo() → additive JSONB field 'tipFrequency'
  */
 
+import { shouldShowMetric as angleGatingShouldShow } from '../packages/domain/swing/angleGating';
+
 // ---------------------------------------------------------------------------
 // Task 6 types (match swingConfidence.ts / cameraAngle.ts exports)
 // ---------------------------------------------------------------------------
@@ -440,6 +442,7 @@ export const tipFrequencyLimiter = new TipFrequencyLimiter();
  * @param shouldShowMetricFn - Task 6 gate. Must match ShouldShowMetricFn signature.
  * @param swingConfidence - From analysis.swingConfidence.
  * @param cameraAngleResult - From analysis.cameraAngleResult.
+ * @param estimatedAngleDeg - Camera angle in degrees (0-90) from foreshortening, for Task 9 angle gating.
  * @returns Only non-suppressed tips with displayBody set by tier.
  */
 export function processSwingTips(
@@ -447,6 +450,7 @@ export function processSwingTips(
   shouldShowMetricFn: ShouldShowMetricFn,
   swingConfidence: SwingConfidence,
   cameraAngleResult: CameraAngleResult,
+  estimatedAngleDeg?: number | null,
 ): ProcessedCoachingTip[] {
   tipFrequencyLimiter.recordSwingProcessed();
   const result: ProcessedCoachingTip[] = [];
@@ -454,6 +458,12 @@ export function processSwingTips(
   for (const tip of tips) {
     // Gate 1: Task 6 confidence + camera angle reliability
     if (!shouldShowMetricFn(tip.metricKey, swingConfidence, cameraAngleResult)) {
+      tipFrequencyLimiter.recordBlockedByConfidence();
+      continue;
+    }
+
+    // Gate 1.5: Task 9 angle gating — suppress metrics unreliable at this camera angle
+    if (estimatedAngleDeg != null && !angleGatingShouldShow(tip.metricKey, estimatedAngleDeg)) {
       tipFrequencyLimiter.recordBlockedByConfidence();
       continue;
     }

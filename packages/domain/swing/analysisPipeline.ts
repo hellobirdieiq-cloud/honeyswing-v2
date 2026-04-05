@@ -13,6 +13,7 @@ import {
   shouldShowMetric,
   type SwingConfidence,
 } from './confidenceScore';
+import { computeAngleGating, type AngleGatingResult } from './angleGating';
 import type { ConfidenceComponents } from './confidenceScore';
 
 export type FrameSelectionDebug = {
@@ -30,6 +31,7 @@ export type FrameSelectionDebug = {
   confidence_components?: ConfidenceComponents;
   foreshortening?: ForeshorteningDebug;
   tilt_correction?: TiltCorrectionDebug;
+  angle_gating?: AngleGatingResult;
 };
 
 export type AnalysisResult = {
@@ -264,6 +266,8 @@ export function analyzePoseSequence(
     isHeuristicPhases,
   );
 
+  const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
+
   return {
     score: scoring.score,
     honeyBoom: scoring.honeyBoom,
@@ -284,6 +288,7 @@ export function analyzePoseSequence(
       confidence_components: swingConfidence.components,
       foreshortening: foreshorteningResult.debug,
       tilt_correction: tiltResult.debug,
+      angle_gating: angleGating,
     },
   };
 }

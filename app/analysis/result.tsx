@@ -226,11 +226,13 @@ export default function ResultScreen() {
     const breakdown = analysis.swing_debug?.scoring_breakdown;
     if (!breakdown) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
     const rawTips = buildRawTips(breakdown);
+    const estimatedAngleDeg = analysis.swing_debug?.foreshortening?.estimatedAngleDegrees ?? null;
     const tips = processSwingTips(
       rawTips,
       shouldShowMetric as unknown as ShouldShowMetricFn,
       analysis.swingConfidence,
       analysis.cameraAngleResult as any,
+      estimatedAngleDeg,
     );
 
     // Build deduped metric scores (same metricKey mapping as buildRawTips, keep worst score)
