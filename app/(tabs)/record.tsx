@@ -251,7 +251,10 @@ export default function RecordTab() {
     updateCapturePhase('complete');
 
     const classification = classifyCapture(frames);
-    swingIdPromiseRef.current = persistSwing(frames, analysis, classification).catch(() => null);
+    swingIdPromiseRef.current = persistSwing(frames, analysis, classification).catch((err) => {
+      console.error('[HoneySwing] Swing persistence failed:', err.message);
+      return null;
+    });
 
     analysisReadyRef.current = true;
     safetyTimeoutRef.current = setTimeout(() => {

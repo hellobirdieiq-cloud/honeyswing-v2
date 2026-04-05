@@ -86,6 +86,16 @@ export class MLKitProvider implements PoseProvider {
     frameHeight: number;
   }): Promise<PoseFrame> {
     const { frame, timestampMs, frameWidth, frameHeight } = params;
+
+    if (!Array.isArray(frame)) {
+      throw new Error(`MLKitProvider: expected landmark array, got ${typeof frame}`);
+    }
+    if (frame.length > 0) {
+      const first = frame[0];
+      if (typeof first !== 'object' || first === null || typeof first.x !== 'number' || typeof first.y !== 'number') {
+        throw new Error('MLKitProvider: landmark missing expected x/y properties');
+      }
+    }
     const landmarks = frame as V1PoseLandmark[];
 
     return mapLandmarksToPoseFrame({

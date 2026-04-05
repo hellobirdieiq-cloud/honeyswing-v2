@@ -6,7 +6,7 @@ import { correctForeshortening, type ForeshorteningDebug } from './foreshortenin
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
 import { detectSwingPhases, DetectedPhase, SwingTrailPoint } from "./phaseDetection";
-import { calculateTempo, isTempoTrustworthy } from "./tempoAnalysis";
+import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
   computeSwingConfidence,
@@ -46,9 +46,9 @@ export type FrameSelectionDebug = {
 export type AnalysisResult = {
   score: number;
   honeyBoom: boolean;
-  angles?: any;
-  tempo?: any;
-  phases?: any[];
+  angles?: GolfAngles;
+  tempo?: SwingTempo | null;
+  phases?: DetectedPhase[];
   swing_debug?: FrameSelectionDebug;
   swingConfidence: SwingConfidence;
   cameraAngleResult: CameraAngleResult;

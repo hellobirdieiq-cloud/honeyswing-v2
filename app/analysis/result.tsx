@@ -22,7 +22,6 @@ import {
   TEMPO_COLORS,
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
-import type { GolfAngles } from '../../packages/domain/swing/angles';
 import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
@@ -31,7 +30,6 @@ import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
 import { processSwingTips, type RawCoachingTip, type ProcessedCoachingTip, type ShouldShowMetricFn } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import type { ScoringBreakdownEntry } from '../../packages/domain/swing/scoring';
-import type { DetectedPhase } from '../../packages/domain/swing/phaseDetection';
 import SwingArtCard from '../../components/SwingArtCard';
 import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
@@ -175,15 +173,17 @@ export default function ResultScreen() {
   }, [speed, player]);
 
   useEffect(() => {
-    getIsLeftHanded().then(setIsLeftHanded);
-    getCoachCode().then((code) => setCoachName(resolveCoachName(code)));
+    getIsLeftHanded().then(setIsLeftHanded).catch(() => {});
+    getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
     // Check swing limit after this swing was persisted
     checkSwingLimit().then((status) => {
       if (!status.allowed) {
         getUser().then((user) => {
           if (!user) setLimitHit(true);
-        });
+        }).catch(() => {});
       }
+    }).catch(() => {
+      // On error, default to allowed (same as swingLimit.ts permissive default)
     });
   }, []);
 
@@ -212,7 +212,7 @@ export default function ResultScreen() {
   }, [sequence, classification, storedAnalysis, isLeftHanded]);
 
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
-  const angles = analysis?.angles as GolfAngles | undefined;
+  const angles = analysis?.angles;
   const tempo = analysis?.tempo;
 
   const isLowConfidence = classification?.validity === 'partial';
@@ -419,7 +419,7 @@ export default function ResultScreen() {
               <View style={{ marginTop: 8 }}>
                 <SwingArtCard
                   frames={motion.frames}
-                  phases={(analysis?.phases ?? []) as DetectedPhase[]}
+                  phases={analysis?.phases ?? []}
                   width={screenW - 48}
                 />
               </View>

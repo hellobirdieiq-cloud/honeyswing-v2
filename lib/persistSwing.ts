@@ -2,6 +2,7 @@ import { supabase, getUserId } from './supabase';
 import { incrementLocalSwingCount } from './swingLimit';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
+import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import type { CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
 import { getIsLeftHanded } from './handedness';
@@ -33,11 +34,11 @@ function calcPoseSuccessRate(frames: PoseFrame[]): number {
   return Math.round((good / frames.length) * 100) / 100;
 }
 
-function extractPhaseSource(phases: any[] | undefined): string {
+function extractPhaseSource(phases: DetectedPhase[] | undefined): string {
   if (!phases || phases.length === 0) return 'none';
-  const sources = phases.map((p: any) => p.source).filter(Boolean);
-  if (sources.every((s: string) => s === 'heuristic')) return 'heuristic';
-  if (sources.every((s: string) => s === 'fallback')) return 'fallback';
+  const sources = phases.map((p) => p.source).filter(Boolean);
+  if (sources.every((s) => s === 'heuristic')) return 'heuristic';
+  if (sources.every((s) => s === 'fallback')) return 'fallback';
   return 'mixed';
 }
 
@@ -75,7 +76,7 @@ export async function persistSwing(
     phases: analysis.phases ?? null,
     backswing_ms: analysis.tempo?.backswingMs ? Math.round(analysis.tempo.backswingMs) : null,
     downswing_ms: analysis.tempo?.downswingMs ? Math.round(analysis.tempo.downswingMs) : null,
-    tempo_ratio: analysis.tempo?.ratio ?? null,
+    tempo_ratio: analysis.tempo?.tempoRatio ?? null,
     pose_success_rate: calcPoseSuccessRate(frames),
     phase_source: extractPhaseSource(analysis.phases),
     failure_reason: classification?.reason ?? null,
@@ -95,14 +96,14 @@ export async function persistSwing(
 
   const { data, error } = await supabase.from('swings').insert(row).select('id').single();
 
-  if (error) {
-    console.error('[HoneySwing] persistSwing error:', error.message);
-  } else {
-    console.log('[HoneySwing] Swing persisted, frames:', frames.length);
-  }
-
-  // Always increment local count for anonymous limit tracking
+  // Always increment local count for anonymous limit tracking, even on DB error
   await incrementLocalSwingCount();
 
+  if (error) {
+    console.error('[HoneySwing] persistSwing DB error:', error.message);
+    throw new Error(`persistSwing failed: ${error.message}`);
+  }
+
+  console.log('[HoneySwing] Swing persisted, frames:', frames.length);
   return data?.id ?? null;
 }
