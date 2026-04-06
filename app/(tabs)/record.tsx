@@ -192,6 +192,10 @@ export default function RecordTab() {
             const result = classifyCameraAngle(smoothed);
             setGuidanceColor(result.color);
             setGuidanceLabel(result.label);
+          } else {
+            smoothedSepRef.current = null;
+            setGuidanceColor(null);
+            setGuidanceLabel(null);
           }
         }
       }
