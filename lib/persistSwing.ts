@@ -8,8 +8,17 @@ import { getCoachCode, resolveCoachName } from './coachCode';
 import { getIsLeftHanded } from './handedness';
 import { getFrequencyDebugInfo } from './tipFrequency';
 import { positiveReinforcementEngine } from './positiveReinforcement';
+import type { CameraGuidanceColor } from './cameraGuidance';
+import { sessionAccumulator } from './sessionAccumulator';
+import { getAgeTier } from './ageTier';
 
 const APP_VERSION = '1.8';
+
+/** Optional camera guidance snapshot from Task 13 */
+export interface CameraGuidanceSnapshot {
+  camera_angle_at_start: number | null;
+  camera_guidance_color: CameraGuidanceColor | null;
+}
 
 const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS = [
@@ -46,6 +55,7 @@ export async function persistSwing(
   frames: PoseFrame[],
   analysis: AnalysisResult,
   classification: CaptureClassification | null,
+  cameraGuidance?: CameraGuidanceSnapshot,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -63,6 +73,7 @@ export async function persistSwing(
   const coachCode = await getCoachCode();
   const coachName = resolveCoachName(coachCode);
   const isLeftHanded = await getIsLeftHanded();
+  const ageTier = await getAgeTier();
 
   const row: Record<string, unknown> = {
     ...(profileId ? { user_id: profileId } : {}),
@@ -91,6 +102,11 @@ export async function persistSwing(
       ...analysis.swing_debug,
       ...getFrequencyDebugInfo(),
       positiveReinforcement: positiveReinforcementEngine.buildDebugInfo(),
+      camera_angle_at_start: cameraGuidance?.camera_angle_at_start ?? null,
+      camera_guidance_color: cameraGuidance?.camera_guidance_color ?? null,
+      session_swing_number: sessionAccumulator.swingCount + 1,
+      session_insight_shown: null, // Set by result screen after persist — logged to Metro
+      age_tier: ageTier,
     },
   };
 

@@ -13,4 +13,5 @@ export const STORAGE_KEYS = {
   subscriptionStatus: 'honeyswing:subscriptionStatus',
   localSwingCount: 'honeyswing:localSwingCount',
   todaysFocus: 'honeyswing:todaysFocus',
+  ageTier: 'honeyswing:ageTier',
 } as const;

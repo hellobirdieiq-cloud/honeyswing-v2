@@ -22,6 +22,8 @@ import {
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
+import CameraGuidance from '../../components/CameraGuidance';
+import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { persistSwing } from '../../lib/persistSwing';
 import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
 import { classifyCapture } from '../../lib/captureValidity';
@@ -95,6 +97,15 @@ export default function RecordTab() {
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
+
+  // Camera guidance (Task 13) — EMA-smoothed shoulder separation
+  const smoothedSepRef = useRef<number | null>(null);
+  const [guidanceColor, setGuidanceColor] = useState<CameraGuidanceColor | null>(null);
+  const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
+  const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
+    separation: null,
+    color: null,
+  });
 
   function updateCapturePhase(nextPhase: CapturePhase) {
     capturePhaseRef.current = nextPhase;
@@ -171,6 +182,18 @@ export default function RecordTab() {
       // Update skeleton overlay with raw landmarks every frame
       if (Array.isArray(landmarks)) {
         updateLandmarks(landmarks as Landmark[]);
+
+        // Camera guidance: update EMA shoulder separation during pre-recording
+        if (capturePhaseRef.current === 'idle' || capturePhaseRef.current === 'countdown') {
+          const sep = extractShoulderSeparation(landmarks as Landmark[]);
+          if (sep !== null) {
+            const smoothed = emaSmooth(smoothedSepRef.current, sep);
+            smoothedSepRef.current = smoothed;
+            const result = classifyCameraAngle(smoothed);
+            setGuidanceColor(result.color);
+            setGuidanceLabel(result.label);
+          }
+        }
       }
 
       if (capturePhaseRef.current !== 'capturing') {
@@ -251,7 +274,10 @@ export default function RecordTab() {
     updateCapturePhase('complete');
 
     const classification = classifyCapture(frames);
-    swingIdPromiseRef.current = persistSwing(frames, analysis, classification).catch((err) => {
+    swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
+      camera_angle_at_start: guidanceSnapshotRef.current.separation,
+      camera_guidance_color: guidanceSnapshotRef.current.color,
+    }).catch((err) => {
       console.error('[HoneySwing] Swing persistence failed:', err.message);
       return null;
     });
@@ -272,6 +298,12 @@ export default function RecordTab() {
     videoUriRef.current = undefined;
     navigatedRef.current = false;
     frameSkipCounter.value = 0;
+
+    // Snapshot camera guidance state for swing_debug
+    guidanceSnapshotRef.current = {
+      separation: smoothedSepRef.current,
+      color: guidanceColor,
+    };
 
     startCapture();
     cameraRef.current?.startRecording({
@@ -463,6 +495,9 @@ export default function RecordTab() {
             height={containerH}
             frameAspect={frameAspectState}
           />
+          {capturePhase === 'idle' && cameraReady && (
+            <CameraGuidance color={guidanceColor} label={guidanceLabel} />
+          )}
           <GestureDetector gesture={pinchGesture}>
             <Animated.View style={StyleSheet.absoluteFill} />
           </GestureDetector>

@@ -14,6 +14,15 @@ import { supabase, deleteAccount } from '../lib/supabase';
 import { getCoachCode, clearCoachCode, resolveCoachName } from '../lib/coachCode';
 import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
+import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
+import { tipFrequencyLimiter } from '../lib/tipFrequency';
+
+const AGE_TIER_LABELS: Record<AgeTier, string> = {
+  junior: 'Little Kid (6-8)',
+  youth: 'Kid (9-12)',
+  teen: 'Teen (13-17)',
+  adult: 'Adult (18+)',
+};
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -22,11 +31,13 @@ export default function SettingsScreen() {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
 
   useFocusEffect(
     useCallback(() => {
       getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
       getIsLeftHanded().then(setIsLeftHandedState).catch(() => {});
+      getAgeTier().then(setAgeTierState).catch(() => {});
       supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch(() => {});
     }, []),
   );
@@ -85,6 +96,7 @@ export default function SettingsScreen() {
                 STORAGE_KEYS.coachCode,
                 STORAGE_KEYS.pendingReferralCode,
                 STORAGE_KEYS.subscriptionStatus,
+                STORAGE_KEYS.ageTier,
               ]);
               router.replace('/(tabs)' as Href);
             } catch (err: unknown) {
@@ -154,6 +166,28 @@ export default function SettingsScreen() {
             <Text style={styles.removeCoachText}>Remove Coach</Text>
           </TouchableOpacity>
         ) : null}
+      </View>
+
+      <View style={styles.handednessSection}>
+        <Text style={styles.coachLabel}>Player age</Text>
+        <View style={styles.ageTierRow}>
+          {(Object.entries(AGE_TIER_LABELS) as [AgeTier, string][]).map(([tier, label]) => (
+            <TouchableOpacity
+              key={tier}
+              style={[styles.ageTierOption, ageTier === tier && styles.optionSelected]}
+              onPress={() => {
+                setAgeTierState(tier);
+                persistAgeTier(tier).catch(() => {});
+                tipFrequencyLimiter.setAgeTier(tier);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.ageTierText, ageTier === tier && styles.optionTextSelected]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.handednessSection}>
@@ -305,6 +339,25 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
     fontWeight: '500',
+  },
+  ageTierRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  ageTierOption: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  ageTierText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
   },
   handednessSection: {
     marginTop: 32,

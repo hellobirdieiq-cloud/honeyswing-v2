@@ -20,8 +20,9 @@ platform :ios, podfile_properties['ios.deploymentTarget'] || '15.1'
 
 prepare_react_native_project!
 
-target 'HoneySwingV2' do
+target 'honeyswing' do
   use_expo_modules!
+  pod 'MediaPipeTasksVision', '~> 0.10.9'
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
@@ -43,9 +44,6 @@ target 'HoneySwingV2' do
 
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
-
-  # MediaPipe Pose Landmarker (BlazePose GHUM, 33 landmarks)
-  pod 'MediaPipeTasksVision', '~> 0.10.14'
 
   use_react_native!(
     :path => config[:reactNativePath],

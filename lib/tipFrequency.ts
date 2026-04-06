@@ -26,33 +26,11 @@
  */
 
 import { shouldShowMetric as angleGatingShouldShow } from '../packages/domain/swing/angleGating';
+export type { SwingConfidence } from '../packages/domain/swing/confidenceScore';
+export type { CameraAngleResult } from '../packages/domain/swing/cameraAngle';
 
-// ---------------------------------------------------------------------------
-// Task 6 types (match swingConfidence.ts / cameraAngle.ts exports)
-// ---------------------------------------------------------------------------
-
-/** Confidence tier from Task 6's composite confidence score */
-export type ConfidenceTier = 'low' | 'medium' | 'high';
-
-/** Per-swing confidence breakdown from Task 6 */
-export interface SwingConfidence {
-  overall: number; // 0-1
-  tier: ConfidenceTier;
-  components: {
-    jointVisibility: number;
-    phaseDetection: number;
-    frameCoverage: number;
-    cameraAngle: number;
-  };
-}
-
-/** Camera angle detection result from Task 6 */
-export interface CameraAngleResult {
-  estimatedAngle: number | null; // degrees 0-90, null = unknown
-  category: 'face_on' | 'three_quarter' | 'dtl' | 'unknown';
-  confidence: number; // 0-1
-  perMetricWeights: Record<string, number>; // metric → 0-1 reliability
-}
+import type { SwingConfidence } from '../packages/domain/swing/confidenceScore';
+import type { CameraAngleResult } from '../packages/domain/swing/cameraAngle';
 
 /**
  * Task 6 gate function signature.
@@ -70,8 +48,8 @@ export type ShouldShowMetricFn = (
 
 export type TipDisplayTier = 'full' | 'shortened' | 'suppressed';
 
-/** Age tier determines which limit table to use */
-export type AgeTier = 'youth' | 'teen' | 'adult';
+/** Age tier determines which limit table and language variant to use */
+export type AgeTier = 'junior' | 'youth' | 'teen' | 'adult';
 
 // ---------------------------------------------------------------------------
 // Internal tracking types
@@ -148,6 +126,20 @@ export interface ProcessedCoachingTip {
  * Zero = never show for this age tier.
  */
 const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
+  junior: {
+    grip: 15,
+    posture: 10,
+    tempo: 8,
+    balance: 8,
+    armExtension: 3,
+    shoulderTilt: 2,
+    hipRotation: 1,
+    kneeFlex: 3,
+    elbow: 1,
+    spineAngle: 0,
+    wristAngle: 0,
+    clubfaceAngle: 0,
+  },
   youth: {
     grip: 20,
     posture: 15,

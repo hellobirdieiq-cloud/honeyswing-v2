@@ -14,16 +14,26 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from '../lib/supabase';
 import { STORAGE_KEYS } from '../lib/storageKeys';
+import { setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
+import { tipFrequencyLimiter } from '../lib/tipFrequency';
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
 const COACH_OPTIONS = ['Dave Donnellan', 'No coach'] as const;
+
+const AGE_TIER_OPTIONS: { tier: AgeTier; label: string }[] = [
+  { tier: 'junior', label: 'Little Kid (6-8)' },
+  { tier: 'youth', label: 'Kid (9-12)' },
+  { tier: 'teen', label: 'Teen (13-17)' },
+  { tier: 'adult', label: 'Adult (18+)' },
+];
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [coach, setCoach] = useState<string>('No coach');
   const [isLeftHanded, setIsLeftHanded] = useState(false);
+  const [ageTier, setAgeTier] = useState<AgeTier>('youth');
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit() {
@@ -59,6 +69,8 @@ export default function OnboardingScreen() {
 
       await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
       await AsyncStorage.setItem(STORAGE_KEYS.isLeftHanded, String(isLeftHanded));
+      await persistAgeTier(ageTier);
+      tipFrequencyLimiter.setAgeTier(ageTier);
       if (data?.id) {
         await AsyncStorage.setItem(STORAGE_KEYS.profileId, data.id);
       }
@@ -110,6 +122,28 @@ export default function OnboardingScreen() {
               ]}
             >
               {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Age tier picker */}
+      <Text style={styles.label}>Who&apos;s swinging?</Text>
+      <View style={styles.toggleRow}>
+        {AGE_TIER_OPTIONS.map((opt) => (
+          <TouchableOpacity
+            key={opt.tier}
+            style={[styles.ageTierOption, ageTier === opt.tier && styles.optionSelected]}
+            onPress={() => setAgeTier(opt.tier)}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.ageTierText,
+                ageTier === opt.tier && styles.optionTextSelected,
+              ]}
+            >
+              {opt.label}
             </Text>
           </TouchableOpacity>
         ))}
@@ -229,7 +263,21 @@ const styles = StyleSheet.create({
   toggleRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 36,
+    marginBottom: 28,
+    flexWrap: 'wrap',
+  },
+  ageTierOption: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  ageTierText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
   },
   toggleOption: {
     flex: 1,

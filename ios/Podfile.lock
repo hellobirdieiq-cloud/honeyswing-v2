@@ -245,6 +245,8 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - ExpoSensors (15.0.8):
+    - ExpoModulesCore
   - ExpoSplashScreen (31.0.13):
     - ExpoModulesCore
   - ExpoSystemUI (6.0.9):
@@ -2316,13 +2318,14 @@ DEPENDENCIES:
   - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
   - ExpoLinking (from `../node_modules/expo-linking/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
+  - ExpoSensors (from `../node_modules/expo-sensors/ios`)
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - ExpoSystemUI (from `../node_modules/expo-system-ui/ios`)
   - ExpoVideo (from `../node_modules/expo-video/ios`)
   - EXUpdatesInterface (from `../node_modules/expo-updates-interface/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
-  - MediaPipeTasksVision (~> 0.10.14)
+  - MediaPipeTasksVision (~> 0.10.9)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTTypeSafety (from `../node_modules/react-native/Libraries/TypeSafety`)
@@ -2447,6 +2450,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-linking/ios"
   ExpoModulesCore:
     :path: "../node_modules/expo-modules-core"
+  ExpoSensors:
+    :path: "../node_modules/expo-sensors/ios"
   ExpoSplashScreen:
     :path: "../node_modules/expo-splash-screen/ios"
   ExpoSystemUI:
@@ -2630,6 +2635,7 @@ SPEC CHECKSUMS:
   ExpoKeepAwake: 55f75eca6499bb9e4231ebad6f3e9cb8f99c0296
   ExpoLinking: 8f0aaf69aa56f832913030503b6263dc6f647f37
   ExpoModulesCore: f3da4f1ab5a8375d0beafab763739dbee8446583
+  ExpoSensors: 8f9fe9a9ffd36ca9c2f0fe40dafc0a063f844420
   ExpoSplashScreen: bc3cffefca2716e5f22350ca109badd7e50ec14d
   ExpoSystemUI: 2ad325f361a2fcd96a464e8574e19935c461c9cc
   ExpoVideo: 8d9e8a1acd0c4c210e538b4355e34ae8ff5e04f7
@@ -2719,6 +2725,6 @@ SPEC CHECKSUMS:
   VisionCamera: 0044a94f7489f19e19d5938e97dfc36f4784af3c
   Yoga: 5934998fbeaef7845dbf698f698518695ab4cd1a
 
-PODFILE CHECKSUM: de66a87e5b48528c2cb7850d5962f354905eb3bd
+PODFILE CHECKSUM: d2723b94b4155674f04926d5d711deb6a708db6a
 
 COCOAPODS: 1.16.2

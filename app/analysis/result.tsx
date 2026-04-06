@@ -27,12 +27,14 @@ import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
 import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
-import { processSwingTips, type RawCoachingTip, type ProcessedCoachingTip, type ShouldShowMetricFn } from '../../lib/tipFrequency';
+import { processSwingTips, type RawCoachingTip, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import type { ScoringBreakdownEntry } from '../../packages/domain/swing/scoring';
 import SwingArtCard from '../../components/SwingArtCard';
 import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
+import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
+import { getCachedAgeTier, type AgeTier } from '../../lib/ageTier';
 
 /** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
 function frameToLandmarks(frame: PoseFrame): Landmark[] {
@@ -83,35 +85,42 @@ const METRIC_KEY_MAP: Record<string, string> = {
   tempo: 'tempo',
 };
 
-/** Static coaching text keyed by scoring metric name */
-const COACHING_TEXT: Record<string, { title: string; body: string }> = {
+/** Static coaching text keyed by scoring metric name. juniorBody for ages 6-8. */
+const COACHING_TEXT: Record<string, { title: string; body: string; juniorBody?: string }> = {
   spineAngle: {
     title: 'Spine Tilt',
     body: 'Check your spine angle at address — aim for an athletic tilt, not too upright or hunched.',
+    juniorBody: 'Stand tall like an athlete',
   },
   leftElbowAngle: {
     title: 'Lead Arm',
     body: 'Keep your lead arm straighter through the swing for better extension.',
+    juniorBody: 'Try keeping your front arm straight',
   },
   rightElbowAngle: {
     title: 'Trail Arm',
     body: 'Let your trail arm fold naturally at the top and extend through impact.',
+    juniorBody: 'Let your back arm bend and stretch',
   },
   leftKneeAngle: {
     title: 'Lead Knee',
     body: 'Check your lead knee flex at setup — stay athletic, not locked or crouched.',
+    juniorBody: 'Bend your front knee a little',
   },
   rightKneeAngle: {
     title: 'Trail Knee',
     body: 'Soften your trail knee at address to help your rotation.',
+    juniorBody: 'Keep your back knee soft',
   },
   shoulderTilt: {
     title: 'Shoulders',
     body: 'Work on leveling your shoulders at address for a more consistent swing.',
+    juniorBody: 'Keep your shoulders more level',
   },
   tempo: {
     title: 'Tempo',
     body: 'Smooth out your tempo — aim for a controlled backswing and accelerating downswing.',
+    juniorBody: 'Nice and slow going back',
   },
 };
 
@@ -121,7 +130,7 @@ const COACHING_TEXT: Record<string, { title: string; body: string }> = {
  * (e.g. leftElbowAngle + rightElbowAngle both map to 'elbow') by keeping
  * the worse-scoring entry.
  */
-function buildRawTips(breakdown: ScoringBreakdownEntry[]): RawCoachingTip[] {
+function buildRawTips(breakdown: ScoringBreakdownEntry[], ageTier: AgeTier): RawCoachingTip[] {
   // Collect worst score per mapped metricKey
   const best: Map<string, { scoringMetric: string; score: number }> = new Map();
 
@@ -138,14 +147,15 @@ function buildRawTips(breakdown: ScoringBreakdownEntry[]): RawCoachingTip[] {
     }
   }
 
+  const useJunior = ageTier === 'junior';
   const tips: RawCoachingTip[] = [];
   for (const [mappedKey, { scoringMetric }] of best) {
     const text = COACHING_TEXT[scoringMetric]!;
     tips.push({
       metricKey: mappedKey,
       title: text.title,
-      body: text.body,
-      shortBody: '', // resolveShortBody will use SHORT_BODY_FALLBACKS
+      body: useJunior && text.juniorBody ? text.juniorBody : text.body,
+      shortBody: useJunior && text.juniorBody ? text.juniorBody : '',
     });
   }
   return tips;
@@ -162,6 +172,7 @@ export default function ResultScreen() {
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
 
+
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
     p.playbackRate = 0.25;
@@ -175,6 +186,7 @@ export default function ResultScreen() {
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded).catch(() => {});
     getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
+
     // Check swing limit after this swing was persisted
     checkSwingLimit().then((status) => {
       if (!status.allowed) {
@@ -223,15 +235,16 @@ export default function ResultScreen() {
     positiveResult: ProcessSwingResult;
   }>(() => {
     if (!analysis) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
+    const ageTier = getCachedAgeTier();
     const breakdown = analysis.swing_debug?.scoring_breakdown;
     if (!breakdown) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
-    const rawTips = buildRawTips(breakdown);
+    const rawTips = buildRawTips(breakdown, ageTier);
     const estimatedAngleDeg = analysis.swing_debug?.foreshortening?.estimatedAngleDegrees ?? null;
     const tips = processSwingTips(
       rawTips,
-      shouldShowMetric as unknown as ShouldShowMetricFn,
+      shouldShowMetric,
       analysis.swingConfidence,
-      analysis.cameraAngleResult as any,
+      analysis.cameraAngleResult,
       estimatedAngleDeg,
     );
 
@@ -259,6 +272,24 @@ export default function ResultScreen() {
 
     return { processedTips: tips, positiveResult: posResult };
   }, [analysis]);
+
+  // Task 14: Session accumulator — feed swing data and compute insight
+  const sessionInsight = useMemo<SessionInsight | null>(() => {
+    if (!analysis) return null;
+    const firedMetricKeys = processedTips.map(t => t.metricKey);
+    sessionAccumulator.addSwing(analysis, firedMetricKeys);
+
+    // Only show session insight if no high-priority correction tip
+    const hasHighPriorityTip = processedTips.length > 0 &&
+      (analysis.swingConfidence?.overall ?? 0) >= 0.75;
+    if (hasHighPriorityTip) return null;
+
+    const insight = sessionAccumulator.getInsight();
+    if (insight) {
+      console.log('[sessionInsight]', insight.type, insight.metricKey, insight.message);
+    }
+    return insight;
+  }, [analysis, processedTips]);
 
   // Metro log for verification before tip UI exists
   useEffect(() => {
@@ -368,6 +399,10 @@ export default function ResultScreen() {
             {positiveResult.card ? (
               <View style={styles.positiveCard}>
                 <Text style={styles.positiveCardText}>{positiveResult.card.message}</Text>
+              </View>
+            ) : sessionInsight ? (
+              <View style={styles.sessionInsightCard}>
+                <Text style={styles.sessionInsightText}>{sessionInsight.message}</Text>
               </View>
             ) : (
               keyLandmarks.length > 0 && (
@@ -633,6 +668,21 @@ const styles = StyleSheet.create({
     color: '#c8a951',
     fontSize: 24,
     fontWeight: '700' as const,
+    textAlign: 'center' as const,
+  },
+  sessionInsightCard: {
+    backgroundColor: '#1a2a3a',
+    borderWidth: 1,
+    borderColor: '#5b9bd5',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: 'center' as const,
+  },
+  sessionInsightText: {
+    color: '#b8d4f0',
+    fontSize: 18,
+    fontWeight: '600' as const,
     textAlign: 'center' as const,
   },
 

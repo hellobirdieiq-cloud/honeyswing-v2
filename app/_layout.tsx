@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AppState, Linking } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,7 +8,12 @@ import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribu
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
 import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
+import { sessionAccumulator } from '../lib/sessionAccumulator';
 import { STORAGE_KEYS } from '../lib/storageKeys';
+import { getAgeTier } from '../lib/ageTier';
+
+/** Session resets after this many ms in background */
+const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
@@ -47,6 +52,9 @@ export default function RootLayout() {
   useEffect(() => {
     async function init() {
       configurePurchases();
+
+      // Task 15: load age tier and apply to frequency limiter
+      getAgeTier().then((tier) => tipFrequencyLimiter.setAgeTier(tier)).catch(() => {});
 
       // Check for magic link or referral link that opened the app (cold start)
       const initialUrl = await Linking.getInitialURL();
@@ -106,12 +114,22 @@ export default function RootLayout() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Task 7: reset tip frequency limiter when app returns from background
+  // Task 7 + 14: reset tip frequency, positive reinforcement, and session accumulator
+  const backgroundAtRef = useRef<number | null>(null);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'background' || state === 'inactive') {
+        backgroundAtRef.current = Date.now();
+      } else if (state === 'active') {
         tipFrequencyLimiter.reset();
         positiveReinforcementEngine.reset();
+
+        // Task 14: reset session accumulator if backgrounded >5 minutes
+        const bg = backgroundAtRef.current;
+        if (bg !== null && Date.now() - bg >= SESSION_TIMEOUT_MS) {
+          sessionAccumulator.reset();
+        }
+        backgroundAtRef.current = null;
       }
     });
     return () => sub.remove();
