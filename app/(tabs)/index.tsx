@@ -42,7 +42,6 @@ export default function TabsHomeScreen() {
 
       <View style={styles.hero}>
         <Text style={styles.title}>HoneySwing</Text>
-        <Text style={styles.subtitle}>Your pocket swing coach</Text>
       </View>
 
       {focus && (
@@ -159,11 +158,6 @@ const styles = StyleSheet.create({
     fontSize: 36,
     fontWeight: '800',
     marginBottom: 8,
-  },
-  subtitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '500',
   },
   focusCard: {
     backgroundColor: '#1A1A1C',

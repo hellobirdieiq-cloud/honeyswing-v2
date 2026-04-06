@@ -12,7 +12,7 @@ import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
 
-const APP_VERSION = '1.8';
+const APP_VERSION = '1.9';
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {
