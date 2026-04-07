@@ -27,6 +27,7 @@ const AGE_TIER_LABELS: Record<AgeTier, string> = {
 export default function SettingsScreen() {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
@@ -74,6 +75,29 @@ export default function SettingsScreen() {
     } finally {
       setRestoring(false);
     }
+  }
+
+  function handleSignOut() {
+    Alert.alert('Sign Out?', 'You will need to sign in again to access your account.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          try {
+            await supabase.auth.signOut();
+            router.replace('/(tabs)' as Href);
+          } catch (err: unknown) {
+            const message =
+              err instanceof Error ? err.message : 'Something went wrong';
+            Alert.alert('Error', message);
+          } finally {
+            setSigningOut(false);
+          }
+        },
+      },
+    ]);
   }
 
   function handleDelete() {
@@ -128,6 +152,16 @@ export default function SettingsScreen() {
         <View style={styles.accountSection}>
           <Text style={styles.coachLabel}>Account</Text>
           <Text style={styles.coachStatus}>{userEmail}</Text>
+          <TouchableOpacity
+            style={styles.signOutButton}
+            onPress={handleSignOut}
+            disabled={signingOut}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.signOutText}>
+              {signingOut ? 'Signing Out...' : 'Sign Out'}
+            </Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <View style={styles.accountSection}>
@@ -257,6 +291,20 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   accountSection: {
     marginTop: 0,
+  },
+  signOutButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  signOutText: {
+    color: '#CC2222',
+    fontSize: 14,
+    fontWeight: '500',
   },
   signInButton: {
     marginTop: 12,

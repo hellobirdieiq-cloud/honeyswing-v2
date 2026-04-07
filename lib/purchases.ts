@@ -31,7 +31,10 @@ export async function syncAuthState(userId: string | null): Promise<void> {
     if (userId) {
       await Purchases.logIn(userId);
     } else {
-      await Purchases.logOut();
+      const customerInfo = await Purchases.getCustomerInfo();
+      if (!customerInfo.originalAppUserId.startsWith('$RCAnonymousID')) {
+        await Purchases.logOut();
+      }
     }
   } catch (e) {
     console.error('[HoneySwing] RevenueCat auth sync error:', e);

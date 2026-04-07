@@ -34,15 +34,20 @@ function extractTokensFromUrl(url: string): { accessToken: string; refreshToken:
 async function handleAuthUrl(url: string): Promise<boolean> {
   const tokens = extractTokensFromUrl(url);
   if (!tokens) return false;
-  const { error } = await supabase.auth.setSession({
-    access_token: tokens.accessToken,
-    refresh_token: tokens.refreshToken,
-  });
-  if (error) {
-    console.error('[HoneySwing] setSession error:', error.message);
-    return false;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { error } = await supabase.auth.setSession({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+    });
+    if (!error) {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session !== null;
+    }
+    console.error('[HoneySwing] setSession error (attempt ' + (attempt + 1) + '):', error.message);
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
   }
-  return true;
+  return false;
 }
 
 export default function RootLayout() {
@@ -85,16 +90,13 @@ export default function RootLayout() {
 
     // Listen for magic link while app is already open (warm start)
     const subscription = Linking.addEventListener('url', async ({ url }) => {
-      const success = await handleAuthUrl(url);
-      if (success) {
-        const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
-        if (!onboarded) {
-          router.replace('/onboarding' as Href);
-        } else {
-          router.replace('/(tabs)' as Href);
-        }
-        return;
-      }
+      await handleAuthUrl(url);
+
+      // Auth URLs: let onAuthStateChange own post-auth navigation.
+      // handleAuthUrl may return false even though SIGNED_IN already fired
+      // (setSession triggers onAuthStateChange as a side effect before resolving).
+      if (url.includes('#access_token=')) return;
+
       await handleReferralUrl(url);
       router.replace('/(tabs)' as Href);
     });
@@ -104,13 +106,18 @@ export default function RootLayout() {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event) => {
+      async (event, session) => {
         try {
           if (event === 'SIGNED_IN') {
             await commitPendingReferral();
-            const { data: { user } } = await supabase.auth.getUser();
+            const user = session?.user ?? null;
             if (user) await syncAuthState(user.id);
             router.replace('/(tabs)' as Href);
+          } else if (event === 'INITIAL_SESSION') {
+            const user = session?.user ?? null;
+            if (user) {
+              await syncAuthState(user.id);
+            }
           } else if (event === 'SIGNED_OUT') {
             await syncAuthState(null);
           }
