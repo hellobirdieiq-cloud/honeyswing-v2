@@ -152,16 +152,7 @@ export default function RecordTab() {
       frameWidth: number,
       frameHeight: number
     ) => {
-      // Throttle logging to once every 60 frames
       frameCountRef.current += 1;
-      if (frameCountRef.current % 60 === 1) {
-        console.log('[HoneySwing] FRAME PROCESSOR frame #' + frameCountRef.current + ' ' + frameWidth + 'x' + frameHeight + ' landmarks=' + (Array.isArray(landmarks) ? landmarks.length : 0));
-      }
-
-      // Surface native-side timing data (piped through return value every 30th frame)
-      if (Array.isArray(landmarks) && (landmarks[0] as any)?.debugTotalMs != null) {
-        console.log('[HoneySwing Timing] inference=' + (landmarks[0] as any).debugInferenceMs + 'ms total=' + (landmarks[0] as any).debugTotalMs + 'ms');
-      }
 
       // Surface native-side diagnostics
       if (Array.isArray(landmarks) && landmarks.length === 1 && (landmarks[0] as any)?._diagnostic) {
