@@ -78,6 +78,8 @@ export default function RecordTab() {
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [showCameraHint, setShowCameraHint] = useState(false);
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
@@ -398,7 +400,12 @@ export default function RecordTab() {
       }
       
       if (mounted) {
-        setHasPermission(status === 'granted');
+        const granted = status === 'granted';
+        setHasPermission(granted);
+        if (granted) {
+          setIsCameraActive(false);
+          setTimeout(() => { if (mounted) setIsCameraActive(true); }, 150);
+        }
       }
     }
 
@@ -409,6 +416,15 @@ export default function RecordTab() {
       clearTimers();
     };
   }, []);
+
+  // Fallback banner: show after 5s if camera hasn't initialized
+  useEffect(() => {
+    if (hasPermission && !cameraReady) {
+      const timer = setTimeout(() => setShowCameraHint(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (cameraReady) setShowCameraHint(false);
+  }, [hasPermission, cameraReady]);
 
   const allDevices = useCameraDevices();
   const ultraWide = allDevices.find(d => d.name === 'Back Ultra Wide Camera');
@@ -478,7 +494,7 @@ export default function RecordTab() {
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
             device={device}
-            isActive={true}
+            isActive={isCameraActive}
             animatedProps={animatedCameraProps}
             format={format}
             fps={targetFps}
@@ -500,6 +516,11 @@ export default function RecordTab() {
           <GestureDetector gesture={pinchGesture}>
             <Animated.View style={StyleSheet.absoluteFill} />
           </GestureDetector>
+          {showCameraHint && (
+            <View style={styles.cameraHintBanner} pointerEvents="none">
+              <Text style={styles.cameraHintText}>Camera not loading? Close and reopen the app.</Text>
+            </View>
+          )}
         </>
       ) : (
         <View style={styles.placeholder}>
@@ -760,5 +781,22 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 12,
+  },
+  cameraHintBanner: {
+    position: 'absolute',
+    top: 80,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  cameraHintText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });

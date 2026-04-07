@@ -38,6 +38,8 @@ export default function GripCaptureScreen() {
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [showCameraHint, setShowCameraHint] = useState(false);
   const [phase, setPhase] = useState<Phase>('camera');
   const [countdownValue, setCountdownValue] = useState(3);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -104,11 +106,27 @@ export default function GripCaptureScreen() {
       if (status === 'not-determined') {
         status = await Camera.requestCameraPermission();
       }
-      if (mounted) setHasPermission(status === 'granted');
+      if (mounted) {
+        const granted = status === 'granted';
+        setHasPermission(granted);
+        if (granted) {
+          setIsCameraActive(false);
+          setTimeout(() => { if (mounted) setIsCameraActive(true); }, 150);
+        }
+      }
     }
     checkPermission();
     return () => { mounted = false; };
   }, []);
+
+  // Fallback banner: show after 5s if camera hasn't initialized
+  useEffect(() => {
+    if (hasPermission && !cameraReady) {
+      const timer = setTimeout(() => setShowCameraHint(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (cameraReady) setShowCameraHint(false);
+  }, [hasPermission, cameraReady]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -318,13 +336,19 @@ export default function GripCaptureScreen() {
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         device={device}
-        isActive={phase !== 'preview'}
+        isActive={isCameraActive && phase !== 'preview'}
         photo={true}
         video={false}
         audio={false}
         onInitialized={() => setCameraReady(true)}
         frameProcessor={frameProcessor}
       />
+
+      {showCameraHint && (
+        <View style={styles.cameraHintBanner} pointerEvents="none">
+          <Text style={styles.cameraHintText}>Camera not loading? Close and reopen the app.</Text>
+        </View>
+      )}
 
       <TouchableWithoutFeedback onPress={handleTapToFocus}>
         <View style={styles.touchLayer}>
@@ -550,5 +574,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Courier',
     lineHeight: 18,
+  },
+  cameraHintBanner: {
+    position: 'absolute',
+    top: 80,
+    left: 24,
+    right: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  cameraHintText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
