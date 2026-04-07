@@ -15,7 +15,7 @@
 
 export type CameraGuidanceColor = 'good' | 'borderline' | 'poor';
 
-export interface CameraGuidanceResult {
+interface CameraGuidanceResult {
   color: CameraGuidanceColor;
   label: string;
 }

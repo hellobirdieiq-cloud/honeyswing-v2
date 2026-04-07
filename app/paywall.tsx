@@ -73,7 +73,7 @@ export default function PaywallScreen() {
   const annualPrice = annual?.product.priceString ?? '$59.99';
   const annualMonthly = annual
     ? `$${(annual.product.price / 12).toFixed(2)}/mo`
-    : '$5.00/mo'; // TODO: fallback is hardcoded
+    : '$5.00/mo'; // Hardcoded fallback shown until RevenueCat offerings load (matches $59.99/12)
 
   return (
     <View style={styles.container}>
