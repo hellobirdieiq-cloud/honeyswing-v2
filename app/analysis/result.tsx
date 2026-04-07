@@ -302,7 +302,7 @@ export default function ResultScreen() {
   useEffect(() => {
     if (!angles) return;
     const focus = computeFocus(angles);
-    if (focus) saveFocus(focus);
+    if (focus) saveFocus(focus).catch((err) => console.error('[HoneySwing]', err));
   }, [angles]);
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;

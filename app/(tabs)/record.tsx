@@ -367,6 +367,13 @@ export default function RecordTab() {
       }
       tipSessionsSeen += 1;
       setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
+
+      // Re-check swing limit on every focus (e.g., after "Record Again")
+      checkSwingLimit().then((status) => {
+        if (!status.allowed) {
+          router.replace('/paywall' as Href);
+        }
+      }).catch(() => {});
     }, [])
   );
 
