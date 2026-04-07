@@ -155,9 +155,10 @@ export default function RecordTab() {
       frameCountRef.current += 1;
 
       // Surface native-side diagnostics
-      if (Array.isArray(landmarks) && landmarks.length === 1 && (landmarks[0] as any)?._diagnostic) {
+      const firstLandmark = Array.isArray(landmarks) && landmarks.length === 1 ? landmarks[0] as Record<string, unknown> : null;
+      if (firstLandmark && '_diagnostic' in firstLandmark) {
         if (frameCountRef.current % 60 === 1) {
-          console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + (landmarks[0] as any)._diagnostic);
+          console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + String(firstLandmark._diagnostic));
         }
         return;
       }
