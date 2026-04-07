@@ -42,8 +42,8 @@ export default function PaywallScreen() {
       if (result.customerInfo.entitlements.active[ENTITLEMENT_ID]) {
         router.replace('/(tabs)/record' as Href);
       }
-    } catch (e: any) {
-      if (e.userCancelled) {
+    } catch (e: unknown) {
+      if (typeof e === 'object' && e !== null && 'userCancelled' in e && (e as { userCancelled?: boolean }).userCancelled) {
         // User tapped cancel — do nothing
       } else {
         Alert.alert('Purchase Failed', 'Something went wrong. Please try again.');

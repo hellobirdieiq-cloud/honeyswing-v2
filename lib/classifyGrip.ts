@@ -70,9 +70,9 @@ export async function classifyGrip(
       }),
       signal: controller.signal,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timer);
-    if (err?.name === 'AbortError') {
+    if (err instanceof Error && err.name === 'AbortError') {
       throw new GripClassifyError('timeout');
     }
     throw new GripClassifyError('network');
@@ -84,7 +84,7 @@ export async function classifyGrip(
     throw new GripClassifyError('server');
   }
 
-  let body: any;
+  let body: { success?: boolean; classification?: GripClassification };
   try {
     body = await response.json();
   } catch {
@@ -97,5 +97,5 @@ export async function classifyGrip(
     throw new GripClassifyError('server');
   }
 
-  return body.classification as GripClassification;
+  return body.classification;
 }
