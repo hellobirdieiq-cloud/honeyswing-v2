@@ -29,7 +29,7 @@ export default function PaywallScreen() {
         setAnnual(current.annual ?? null);
       }
       setLoading(false);
-    });
+    }).catch((err) => console.error('[HoneySwing] getOfferings failed', err));
   }, []);
 
   async function handlePurchase() {
