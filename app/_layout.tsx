@@ -78,7 +78,10 @@ export default function RootLayout() {
       }
     }
 
-    init();
+    init().catch((err) => {
+      console.error('[HoneySwing] init crashed:', err);
+      SplashScreen.hideAsync();
+    });
 
     // Listen for magic link while app is already open (warm start)
     const subscription = Linking.addEventListener('url', async ({ url }) => {
@@ -90,6 +93,7 @@ export default function RootLayout() {
         } else {
           router.replace('/(tabs)' as Href);
         }
+        return;
       }
       await handleReferralUrl(url);
       router.replace('/(tabs)' as Href);
@@ -101,13 +105,17 @@ export default function RootLayout() {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event) => {
-        if (event === 'SIGNED_IN') {
-          await commitPendingReferral();
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) await syncAuthState(user.id);
-          router.replace('/(tabs)' as Href);
-        } else if (event === 'SIGNED_OUT') {
-          await syncAuthState(null);
+        try {
+          if (event === 'SIGNED_IN') {
+            await commitPendingReferral();
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) await syncAuthState(user.id);
+            router.replace('/(tabs)' as Href);
+          } else if (event === 'SIGNED_OUT') {
+            await syncAuthState(null);
+          }
+        } catch (err) {
+          console.error('[HoneySwing] auth state change error:', err);
         }
       }
     );
