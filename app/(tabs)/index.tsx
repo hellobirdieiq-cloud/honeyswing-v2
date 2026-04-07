@@ -23,10 +23,10 @@ export default function TabsHomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadFocus().then(setFocus).catch(() => {});
+      loadFocus().then(setFocus).catch((err) => console.error('[HoneySwing]', err));
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
     }, []),
   );
 

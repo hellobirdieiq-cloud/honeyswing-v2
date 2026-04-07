@@ -304,8 +304,8 @@ export default function RecordTab() {
         videoUriRef.current = video.path;
         // Background upload — never blocks navigation
         swingIdPromiseRef.current?.then((swingId) => {
-          if (swingId) uploadSwingVideo(swingId, video.path).catch(() => {});
-        }).catch(() => {});
+          if (swingId) uploadSwingVideo(swingId, video.path).catch((err) => console.error('[HoneySwing]', err));
+        }).catch((err) => console.error('[HoneySwing]', err));
         tryNavigate();
       },
       onRecordingError: (e) => console.error('REC ERR:', e),
@@ -365,7 +365,7 @@ export default function RecordTab() {
         if (!status.allowed) {
           router.replace('/paywall' as Href);
         }
-      }).catch(() => {});
+      }).catch((err) => console.error('[HoneySwing]', err));
     }, [])
   );
 

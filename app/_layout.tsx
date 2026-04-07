@@ -54,7 +54,7 @@ export default function RootLayout() {
       configurePurchases();
 
       // Task 15: load age tier and apply to frequency limiter
-      getAgeTier().then((tier) => tipFrequencyLimiter.setAgeTier(tier)).catch(() => {});
+      getAgeTier().then((tier) => tipFrequencyLimiter.setAgeTier(tier)).catch((err) => console.error('[HoneySwing]', err));
 
       // Check for magic link or referral link that opened the app (cold start)
       const initialUrl = await Linking.getInitialURL();

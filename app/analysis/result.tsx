@@ -184,19 +184,17 @@ export default function ResultScreen() {
   }, [speed, player]);
 
   useEffect(() => {
-    getIsLeftHanded().then(setIsLeftHanded).catch(() => {});
-    getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
+    getIsLeftHanded().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
+    getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
 
     // Check swing limit after this swing was persisted
     checkSwingLimit().then((status) => {
       if (!status.allowed) {
         getUser().then((user) => {
           if (!user) setLimitHit(true);
-        }).catch(() => {});
+        }).catch((err) => console.error('[HoneySwing]', err));
       }
-    }).catch(() => {
-      // On error, default to allowed (same as swingLimit.ts permissive default)
-    });
+    }).catch((err) => console.error('[HoneySwing]', err));
   }, []);
 
   const classification: CaptureClassification | null = useMemo(

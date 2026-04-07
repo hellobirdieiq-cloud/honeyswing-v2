@@ -9,7 +9,6 @@ import { STORAGE_KEYS } from './storageKeys';
 // ── Constants ────────────────────────────────────────────────────────────────
 const REVENUECAT_API_KEY = 'appl_UTzTUForArVybmyrdCmPOnGErQo';
 export const ENTITLEMENT_ID = 'pro';
-export const OFFERING_ID = 'default';
 const CACHE_KEY = STORAGE_KEYS.subscriptionStatus;
 
 // ── SDK Init ─────────────────────────────────────────────────────────────────

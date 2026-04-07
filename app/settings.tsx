@@ -35,10 +35,10 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch(() => {});
-      getIsLeftHanded().then(setIsLeftHandedState).catch(() => {});
-      getAgeTier().then(setAgeTierState).catch(() => {});
-      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch(() => {});
+      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
+      getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
+      getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
+      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch((err) => console.error('[HoneySwing]', err));
     }, []),
   );
 
@@ -177,7 +177,7 @@ export default function SettingsScreen() {
               style={[styles.ageTierOption, ageTier === tier && styles.optionSelected]}
               onPress={() => {
                 setAgeTierState(tier);
-                persistAgeTier(tier).catch(() => {});
+                persistAgeTier(tier).catch((err) => console.error('[HoneySwing]', err));
                 tipFrequencyLimiter.setAgeTier(tier);
               }}
               activeOpacity={0.7}
