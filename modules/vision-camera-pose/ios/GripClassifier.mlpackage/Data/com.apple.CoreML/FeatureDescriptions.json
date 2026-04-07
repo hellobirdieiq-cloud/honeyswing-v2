@@ -1,0 +1,24 @@
+{
+  "Inputs" : {
+    "image" : {
+      "MLFeatureShortDescription" : "--"
+    }
+  },
+  "Outputs" : {
+    "gripStyle" : {
+      "MLFeatureShortDescription" : "--"
+    },
+    "leadHand" : {
+      "MLFeatureShortDescription" : "--"
+    },
+    "trailCoverage" : {
+      "MLFeatureShortDescription" : "--"
+    }
+  },
+  "TrainingInputs" : {
+
+  },
+  "States" : {
+
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
@@ -7,7 +7,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useCameraDevices, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
-import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
+import { honeyPoseDetect, classifyGripFrames, releaseGripBuffer } from '../../modules/vision-camera-pose/src';
 import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
 import { MLKitProvider } from '../../packages/pose/providers/MLKitProvider';
 import {
@@ -23,7 +23,7 @@ import {
 } from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
-import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraGuidanceColor } from '../../lib/cameraGuidance';
+import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraGuidanceColor, GOOD_MIN, GOOD_MAX, BORDERLINE_LOW_MIN, BORDERLINE_HIGH_MAX } from '../../lib/cameraGuidance';
 import { persistSwing } from '../../lib/persistSwing';
 import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
 import { classifyCapture } from '../../lib/captureValidity';
@@ -46,7 +46,9 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   frameAspect: number;
 }) {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
-  updateRef.current = setLandmarks;
+  updateRef.current = (lms) => {
+    setLandmarks(lms);
+  };
   return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
 });
 
@@ -96,18 +98,28 @@ export default function RecordTab() {
   const navigatedRef = useRef(false);
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
+  const isFinalizingRef = useRef(false);
+
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
+
+  // Last-good-landmarks fallback for live overlay (not used during capture/analysis)
+  const lastGoodLandmarksRef = useRef<Landmark[] | null>(null);
+  const lastGoodTimestampRef = useRef(0);
+  const STALE_LANDMARK_MS = 400;
 
   // Camera guidance (Task 13) — EMA-smoothed shoulder separation
   const smoothedSepRef = useRef<number | null>(null);
   const [guidanceColor, setGuidanceColor] = useState<CameraGuidanceColor | null>(null);
   const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
+  const guidanceColorRef = useRef<CameraGuidanceColor | null>(null);
+  const guidanceLabelRef = useRef<string | null>(null);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
   });
 
   function updateCapturePhase(nextPhase: CapturePhase) {
+    console.log('[Pipeline] phase: ' + capturePhaseRef.current + ' → ' + nextPhase);
     capturePhaseRef.current = nextPhase;
     setCapturePhase(nextPhase);
   }
@@ -145,80 +157,62 @@ export default function RecordTab() {
     skeletonUpdateRef.current?.(lms);
   }, []);
 
-  const appendPoseFrame = Worklets.createRunOnJS(
-    async (
-      landmarks: unknown,
-      timestampMs: number,
-      frameWidth: number,
-      frameHeight: number
-    ) => {
-      // Throttle logging to once every 60 frames
-      frameCountRef.current += 1;
-      if (frameCountRef.current % 60 === 1) {
-        console.log('[HoneySwing] FRAME PROCESSOR frame #' + frameCountRef.current + ' ' + frameWidth + 'x' + frameHeight + ' landmarks=' + (Array.isArray(landmarks) ? landmarks.length : 0));
-      }
+  // useRef (not useMemo) — React may drop memoized values across renders, which
+  // would silently create a new Worklets bridge while the worklet closure still
+  // holds the old (dead) one.  useRef is a true identity guarantee.
+  let jsBridgeCount = 0;
+  const appendPoseFrameRef = useRef<ReturnType<typeof Worklets.createRunOnJS> | null>(null);
+  if (appendPoseFrameRef.current === null) {
+    appendPoseFrameRef.current = Worklets.createRunOnJS(
+      (
+        landmarks: unknown,
+        timestampMs: number,
+        frameWidth: number,
+        frameHeight: number,
+        aspect: number
+      ) => {
+        frameCountRef.current += 1;
 
-      // Surface native-side timing data (piped through return value every 30th frame)
-      if (Array.isArray(landmarks) && (landmarks[0] as any)?.debugTotalMs != null) {
-        console.log('[HoneySwing Timing] inference=' + (landmarks[0] as any).debugInferenceMs + 'ms total=' + (landmarks[0] as any).debugTotalMs + 'ms');
-      }
-
-      // Surface native-side diagnostics
-      if (Array.isArray(landmarks) && landmarks.length === 1 && (landmarks[0] as any)?._diagnostic) {
-        if (frameCountRef.current % 60 === 1) {
-          console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + (landmarks[0] as any)._diagnostic);
+        if (frameCountRef.current % 30 === 1) {
+          console.log('[PoseLive] frame=' + frameCountRef.current + ' landmarks=' + (Array.isArray(landmarks) ? landmarks.length : 'not-array') + ' phase=' + capturePhaseRef.current);
         }
-        return;
-      }
 
-      // Capture portrait frame aspect ratio from first valid frame (once only)
-      // Sensor reports landscape (w>h); after .right rotation portrait is (h, w)
-      if (frameAspectRef.current === 0 && frameWidth > 0 && frameHeight > 0) {
-        const aspect = frameHeight / frameWidth; // portrait width / portrait height
-        frameAspectRef.current = aspect;
-        setFrameAspectState(aspect); // single state update for LiveSkeleton prop
-      }
+        // Store frameAspect in ref only — no setState inside RunOnJS callback
+        if (aspect > 0 && frameAspectRef.current === 0) {
+          frameAspectRef.current = aspect;
+        }
 
-      // Update skeleton overlay with raw landmarks every frame
-      if (Array.isArray(landmarks)) {
-        updateLandmarks(landmarks as Landmark[]);
-
-        // Camera guidance: update EMA shoulder separation during pre-recording
-        if (capturePhaseRef.current === 'idle' || capturePhaseRef.current === 'countdown') {
-          const sep = extractShoulderSeparation(landmarks as Landmark[]);
-          if (sep !== null) {
-            const smoothed = emaSmooth(smoothedSepRef.current, sep);
-            smoothedSepRef.current = smoothed;
-            const result = classifyCameraAngle(smoothed);
-            setGuidanceColor(result.color);
-            setGuidanceLabel(result.label);
-          } else {
-            smoothedSepRef.current = null;
-            setGuidanceColor(null);
-            setGuidanceLabel(null);
+        // Skeleton update + dropout fallback
+        if (Array.isArray(landmarks) && landmarks.length > 0) {
+          // Rotate landmarks from landscape sensor coords to portrait screen coords
+          const rotated = (landmarks as Landmark[]).map((lm) => ({
+            ...lm,
+            x: 1 - lm.y,
+            y: lm.x,
+          }));
+          lastGoodLandmarksRef.current = rotated;
+          lastGoodTimestampRef.current = Date.now();
+          updateLandmarks(rotated);
+          if (frameCountRef.current % 30 === 1) {
+            console.log('[PoseAfterOverlay] frame=' + frameCountRef.current);
           }
+        } else if (
+          lastGoodLandmarksRef.current &&
+          (Date.now() - lastGoodTimestampRef.current) < STALE_LANDMARK_MS
+        ) {
+          updateLandmarks(lastGoodLandmarksRef.current);
+        }
+
+        if (capturePhaseRef.current !== 'capturing') {
+          if (frameCountRef.current % 30 === 1) {
+            console.log('[PoseSkipPhase] frame=' + frameCountRef.current + ' phase=' + capturePhaseRef.current);
+          }
+          return;
         }
       }
-
-      if (capturePhaseRef.current !== 'capturing') {
-        return;
-      }
-
-      const poseFrame = await providerRef.current.detectFromFrame?.({
-        frame: landmarks,
-        timestampMs,
-        frameWidth,
-        frameHeight,
-      });
-
-      if (!poseFrame) return;
-
-      motionFramesRef.current.push(poseFrame);
-      if (motionFramesRef.current.length > MAX_BUFFERED_POSE_FRAMES) {
-        motionFramesRef.current = motionFramesRef.current.slice(-MAX_BUFFERED_POSE_FRAMES);
-      }
-    }
-  );
+    );
+  }
+  const appendPoseFrame = appendPoseFrameRef.current;
 
   function isGoodFrame(frame: PoseFrame): boolean {
     let confidentJoints = 0;
@@ -232,9 +226,17 @@ export default function RecordTab() {
   }
 
   async function finalizeCapture() {
+    console.log('[Pipeline] finalizeCapture called, isAlreadyFinalizing=' + isFinalizingRef.current);
+    if (isFinalizingRef.current) {
+      console.log('[Pipeline] finalizeCapture BLOCKED (duplicate)');
+      return;
+    }
+    isFinalizingRef.current = true;
+
     clearTimers();
     stopCapture();
     const gravityReadings = getReadings();
+    console.log('[Pipeline] stopRecording about to fire');
     cameraRef.current?.stopRecording();
 
     const frames = [...motionFramesRef.current];
@@ -268,6 +270,29 @@ export default function RecordTab() {
     const isLeftHanded = await getIsLeftHanded();
     const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
 
+    // Grip estimation — proof of pipeline (Step 6). Non-blocking, does not affect navigation.
+    (async () => {
+      try {
+        const addressPhase = analysis.phases?.find(p => p.phase === 'address');
+        if (addressPhase && addressPhase.index < frames.length) {
+          const frame = frames[addressPhase.index];
+          const leadWrist = isLeftHanded ? frame.joints.rightWrist : frame.joints.leftWrist;
+          if (leadWrist) {
+            const result = await classifyGripFrames({
+              timestamps: [addressPhase.timestamp],
+              wristX: [leadWrist.x],
+              wristY: [leadWrist.y],
+            });
+            console.log('[GripEstimation]', JSON.stringify(result));
+          }
+        }
+      } catch (e) {
+        console.warn('[GripEstimation] Error:', e);
+      } finally {
+        try { await releaseGripBuffer(); } catch {}
+      }
+    })();
+
     setCurrentSwingMotion({
       frames,
       recordedAt: Date.now(),
@@ -295,12 +320,14 @@ export default function RecordTab() {
   }
 
   function beginRecording() {
+    console.log('[Pipeline] beginRecording');
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
     analysisReadyRef.current = false;
     videoUriRef.current = undefined;
     navigatedRef.current = false;
+    isFinalizingRef.current = false;
     frameSkipCounter.value = 0;
 
     // Snapshot camera guidance state for swing_debug
@@ -313,6 +340,7 @@ export default function RecordTab() {
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
       onRecordingFinished: (video) => {
+        console.log('[Pipeline] onRecordingFinished path=' + video.path);
         videoUriRef.current = video.path;
         // Background upload — never blocks navigation
         swingIdPromiseRef.current?.then((swingId) => {
@@ -320,7 +348,9 @@ export default function RecordTab() {
         }).catch(() => {});
         tryNavigate();
       },
-      onRecordingError: (e) => console.error('REC ERR:', e),
+      onRecordingError: (e) => {
+        console.error('[Pipeline] onRecordingError:', e);
+      },
     });
 
     updateCapturePhase('capturing');
@@ -452,9 +482,11 @@ export default function RecordTab() {
       if (frameSkipCounter.value % skipInterval !== 0) return;
 
       const landmarks = honeyPoseDetect(frame);
+      const detected = Array.isArray(landmarks) && landmarks.length > 0;
 
-      if (Array.isArray(landmarks) && landmarks.length > 0) {
-        appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height);
+      if (detected) {
+        const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
+        appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height, aspect);
       }
     },
     [appendPoseFrame, skipInterval, frameSkipCounter]

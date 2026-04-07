@@ -15,6 +15,7 @@
 		7ED75E922F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */; };
 		7ED75E932F832FD000A0156A /* HoneyVisionCameraPosePlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */; };
 		7ED75E942F832FD000A0156A /* HoneyVisionCameraPosePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E902F832FD000A0156A /* HoneyVisionCameraPosePlugin.swift */; };
+		7ED75E962F84651600A0156A /* pose_landmarker_full.task in Resources */ = {isa = PBXBuildFile; fileRef = 7ED75E952F84651600A0156A /* pose_landmarker_full.task */; };
 		8F468D0330C2111E54A01786 /* libPods-honeyswing.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C1BE52308CCFE4C83E062F7 /* libPods-honeyswing.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
@@ -32,6 +33,7 @@
 		7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyVisionCameraHandPlugin.swift; sourceTree = "<group>"; };
 		7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyVisionCameraPosePlugin.m; sourceTree = "<group>"; };
 		7ED75E902F832FD000A0156A /* HoneyVisionCameraPosePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyVisionCameraPosePlugin.swift; sourceTree = "<group>"; };
+		7ED75E952F84651600A0156A /* pose_landmarker_full.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = pose_landmarker_full.task; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = honeyswing/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		C2B406AB072D1AA88B215BC8 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-honeyswing/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
@@ -55,6 +57,7 @@
 		13B07FAE1A68108700A75B9A /* honeyswing */ = {
 			isa = PBXGroup;
 			children = (
+				7ED75E952F84651600A0156A /* pose_landmarker_full.task */,
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
 				F11748442D0722820044C1D9 /* honeyswing-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
@@ -178,7 +181,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
+						DevelopmentTeam = B3774Z5A69;
 						LastSwiftMigration = 1250;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -208,6 +213,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
+				7ED75E962F84651600A0156A /* pose_landmarker_full.task in Resources */,
 				5C90BACB190CCE3F039A5909 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -368,7 +374,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = honeyswing/honeyswing.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3774Z5A69;
 				ENABLE_BITCODE = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -405,7 +414,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = honeyswing/honeyswing.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = B3774Z5A69;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = honeyswing/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
