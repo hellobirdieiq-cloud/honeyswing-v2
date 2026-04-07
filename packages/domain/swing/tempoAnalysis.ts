@@ -129,7 +129,7 @@ export function isTempoTrustworthy(
   return true;
 }
 
-export function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, number> {
+function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, number> {
   return {
     address: Math.round(timestamps.address),
     takeaway: Math.round(timestamps.takeaway),

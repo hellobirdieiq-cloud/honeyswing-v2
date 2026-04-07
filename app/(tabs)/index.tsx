@@ -6,12 +6,6 @@ import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
 import { getGrip } from '../../lib/gripStore';
 import { getCoachCode, setCoachCode, resolveCoachName } from '../../lib/coachCode';
 
-function focusScoreColor(score: number): string {
-  if (score >= 80) return '#00FF66';
-  if (score >= 50) return '#FFB020';
-  return '#FF4444';
-}
-
 export default function TabsHomeScreen() {
   const router = useRouter();
   const [focus, setFocus] = useState<FocusData | null>(null);

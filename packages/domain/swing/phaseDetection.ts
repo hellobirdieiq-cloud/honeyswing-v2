@@ -250,7 +250,7 @@ export function detectImpact(points: SwingTrailPoint[]): ImpactData | null {
   };
 }
 
-export function getVisiblePhases(
+function getVisiblePhases(
   phases: DetectedPhase[],
   currentTimeMs: number
 ): DetectedPhase[] {
@@ -261,7 +261,7 @@ export function getVisiblePhases(
  * Return the trail-point index of the setup/address position for a set of
  * wrist trail points. Useful for extracting the "still" pose before motion.
  */
-export function findSetupIndex(points: SwingTrailPoint[]): number {
+function findSetupIndex(points: SwingTrailPoint[]): number {
   if (points.length < 3) return 0;
   const velocities = computeVelocities(points);
   const smoothed = smoothVelocities(velocities, 5);

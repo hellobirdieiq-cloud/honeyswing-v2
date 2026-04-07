@@ -15,6 +15,6 @@ export function getGrip(): GripData | null {
   return current;
 }
 
-export function clearGrip(): void {
+function clearGrip(): void {
   current = null;
 }
