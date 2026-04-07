@@ -156,7 +156,7 @@ export default function RecordTab() {
 
       // Surface native-side diagnostics
       const firstLandmark = Array.isArray(landmarks) && landmarks.length === 1 ? landmarks[0] as Record<string, unknown> : null;
-      if (firstLandmark && '_diagnostic' in firstLandmark) {
+      if (firstLandmark && '_diagnostic' in firstLandmark && firstLandmark._diagnostic) {
         if (frameCountRef.current % 60 === 1) {
           console.warn('[HoneySwing] NATIVE DIAGNOSTIC: ' + String(firstLandmark._diagnostic));
         }
