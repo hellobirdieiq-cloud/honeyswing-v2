@@ -12,5 +12,5 @@ export interface PoseProvider {
     timestampMs: number;
     frameWidth: number;
     frameHeight: number;
-  }): Promise<PoseFrame>;
+  }): Promise<PoseFrame | null>;
 }
