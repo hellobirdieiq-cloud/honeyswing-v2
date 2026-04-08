@@ -3,14 +3,12 @@ import { supabase, getUserId } from './supabase';
 import { setCoachCode } from './coachCode';
 import { STORAGE_KEYS } from './storageKeys';
 
-const PENDING_KEY = STORAGE_KEYS.pendingReferralCode;
-
 export async function storePendingReferral(code: string): Promise<void> {
-  await AsyncStorage.setItem(PENDING_KEY, code.toLowerCase().trim());
+  await AsyncStorage.setItem(STORAGE_KEYS.pendingReferralCode, code.toLowerCase().trim());
 }
 
 export async function commitPendingReferral(): Promise<void> {
-  const pendingCode = await AsyncStorage.getItem(PENDING_KEY);
+  const pendingCode = await AsyncStorage.getItem(STORAGE_KEYS.pendingReferralCode);
   if (!pendingCode) return;
 
   const userId = await getUserId();
@@ -28,7 +26,7 @@ export async function commitPendingReferral(): Promise<void> {
   }
 
   if (profile?.referral_coach_id) {
-    await AsyncStorage.removeItem(PENDING_KEY);
+    await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
     return;
   }
 
@@ -53,7 +51,7 @@ export async function commitPendingReferral(): Promise<void> {
     return;
   }
 
-  await AsyncStorage.removeItem(PENDING_KEY);
+  await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
   await setCoachCode(pendingCode);
 }
 

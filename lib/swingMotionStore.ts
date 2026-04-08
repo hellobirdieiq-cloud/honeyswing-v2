@@ -59,8 +59,6 @@ export type FocusData = {
 import { STORAGE_KEYS } from './storageKeys';
 import { getCachedAgeTier } from './ageTier';
 
-const FOCUS_KEY = STORAGE_KEYS.todaysFocus;
-
 function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
   if (value == null) return 50;
   const diff = Math.abs(value - ideal);
@@ -144,11 +142,11 @@ export function computeFocus(angles: GolfAngles): FocusData | null {
 }
 
 export async function saveFocus(focus: FocusData): Promise<void> {
-  await AsyncStorage.setItem(FOCUS_KEY, JSON.stringify(focus));
+  await AsyncStorage.setItem(STORAGE_KEYS.todaysFocus, JSON.stringify(focus));
 }
 
 export async function loadFocus(): Promise<FocusData | null> {
-  const raw = await AsyncStorage.getItem(FOCUS_KEY);
+  const raw = await AsyncStorage.getItem(STORAGE_KEYS.todaysFocus);
   if (!raw) return null;
   return JSON.parse(raw) as FocusData;
 }

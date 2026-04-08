@@ -411,6 +411,7 @@ export default function ResultScreen() {
                   height={skeletonH}
                   isLowConfidence={isLowConfidence}
                   isLeftHanded={isLeftHanded}
+                  suppressedMetrics={analysis?.swing_debug?.angle_gating?.suppressed}
                 />
               )
             )}

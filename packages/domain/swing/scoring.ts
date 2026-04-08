@@ -15,7 +15,7 @@ export type ScoringResult = {
   breakdown: ScoringBreakdownEntry[];
 };
 
-function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
+export function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
   if (value == null) return 50;
   const diff = Math.abs(value - ideal);
   const raw = 100 - (diff / tolerance) * 100;

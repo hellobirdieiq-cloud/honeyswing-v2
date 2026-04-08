@@ -3,7 +3,6 @@ import { supabase, getUser } from './supabase';
 import { getSubscriptionStatus } from './purchases';
 import { STORAGE_KEYS } from './storageKeys';
 
-const LOCAL_SWING_COUNT_KEY = STORAGE_KEYS.localSwingCount;
 const FREE_SWING_LIMIT = 15;
 const REFERRED_SWING_LIMIT = 50;
 const WEEKS_LIMIT = 6;
@@ -15,9 +14,9 @@ export type SwingLimitStatus = {
 };
 
 export async function incrementLocalSwingCount(): Promise<void> {
-  const raw = await AsyncStorage.getItem(LOCAL_SWING_COUNT_KEY);
+  const raw = await AsyncStorage.getItem(STORAGE_KEYS.localSwingCount);
   const count = raw ? parseInt(raw, 10) : 0;
-  await AsyncStorage.setItem(LOCAL_SWING_COUNT_KEY, String(count + 1));
+  await AsyncStorage.setItem(STORAGE_KEYS.localSwingCount, String(count + 1));
 }
 
 export async function checkSwingLimit(): Promise<SwingLimitStatus> {
@@ -31,7 +30,7 @@ export async function checkSwingLimit(): Promise<SwingLimitStatus> {
 
   if (!user) {
     // Anonymous — count local swings against free limit
-    const raw = await AsyncStorage.getItem(LOCAL_SWING_COUNT_KEY);
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.localSwingCount);
     const count = raw ? parseInt(raw, 10) : 0;
     const remaining = Math.max(0, FREE_SWING_LIMIT - count);
     return {
@@ -83,7 +82,15 @@ export async function checkSwingLimit(): Promise<SwingLimitStatus> {
 
   if (error) {
     console.error('[HoneySwing] swingLimit count error:', error.message);
-    return { allowed: true, remaining: limit, reason: 'ok' };
+    // Fail closed: use local swing count instead of allowing unlimited
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.localSwingCount);
+    const localCount = raw ? parseInt(raw, 10) : 0;
+    const fallbackRemaining = Math.max(0, limit - localCount);
+    return {
+      allowed: fallbackRemaining > 0,
+      remaining: fallbackRemaining,
+      reason: fallbackRemaining > 0 ? 'ok' : 'swing_limit',
+    };
   }
 
   const swingCount = count ?? 0;

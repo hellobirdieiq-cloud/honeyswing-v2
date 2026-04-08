@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import type { Landmark } from './SkeletonOverlay';
 import type { GolfAngles } from '../packages/domain/swing/angles';
+import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
 
 /** Same skeleton connections as SkeletonOverlay. */
@@ -48,14 +49,6 @@ const SKELETON_CONNECTIONS: [string, string][] = [
 ];
 
 const MIN_CONFIDENCE = 0.3;
-
-/** Replicates scoreAngle from scoring.ts — no new logic. */
-function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
-  if (value == null) return 50;
-  const diff = Math.abs(value - ideal);
-  const raw = 100 - (diff / tolerance) * 100;
-  return Math.max(0, Math.min(100, Math.round(raw)));
-}
 
 function scoreColor(score: number): string {
   if (score >= 80) return '#00FF66';
@@ -157,9 +150,11 @@ interface Props {
   height: number;
   isLowConfidence: boolean;
   isLeftHanded?: boolean;
+  /** Metric keys suppressed by angle gating (unreliable at this camera angle). */
+  suppressedMetrics?: readonly string[];
 }
 
-export default function VisualCoachCard({ landmarks, angles, width, height, isLowConfidence, isLeftHanded = false }: Props) {
+export default function VisualCoachCard({ landmarks, angles, width, height, isLowConfidence, isLeftHanded = false, suppressedMetrics = [] }: Props) {
   if (landmarks.length === 0 || width === 0 || height === 0) return null;
 
   // Build joint lookup
@@ -176,10 +171,12 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const px = (lm: Landmark) => lm.x * width;
   const py = (lm: Landmark) => lm.y * height;
 
-  // Score each metric — canonical transform already normalized angles
+  // Score each metric — skip those suppressed by angle gating
+  const suppressedSet = new Set(suppressedMetrics);
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
     for (const labelKey of Object.keys(METRICS) as MetricKey[]) {
+      if (suppressedSet.has(labelKey)) continue;
       const def = METRICS[labelKey];
       const value = angles[labelKey];
       scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });

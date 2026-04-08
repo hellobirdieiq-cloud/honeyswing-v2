@@ -9,8 +9,6 @@ import { STORAGE_KEYS } from './storageKeys';
 // ── Constants ────────────────────────────────────────────────────────────────
 const REVENUECAT_API_KEY = 'appl_UTzTUForArVybmyrdCmPOnGErQo';
 export const ENTITLEMENT_ID = 'pro';
-const CACHE_KEY = STORAGE_KEYS.subscriptionStatus;
-
 // ── SDK Init ─────────────────────────────────────────────────────────────────
 
 let configured = false;
@@ -45,7 +43,7 @@ export async function syncAuthState(userId: string | null): Promise<void> {
 
 async function cacheStatus(isSubscribed: boolean): Promise<void> {
   try {
-    await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(isSubscribed));
+    await AsyncStorage.setItem(STORAGE_KEYS.subscriptionStatus, JSON.stringify(isSubscribed));
   } catch {
     // Cache write failure is non-critical
   }
@@ -53,7 +51,7 @@ async function cacheStatus(isSubscribed: boolean): Promise<void> {
 
 async function getCachedStatus(): Promise<boolean> {
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.subscriptionStatus);
     if (raw === null) return false;
     return JSON.parse(raw) === true;
   } catch {
