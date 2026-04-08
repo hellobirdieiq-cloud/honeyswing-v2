@@ -5,6 +5,7 @@ import type { Landmark } from './SkeletonOverlay';
 import type { GolfAngles } from '../packages/domain/swing/angles';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
+import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
 
 /** Same skeleton connections as SkeletonOverlay. */
 const SKELETON_CONNECTIONS: [string, string][] = [
@@ -57,78 +58,6 @@ function scoreColor(score: number): string {
 }
 
 /** Each scoreable metric mapped to the skeleton segments it corresponds to. */
-type MetricKey = 'spineAngle' | 'leftElbowAngle' | 'rightElbowAngle' | 'leftKneeAngle' | 'rightKneeAngle' | 'shoulderTilt';
-
-interface MetricDef {
-  segments: [string, string][];
-  ideal: number;
-  tolerance: number;
-  label: string;
-  cue: (value: number, ideal: number) => string;
-}
-
-const METRICS: Record<MetricKey, MetricDef> = {
-  spineAngle: {
-    segments: [['leftShoulder', 'leftHip'], ['rightShoulder', 'rightHip']],
-    ideal: 35, tolerance: 20,
-    label: 'Spine tilt',
-    cue: (v, i) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v > i) return junior ? 'Try standing a bit taller' : 'You\'re leaning too far forward at address — stand a bit taller';
-      return junior ? 'Bend forward just a little' : 'A bit more forward tilt at setup — you\'re standing too upright';
-    },
-  },
-  leftElbowAngle: {
-    segments: [['leftShoulder', 'leftElbow'], ['leftElbow', 'leftWrist']],
-    ideal: 165, tolerance: 40,
-    label: 'Lead arm',
-    cue: (v, i) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v < i) return junior ? 'Keep your front arm straighter' : 'Your lead arm is too bent through the swing — try to keep it straighter';
-      return junior ? 'Bend your front arm a tiny bit' : 'Your lead arm is locking out — keep a slight bend through impact';
-    },
-  },
-  rightElbowAngle: {
-    segments: [['rightShoulder', 'rightElbow'], ['rightElbow', 'rightWrist']],
-    ideal: 165, tolerance: 40,
-    label: 'Trail arm',
-    cue: (v, i) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v < i) return junior ? 'Stretch your back arm out more' : 'Your trail elbow is too bent at the top — extend it more';
-      return junior ? 'Let your back arm bend a little' : 'Your trail arm is too straight — let it fold naturally at the top';
-    },
-  },
-  leftKneeAngle: {
-    segments: [['leftHip', 'leftKnee'], ['leftKnee', 'leftAnkle']],
-    ideal: 155, tolerance: 35,
-    label: 'Lead knee',
-    cue: (v, i) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v < i) return junior ? 'Stand a little taller in your legs' : 'Too much knee bend at setup — stay athletic, not crouched';
-      return junior ? 'Bend your front knee a tiny bit' : 'Soften your lead knee at address — a little flex helps your turn';
-    },
-  },
-  rightKneeAngle: {
-    segments: [['rightHip', 'rightKnee'], ['rightKnee', 'rightAnkle']],
-    ideal: 155, tolerance: 35,
-    label: 'Trail knee',
-    cue: (v, i) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v < i) return junior ? 'Stand a little taller in your legs' : 'Your trail knee is too bent at setup — straighten up a little';
-      return junior ? 'Bend your back knee a tiny bit' : 'Soften your trail knee at address — stay ready to rotate';
-    },
-  },
-  shoulderTilt: {
-    segments: [['leftShoulder', 'rightShoulder']],
-    ideal: 0, tolerance: 25,
-    label: 'Shoulders',
-    cue: (v) => {
-      const junior = getCachedAgeTier() === 'junior';
-      if (v > 0) return junior ? 'Try to keep your shoulders even' : 'Your lead shoulder is too high at address — try to level them';
-      return junior ? 'Try to keep your shoulders even' : 'Your trail shoulder is too high at address — try to level them';
-    },
-  },
-};
 
 /**
  * Remap segment joint names for lefty skeleton highlight.
@@ -175,9 +104,9 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const suppressedSet = new Set(suppressedMetrics);
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
-    for (const labelKey of Object.keys(METRICS) as MetricKey[]) {
+    for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
       if (suppressedSet.has(labelKey)) continue;
-      const def = METRICS[labelKey];
+      const def = METRIC_DEFINITIONS[labelKey];
       const value = angles[labelKey];
       scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
     }
@@ -192,7 +121,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   // Build set of highlighted segments — remap joint names for lefty display
   const highlightedSegments = new Set<string>();
   if (worst) {
-    for (const [a, b] of METRICS[worst.key].segments) {
+    for (const [a, b] of METRIC_DEFINITIONS[worst.key].segments) {
       const ra = remapSegmentJoint(a, isLeftHanded);
       const rb = remapSegmentJoint(b, isLeftHanded);
       highlightedSegments.add(`${ra}-${rb}`);
@@ -202,9 +131,9 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const dimColor = '#335544';
   const highlightColor = worst ? scoreColor(worst.score) : '#00FF66';
 
-  const worstDef = worst ? METRICS[worst.key] : null;
+  const worstDef = worst ? METRIC_DEFINITIONS[worst.key] : null;
   const coachCue = worst && worstDef && worst.value != null
-    ? worstDef.cue(worst.value, worstDef.ideal)
+    ? worstDef.cue(worst.value, worstDef.ideal, getCachedAgeTier())
     : null;
 
   return (
