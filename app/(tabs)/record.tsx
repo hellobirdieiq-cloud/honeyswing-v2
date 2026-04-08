@@ -272,8 +272,20 @@ export default function RecordTab() {
     swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
       camera_angle_at_start: guidanceSnapshotRef.current.separation,
       camera_guidance_color: guidanceSnapshotRef.current.color,
+    }).then((swingId) => {
+      if (swingId) {
+        console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
+      } else {
+        console.warn('[persistSwing] ⚠️ skipped (no user)', { frames: frames.length });
+      }
+      return swingId;
     }).catch((err) => {
-      console.error('[HoneySwing] Swing persistence failed:', err.message);
+      console.error('[persistSwing] ❌ FAILED', {
+        error: err.message,
+        frames: frames.length,
+        hasUser: true,
+        classification: classification?.validity ?? 'unknown',
+      });
       return null;
     });
 
