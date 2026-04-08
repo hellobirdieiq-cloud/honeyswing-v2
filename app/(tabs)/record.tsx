@@ -8,28 +8,18 @@ import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanima
 import { Camera, useCameraDevice, useCameraDevices, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
 import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
-import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
+import type { PoseFrame } from '../../packages/pose/PoseTypes';
 import { MLKitProvider } from '../../packages/pose/providers/MLKitProvider';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
-  setCurrentSwingAnalysis,
-  setCurrentSwingMotion,
-  setCurrentSwingVideoUri,
 } from '../../lib/swingMotionStore';
-import {
-  analyzePoseSequence,
-  type AnalysisResult,
-} from '../../packages/domain/swing/analysisPipeline';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
 import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraGuidanceColor } from '../../lib/cameraGuidance';
-import { persistSwing } from '../../lib/persistSwing';
-import { uploadSwingVideo } from '../../lib/uploadSwingVideo';
-import { classifyCapture } from '../../lib/captureValidity';
-import { getIsLeftHanded } from '../../lib/handedness';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
+import { useSwingCapture, MAX_BUFFERED_POSE_FRAMES } from '../../lib/useSwingCapture';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
@@ -54,21 +44,6 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
 const TIP_MAX_SESSIONS = 3;
 let tipSessionsSeen = 0;
 
-const MAX_BUFFERED_POSE_FRAMES = 180;
-const MIN_FRAMES_FOR_ANALYSIS = 6;
-const CAPTURE_WINDOW_MS = 4000;
-
-/** Quality gate: a frame is "good" if at least this many key joints have confidence above threshold */
-const JOINT_CONFIDENCE_THRESHOLD = 0.3;
-const KEY_JOINTS: import('../../packages/pose/PoseTypes').JointName[] = [
-  'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
-  'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
-];
-const MIN_KEY_JOINTS_PER_FRAME = 4;
-const MIN_GOOD_FRAMES = 4;
-
-type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'complete' | 'error' | 'weak';
-
 export default function RecordTab() {
   const router = useRouter();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
@@ -80,80 +55,65 @@ export default function RecordTab() {
   const [cameraReady, setCameraReady] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showCameraHint, setShowCameraHint] = useState(false);
-  const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
-  const frameAspectRef = useRef(0); // portrait image W/H ratio — ref to avoid re-renders
-  const [frameAspectState, setFrameAspectState] = useState(0); // synced once for LiveSkeleton prop
-  const [countdown, setCountdown] = useState<number | null>(null);
+  const frameAspectRef = useRef(0);
+  const [frameAspectState, setFrameAspectState] = useState(0);
 
-  const motionFramesRef = useRef<PoseFrame[]>([]);
   const providerRef = useRef(new MLKitProvider());
   const cameraRef = useRef<Camera>(null);
-  const capturePhaseRef = useRef<CapturePhase>('idle');
-  const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const analysisReadyRef = useRef(false);
-  // 'pending' = video not ready yet, null = timed out / no video, string = playable URI
-  const videoUriRef = useRef<'pending' | null | string>('pending');
-  const navigatedRef = useRef(false);
-  const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
 
   // Camera guidance (Task 13) — EMA-smoothed shoulder separation
   const smoothedSepRef = useRef<number | null>(null);
   const [guidanceColor, setGuidanceColor] = useState<CameraGuidanceColor | null>(null);
   const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
-  const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
-    separation: null,
-    color: null,
+
+  // Camera device/format selection
+  const allDevices = useCameraDevices();
+  const ultraWide = allDevices.find(d => d.name === 'Back Ultra Wide Camera');
+  const fallback = useCameraDevice('back');
+  const device = ultraWide || fallback;
+
+  const format = useCameraFormat(device, [
+    { fps: 120, videoResolution: { width: 1280, height: 720 } },
+  ]);
+  const targetFps = Math.min(format?.maxFps ?? 30, 120);
+  const skipInterval = targetFps >= 120 ? 4 : targetFps >= 60 ? 2 : 1;
+
+  const zoom = useSharedValue(device?.minZoom ?? 1);
+  const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
+  const frameSkipCounter = useSharedValue(0);
+  const frameCountRef = useRef(0);
+
+  // ─── Swing capture hook ─────────────────────────────────────────────────────
+
+  const {
+    capturePhase,
+    countdown,
+    startCountdownCapture,
+    startInstantCapture,
+    finalizeCapture,
+    updateCapturePhase,
+    motionFramesRef,
+    capturePhaseRef,
+    clearTimers,
+  } = useSwingCapture({
+    cameraRef,
+    router,
+    goPlayer,
+    startTiltCapture: startCapture,
+    stopTiltCapture: stopCapture,
+    getTiltReadings: getReadings,
+    smoothedSepRef,
+    guidanceColor,
+    hasPermission,
+    hasDevice: !!device,
+    cameraReady,
+    onBeginRecording: () => { frameSkipCounter.value = 0; },
   });
 
-  function updateCapturePhase(nextPhase: CapturePhase) {
-    capturePhaseRef.current = nextPhase;
-    setCapturePhase(nextPhase);
-  }
-
-  function clearTimers() {
-    if (captureTimeoutRef.current) {
-      clearTimeout(captureTimeoutRef.current);
-      captureTimeoutRef.current = null;
-    }
-    if (countdownRef.current) {
-      clearTimeout(countdownRef.current);
-      countdownRef.current = null;
-    }
-    if (safetyTimeoutRef.current) {
-      clearTimeout(safetyTimeoutRef.current);
-      safetyTimeoutRef.current = null;
-    }
-  }
-
-  function tryNavigate() {
-    const blockReason =
-      capturePhaseRef.current !== 'complete' ? 'phase' :
-      !analysisReadyRef.current ? 'analysis' :
-      videoUriRef.current === 'pending' ? 'video' :
-      navigatedRef.current ? 'navigated' :
-      null;
-
-    console.log(
-      `[tryNavigate] phase=${capturePhaseRef.current} analysis=${analysisReadyRef.current} video=${videoUriRef.current === 'pending' ? 'pending' : typeof videoUriRef.current === 'string' ? 'ready' : videoUriRef.current} navigated=${navigatedRef.current} → ${blockReason ? `BLOCKED(${blockReason})` : 'NAVIGATING'}`
-    );
-
-    if (capturePhaseRef.current !== 'complete') return;
-    if (!analysisReadyRef.current) return;
-    if (videoUriRef.current === 'pending') return;
-    if (navigatedRef.current) return;
-    navigatedRef.current = true;
-    if (safetyTimeoutRef.current) {
-      clearTimeout(safetyTimeoutRef.current);
-      safetyTimeoutRef.current = null;
-    }
-    setCurrentSwingVideoUri(videoUriRef.current);
-    router.push('/analysis/result');
-  }
+  // ─── Frame processor ─────────────────────────────────────────────────────────
 
   const updateLandmarks = useCallback((lms: Landmark[]) => {
     skeletonUpdateRef.current?.(lms);
@@ -178,11 +138,10 @@ export default function RecordTab() {
       }
 
       // Capture portrait frame aspect ratio from first valid frame (once only)
-      // Sensor reports landscape (w>h); after .right rotation portrait is (h, w)
       if (frameAspectRef.current === 0 && frameWidth > 0 && frameHeight > 0) {
-        const aspect = frameHeight / frameWidth; // portrait width / portrait height
+        const aspect = frameHeight / frameWidth;
         frameAspectRef.current = aspect;
-        setFrameAspectState(aspect); // single state update for LiveSkeleton prop
+        setFrameAspectState(aspect);
       }
 
       // Update skeleton overlay with raw landmarks every frame
@@ -222,250 +181,6 @@ export default function RecordTab() {
     }
   );
 
-  function isGoodFrame(frame: PoseFrame): boolean {
-    let confidentJoints = 0;
-    for (const jointName of KEY_JOINTS) {
-      const joint = frame.joints[jointName];
-      if (joint && (joint.confidence ?? 0) >= JOINT_CONFIDENCE_THRESHOLD) {
-        confidentJoints++;
-      }
-    }
-    return confidentJoints >= MIN_KEY_JOINTS_PER_FRAME;
-  }
-
-  async function finalizeCapture() {
-    clearTimers();
-    stopCapture();
-    const gravityReadings = getReadings();
-    cameraRef.current?.stopRecording();
-
-    const frames = [...motionFramesRef.current];
-
-    if (frames.length < MIN_FRAMES_FOR_ANALYSIS) {
-      clearCurrentSwingMotion();
-      clearCurrentSwingAnalysis();
-      updateCapturePhase('error');
-      captureTimeoutRef.current = setTimeout(() => updateCapturePhase('idle'), 2000);
-      return;
-    }
-
-    // Quality gate: check that enough frames have reliable pose data
-    const goodFrameCount = frames.filter(isGoodFrame).length;
-    if (goodFrameCount < MIN_GOOD_FRAMES) {
-      clearCurrentSwingMotion();
-      clearCurrentSwingAnalysis();
-      updateCapturePhase('weak');
-      return;
-    }
-
-    const sequence: PoseSequence = {
-      frames,
-      source: 'live-camera',
-      metadata: {
-        durationMs:
-          frames.length > 1 ? frames[frames.length - 1].timestampMs - frames[0].timestampMs : 0,
-      },
-    };
-
-    const isLeftHanded = await getIsLeftHanded();
-    const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
-
-    setCurrentSwingMotion({
-      frames,
-      recordedAt: Date.now(),
-      source: 'live-camera',
-    });
-    setCurrentSwingAnalysis(analysis);
-
-    updateCapturePhase('complete');
-
-    const classification = classifyCapture(frames);
-    swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
-      camera_angle_at_start: guidanceSnapshotRef.current.separation,
-      camera_guidance_color: guidanceSnapshotRef.current.color,
-    }).then((swingId) => {
-      if (swingId) {
-        console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
-      } else {
-        console.warn('[persistSwing] ⚠️ skipped (no user)', { frames: frames.length });
-      }
-      return swingId;
-    }).catch((err) => {
-      console.error('[persistSwing] ❌ FAILED', {
-        error: err.message,
-        frames: frames.length,
-        hasUser: true,
-        classification: classification?.validity ?? 'unknown',
-      });
-      return null;
-    });
-
-    analysisReadyRef.current = true;
-    safetyTimeoutRef.current = setTimeout(() => {
-      videoUriRef.current = null;
-      tryNavigate();
-    }, 3000);
-    tryNavigate();
-  }
-
-  function beginRecording() {
-    clearCurrentSwingMotion();
-    clearCurrentSwingAnalysis();
-    motionFramesRef.current = [];
-    analysisReadyRef.current = false;
-    videoUriRef.current = 'pending';
-    navigatedRef.current = false;
-    frameSkipCounter.value = 0;
-
-    // Snapshot camera guidance state for swing_debug
-    guidanceSnapshotRef.current = {
-      separation: smoothedSepRef.current,
-      color: guidanceColor,
-    };
-
-    startCapture();
-    cameraRef.current?.startRecording({
-      videoCodec: 'h265',
-      onRecordingFinished: (video) => {
-        videoUriRef.current = video.path;
-        // Background upload — never blocks navigation
-        swingIdPromiseRef.current?.then((swingId) => {
-          if (swingId) uploadSwingVideo(swingId, video.path).catch((err) => console.error('[HoneySwing]', err));
-        }).catch((err) => console.error('[HoneySwing]', err));
-        tryNavigate();
-      },
-      onRecordingError: (e) => console.error('REC ERR:', e),
-    });
-
-    updateCapturePhase('capturing');
-    goPlayer.play();
-
-    captureTimeoutRef.current = setTimeout(() => {
-      finalizeCapture();
-    }, CAPTURE_WINDOW_MS);
-  }
-
-  function startCountdownCapture() {
-    if (!hasPermission || !device || !cameraReady) return;
-
-    clearTimers();
-    setShowTips(false);
-    updateCapturePhase('countdown');
-    setCountdown(3);
-
-    let remaining = 3;
-    const tick = () => {
-      remaining -= 1;
-      if (remaining > 0) {
-        setCountdown(remaining);
-        countdownRef.current = setTimeout(tick, 1000);
-      } else {
-        setCountdown(null);
-        beginRecording();
-      }
-    };
-    countdownRef.current = setTimeout(tick, 1000);
-  }
-
-  function startInstantCapture() {
-    if (!hasPermission || !device || !cameraReady) return;
-
-    clearTimers();
-    setShowTips(false);
-    beginRecording();
-  }
-
-  // Reset stale capture phases on focus return (e.g., after Record Again, tab switch)
-  // and count distinct screen visits for tip display
-  useFocusEffect(
-    useCallback(() => {
-      const phase = capturePhaseRef.current;
-      if (phase === 'complete' || phase === 'weak' || phase === 'error') {
-        updateCapturePhase('idle');
-      }
-      tipSessionsSeen += 1;
-      setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
-
-      // Re-check swing limit on every focus (e.g., after "Record Again")
-      checkSwingLimit().then((status) => {
-        if (!status.allowed) {
-          router.replace('/paywall' as Href);
-        }
-      }).catch((err) => console.error('[HoneySwing]', err));
-    }, [])
-  );
-
-  useEffect(() => {
-    let mounted = true;
-
-    motionFramesRef.current = [];
-    clearCurrentSwingMotion();
-    clearCurrentSwingAnalysis();
-
-    async function setupScreen() {
-      // Paywall gate — check before camera init to avoid permission prompt for gated users
-      const limitStatus = await checkSwingLimit();
-      if (!mounted) return;
-      if (!limitStatus.allowed) {
-        router.replace('/paywall' as Href);
-        return;
-      }
-
-      await setAudioModeAsync({
-        playsInSilentMode: true,
-        shouldPlayInBackground: false,
-        interruptionMode: 'doNotMix',
-      });
-
-      let status = await Camera.getCameraPermissionStatus();
-      
-      if (status === 'not-determined') {
-        status = await Camera.requestCameraPermission();
-      }
-      
-      if (mounted) {
-        const granted = status === 'granted';
-        setHasPermission(granted);
-        if (granted) {
-          setIsCameraActive(false);
-          setTimeout(() => { if (mounted) setIsCameraActive(true); }, 150);
-        }
-      }
-    }
-
-    setupScreen();
-
-    return () => {
-      mounted = false;
-      clearTimers();
-    };
-  }, []);
-
-  // Fallback banner: show after 5s if camera hasn't initialized
-  useEffect(() => {
-    if (hasPermission && !cameraReady) {
-      const timer = setTimeout(() => setShowCameraHint(true), 5000);
-      return () => clearTimeout(timer);
-    }
-    if (cameraReady) setShowCameraHint(false);
-  }, [hasPermission, cameraReady]);
-
-  const allDevices = useCameraDevices();
-  const ultraWide = allDevices.find(d => d.name === 'Back Ultra Wide Camera');
-  const fallback = useCameraDevice('back');
-  const device = ultraWide || fallback;
-
-  const format = useCameraFormat(device, [
-    { fps: 120, videoResolution: { width: 1280, height: 720 } },
-  ]);
-  const targetFps = Math.min(format?.maxFps ?? 30, 120);
-  const skipInterval = targetFps >= 120 ? 4 : targetFps >= 60 ? 2 : 1;
-
-  const zoom = useSharedValue(device?.minZoom ?? 1);
-  const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
-  const frameSkipCounter = useSharedValue(0);
-  const frameCountRef = useRef(0);
-
   const pinchGesture = Gesture.Pinch()
     .onStart(() => {
       zoomAtPinchStart.value = zoom.value;
@@ -494,6 +209,82 @@ export default function RecordTab() {
     },
     [appendPoseFrame, skipInterval, frameSkipCounter]
   );
+
+  // ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+  // Reset stale capture phases on focus return and count screen visits for tips
+  useFocusEffect(
+    useCallback(() => {
+      const phase = capturePhaseRef.current;
+      if (phase === 'complete' || phase === 'weak' || phase === 'error') {
+        updateCapturePhase('idle');
+      }
+      tipSessionsSeen += 1;
+      setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
+
+      checkSwingLimit().then((status) => {
+        if (!status.allowed) {
+          router.replace('/paywall' as Href);
+        }
+      }).catch((err) => console.error('[HoneySwing]', err));
+    }, [])
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    motionFramesRef.current = [];
+    clearCurrentSwingMotion();
+    clearCurrentSwingAnalysis();
+
+    async function setupScreen() {
+      const limitStatus = await checkSwingLimit();
+      if (!mounted) return;
+      if (!limitStatus.allowed) {
+        router.replace('/paywall' as Href);
+        return;
+      }
+
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'doNotMix',
+      });
+
+      let status = await Camera.getCameraPermissionStatus();
+
+      if (status === 'not-determined') {
+        status = await Camera.requestCameraPermission();
+      }
+
+      if (mounted) {
+        const granted = status === 'granted';
+        setHasPermission(granted);
+        if (granted) {
+          setIsCameraActive(false);
+          setTimeout(() => { if (mounted) setIsCameraActive(true); }, 150);
+        }
+      }
+    }
+
+    setupScreen();
+
+    return () => {
+      mounted = false;
+      clearTimers();
+    };
+  }, []);
+
+  // Fallback banner: show after 5s if camera hasn't initialized
+  useEffect(() => {
+    if (hasPermission && !cameraReady) {
+      const timer = setTimeout(() => setShowCameraHint(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (cameraReady) setShowCameraHint(false);
+  }, [hasPermission, cameraReady]);
+
+  // ─── Derived state ──────────────────────────────────────────────────────────
 
   const showCamera = hasPermission === true && device != null;
   const isCountdown = capturePhase === 'countdown';
@@ -616,7 +407,7 @@ export default function RecordTab() {
           <View style={styles.recordButtonRow}>
             <TouchableOpacity
               style={[styles.countdownButton, !canRecord && styles.recordButtonDisabled]}
-              onPress={startCountdownCapture}
+              onPress={() => { setShowTips(false); startCountdownCapture(); }}
               disabled={!canRecord}
               activeOpacity={0.7}
             >
@@ -624,7 +415,7 @@ export default function RecordTab() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
-              onPress={startInstantCapture}
+              onPress={() => { setShowTips(false); startInstantCapture(); }}
               disabled={!canRecord}
               activeOpacity={0.7}
             >
