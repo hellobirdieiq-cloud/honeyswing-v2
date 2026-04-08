@@ -127,7 +127,8 @@ export default function RecordTab() {
   // useRef (not top-level call) — React may drop memoized values across renders,
   // which would silently create a new Worklets bridge while the worklet closure
   // still holds the old (dead) one.  useRef is a true identity guarantee.
-  const appendPoseFrameRef = useRef<ReturnType<typeof Worklets.createRunOnJS> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const appendPoseFrameRef = useRef<any>(null);
   if (appendPoseFrameRef.current === null) {
     appendPoseFrameRef.current = Worklets.createRunOnJS(
       async (
@@ -210,7 +211,7 @@ export default function RecordTab() {
       }
     );
   }
-  const appendPoseFrame = appendPoseFrameRef.current;
+  const appendPoseFrame = appendPoseFrameRef.current!;
 
   const pinchGesture = Gesture.Pinch()
     .onStart(() => {
