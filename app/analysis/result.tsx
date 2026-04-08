@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -16,150 +16,24 @@ import {
   analyzePoseSequence,
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
-import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
+import type { PoseSequence } from '../../packages/pose/PoseTypes';
 import {
   TEMPO_LABELS,
   TEMPO_COLORS,
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
-import type { Landmark } from '../../components/SkeletonOverlay';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
 import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
-import { processSwingTips, type RawCoachingTip, type ProcessedCoachingTip } from '../../lib/tipFrequency';
+import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
-import type { ScoringBreakdownEntry } from '../../packages/domain/swing/scoring';
 import SwingArtCard from '../../components/SwingArtCard';
 import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
-import { getCachedAgeTier, type AgeTier } from '../../lib/ageTier';
-
-/** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
-function frameToLandmarks(frame: PoseFrame): Landmark[] {
-  const landmarks: Landmark[] = [];
-  for (const joint of Object.values(frame.joints)) {
-    if (!joint) continue;
-    landmarks.push({
-      name: joint.name,
-      x: joint.x,
-      y: joint.y,
-      inFrameLikelihood: joint.confidence ?? 0,
-    });
-  }
-  return landmarks;
-}
-
-/** Pick the frame with the most high-confidence joints. */
-function pickKeyFrame(frames: PoseFrame[]): PoseFrame {
-  let best = frames[Math.floor(frames.length / 2)];
-  let bestCount = 0;
-  for (const frame of frames) {
-    let count = 0;
-    for (const joint of Object.values(frame.joints)) {
-      if (joint && (joint.confidence ?? 0) >= 0.3) count++;
-    }
-    if (count > bestCount) {
-      bestCount = count;
-      best = frame;
-    }
-  }
-  return best;
-}
-
-// ---------------------------------------------------------------------------
-// Tip adapter: scoring breakdown → RawCoachingTip[]
-// ---------------------------------------------------------------------------
-
-const TIP_SCORE_THRESHOLD = 80;
-
-/** Mapping from scoring metric names to tipFrequency metricKeys */
-const METRIC_KEY_MAP: Record<string, string> = {
-  spineAngle: 'spineAngle',
-  leftElbowAngle: 'elbow',
-  rightElbowAngle: 'elbow',
-  leftKneeAngle: 'kneeFlex',
-  rightKneeAngle: 'kneeFlex',
-  shoulderTilt: 'shoulderTilt',
-  tempo: 'tempo',
-};
-
-/** Static coaching text keyed by scoring metric name. juniorBody for ages 6-8. */
-const COACHING_TEXT: Record<string, { title: string; body: string; juniorBody?: string }> = {
-  spineAngle: {
-    title: 'Spine Tilt',
-    body: 'Check your spine angle at address — aim for an athletic tilt, not too upright or hunched.',
-    juniorBody: 'Stand tall like an athlete',
-  },
-  leftElbowAngle: {
-    title: 'Lead Arm',
-    body: 'Keep your lead arm straighter through the swing for better extension.',
-    juniorBody: 'Try keeping your front arm straight',
-  },
-  rightElbowAngle: {
-    title: 'Trail Arm',
-    body: 'Let your trail arm fold naturally at the top and extend through impact.',
-    juniorBody: 'Let your back arm bend and stretch',
-  },
-  leftKneeAngle: {
-    title: 'Lead Knee',
-    body: 'Check your lead knee flex at setup — stay athletic, not locked or crouched.',
-    juniorBody: 'Bend your front knee a little',
-  },
-  rightKneeAngle: {
-    title: 'Trail Knee',
-    body: 'Soften your trail knee at address to help your rotation.',
-    juniorBody: 'Keep your back knee soft',
-  },
-  shoulderTilt: {
-    title: 'Shoulders',
-    body: 'Work on leveling your shoulders at address for a more consistent swing.',
-    juniorBody: 'Keep your shoulders more level',
-  },
-  tempo: {
-    title: 'Tempo',
-    body: 'Smooth out your tempo — aim for a controlled backswing and accelerating downswing.',
-    juniorBody: 'Nice and slow going back',
-  },
-};
-
-/**
- * Convert scoring breakdown entries into RawCoachingTip[].
- * Pre-filters to score < TIP_SCORE_THRESHOLD. Deduplicates mapped keys
- * (e.g. leftElbowAngle + rightElbowAngle both map to 'elbow') by keeping
- * the worse-scoring entry.
- */
-function buildRawTips(breakdown: ScoringBreakdownEntry[], ageTier: AgeTier): RawCoachingTip[] {
-  // Collect worst score per mapped metricKey
-  const best: Map<string, { scoringMetric: string; score: number }> = new Map();
-
-  for (const entry of breakdown) {
-    if (entry.score >= TIP_SCORE_THRESHOLD) continue;
-    const mappedKey = METRIC_KEY_MAP[entry.metric];
-    if (!mappedKey) continue;
-    const text = COACHING_TEXT[entry.metric];
-    if (!text) continue;
-
-    const existing = best.get(mappedKey);
-    if (!existing || entry.score < existing.score) {
-      best.set(mappedKey, { scoringMetric: entry.metric, score: entry.score });
-    }
-  }
-
-  const useJunior = ageTier === 'junior';
-  const tips: RawCoachingTip[] = [];
-  for (const [mappedKey, { scoringMetric }] of best) {
-    const text = COACHING_TEXT[scoringMetric]!;
-    tips.push({
-      metricKey: mappedKey,
-      title: text.title,
-      body: useJunior && text.juniorBody ? text.juniorBody : text.body,
-      shortBody: useJunior && text.juniorBody ? text.juniorBody : '',
-    });
-  }
-  return tips;
-}
+import { getCachedAgeTier } from '../../lib/ageTier';
+import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -171,7 +45,7 @@ export default function ResultScreen() {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
-
+  const swingAddedRef = useRef(false);
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -271,11 +145,16 @@ export default function ResultScreen() {
     return { processedTips: tips, positiveResult: posResult };
   }, [analysis]);
 
-  // Task 14: Session accumulator — feed swing data and compute insight
-  const sessionInsight = useMemo<SessionInsight | null>(() => {
-    if (!analysis) return null;
+  // Task 14: Session accumulator — feed swing data once per swing
+  useEffect(() => {
+    if (!analysis || swingAddedRef.current) return;
+    swingAddedRef.current = true;
     const firedMetricKeys = processedTips.map(t => t.metricKey);
     sessionAccumulator.addSwing(analysis, firedMetricKeys);
+  }, [analysis, processedTips]);
+
+  const sessionInsight = useMemo<SessionInsight | null>(() => {
+    if (!analysis) return null;
 
     // Only show session insight if no high-priority correction tip
     const hasHighPriorityTip = processedTips.length > 0 &&
