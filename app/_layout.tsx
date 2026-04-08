@@ -1,3 +1,21 @@
+// ===== CRASH DIAGNOSTIC (TEMP) =====
+if ((global as any).ErrorUtils) {
+  const origHandler = (global as any).ErrorUtils.getGlobalHandler();
+  (global as any).ErrorUtils.setGlobalHandler((error: any, isFatal: boolean) => {
+    console.error(
+      '[CRASH_DIAG] isFatal=' +
+        isFatal +
+        ' msg=' +
+        (error?.message || 'unknown') +
+        ' stack=' +
+        ((error?.stack || '').slice(0, 400))
+    );
+    origHandler?.(error, isFatal);
+  });
+}
+
+console.log('[CRASH_DIAG] JS runtime initialized at ' + Date.now());
+// ===================================
 import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';

@@ -71,38 +71,33 @@ export default function SkeletonOverlay({ landmarks, width, height, frameAspect 
 
   const byName = new Map<string, Landmark>();
   for (const lm of landmarks) {
-    if (lm.inFrameLikelihood >= MIN_CONFIDENCE) {
-      byName.set(lm.name, lm);
-    }
+    // TODO: restore confidence filter after verifying all joints render
+    byName.set(lm.name, lm);
   }
 
-  // ── Cover-crop transform: match camera preview's "cover" scaling ───
-  // Landmarks are 0-1 in portrait image space. The camera preview scales
-  // the image to cover the container, cropping the overflow axis.
-  let scaleX = width;
-  let scaleY = height;
+  // Cover-crop transform: camera uses resizeMode="cover", which center-crops the
+  // frame to fill the screen. Landmarks are normalised to the full frame, so we
+  // must map only the visible portion to screen coordinates.
+  const screenAspect = width / height;
+  const fAspect = frameAspect > 0 ? frameAspect : screenAspect;
   let offsetX = 0;
   let offsetY = 0;
-
-  if (frameAspect > 0) {
-    const containerAspect = width / height;
-    if (frameAspect > containerAspect) {
-      // Camera is relatively wider → scale by height, crop sides
-      const scaledW = height * frameAspect;
-      scaleX = scaledW;
-      scaleY = height;
-      offsetX = (width - scaledW) / 2; // negative = cropped left/right
-    } else {
-      // Camera is relatively taller → scale by width, crop top/bottom
-      const scaledH = width / frameAspect;
-      scaleX = width;
-      scaleY = scaledH;
-      offsetY = (height - scaledH) / 2; // negative = cropped top/bottom
-    }
+  let visibleX = 1;
+  let visibleY = 1;
+  if (fAspect > screenAspect) {
+    // frame wider than screen → left/right cropped
+    visibleX = screenAspect / fAspect;
+    offsetX = (1 - visibleX) / 2;
+  } else {
+    // frame taller than screen → top/bottom cropped
+    visibleY = fAspect / screenAspect;
+    offsetY = (1 - visibleY) / 2;
   }
-
-  const px = (lm: Landmark) => offsetX + (mirrored ? 1 - lm.x : lm.x) * scaleX;
-  const py = (lm: Landmark) => offsetY + lm.y * scaleY;
+  const px = (lm: Landmark) => {
+    const nx = mirrored ? 1 - lm.x : lm.x;
+    return ((nx - offsetX) / visibleX) * width;
+  };
+  const py = (lm: Landmark) => ((lm.y - offsetY) / visibleY) * height;
 
   return (
     <Svg style={StyleSheet.absoluteFill} width={width} height={height}>

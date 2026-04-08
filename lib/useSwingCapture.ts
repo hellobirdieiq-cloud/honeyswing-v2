@@ -19,6 +19,7 @@ import { classifyCapture } from './captureValidity';
 import { getIsLeftHanded } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
+import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -81,6 +82,7 @@ export function useSwingCapture({
   const navigatedRef = useRef(false);
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
+  const isFinalizingRef = useRef(false);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
@@ -143,6 +145,9 @@ export function useSwingCapture({
   }
 
   async function finalizeCapture() {
+    if (isFinalizingRef.current) return;
+    isFinalizingRef.current = true;
+
     clearTimers();
     stopTiltCapture();
     const gravityReadings = getTiltReadings();
@@ -177,6 +182,29 @@ export function useSwingCapture({
 
     const isLeftHanded = await getIsLeftHanded();
     const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
+
+    // Grip estimation — proof of pipeline. Non-blocking, does not affect navigation.
+    (async () => {
+      try {
+        const addressPhase = analysis.phases?.find(p => p.phase === 'address');
+        if (addressPhase && addressPhase.index < frames.length) {
+          const frame = frames[addressPhase.index];
+          const leadWrist = isLeftHanded ? frame.joints.rightWrist : frame.joints.leftWrist;
+          if (leadWrist) {
+            const result = await classifyGripFrames({
+              timestamps: [addressPhase.timestamp],
+              wristX: [leadWrist.x],
+              wristY: [leadWrist.y],
+            });
+            console.log('[GripEstimation]', JSON.stringify(result));
+          }
+        }
+      } catch (e) {
+        console.warn('[GripEstimation] Error:', e);
+      } finally {
+        try { await releaseGripBuffer(); } catch {}
+      }
+    })();
 
     setCurrentSwingMotion({
       frames,
@@ -223,6 +251,7 @@ export function useSwingCapture({
     analysisReadyRef.current = false;
     videoUriRef.current = 'pending';
     navigatedRef.current = false;
+    isFinalizingRef.current = false;
     onBeginRecording();
 
     guidanceSnapshotRef.current = {
