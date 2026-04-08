@@ -94,7 +94,8 @@ export default function RecordTab() {
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisReadyRef = useRef(false);
-  const videoUriRef = useRef<string | null | undefined>(undefined);
+  // 'pending' = video not ready yet, null = timed out / no video, string = playable URI
+  const videoUriRef = useRef<'pending' | null | string>('pending');
   const navigatedRef = useRef(false);
   const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
@@ -132,7 +133,7 @@ export default function RecordTab() {
   function tryNavigate() {
     if (capturePhaseRef.current !== 'complete') return;
     if (!analysisReadyRef.current) return;
-    if (videoUriRef.current === undefined) return;
+    if (videoUriRef.current === 'pending') return;
     if (navigatedRef.current) return;
     navigatedRef.current = true;
     if (safetyTimeoutRef.current) {
@@ -289,7 +290,7 @@ export default function RecordTab() {
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];
     analysisReadyRef.current = false;
-    videoUriRef.current = undefined;
+    videoUriRef.current = 'pending';
     navigatedRef.current = false;
     frameSkipCounter.value = 0;
 
