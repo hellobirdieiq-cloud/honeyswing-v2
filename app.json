@@ -27,7 +27,8 @@
           }
         }
       ],
-      "expo-video"
+      "expo-video",
+      "./plugins/withTaskModels"
     ],
     "experiments": {
       "typedRoutes": true,
