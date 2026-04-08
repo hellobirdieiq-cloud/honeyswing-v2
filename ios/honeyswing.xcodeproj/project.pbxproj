@@ -11,6 +11,7 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		554008F6766037C8849D682E /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B406AB072D1AA88B215BC8 /* ExpoModulesProvider.swift */; };
 		5C90BACB190CCE3F039A5909 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 78DD56137DB06044F53E50EE /* PrivacyInfo.xcprivacy */; };
+		7E6141E32F86DE080080471E /* hand_landmarker.task in Resources */ = {isa = PBXBuildFile; fileRef = 7E6141E22F86DE070080471E /* hand_landmarker.task */; };
 		7ED75E912F832FD000A0156A /* HoneyVisionCameraHandPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */; };
 		7ED75E922F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */; };
 		7ED75E932F832FD000A0156A /* HoneyVisionCameraPosePlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */; };
@@ -29,6 +30,7 @@
 		3C1BE52308CCFE4C83E062F7 /* libPods-honeyswing.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-honeyswing.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5FFB1FE821DAC8360EAA640B /* Pods-honeyswing.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-honeyswing.release.xcconfig"; path = "Target Support Files/Pods-honeyswing/Pods-honeyswing.release.xcconfig"; sourceTree = "<group>"; };
 		78DD56137DB06044F53E50EE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = honeyswing/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7E6141E22F86DE070080471E /* hand_landmarker.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = hand_landmarker.task; sourceTree = "<group>"; };
 		7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyVisionCameraHandPlugin.m; sourceTree = "<group>"; };
 		7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyVisionCameraHandPlugin.swift; sourceTree = "<group>"; };
 		7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyVisionCameraPosePlugin.m; sourceTree = "<group>"; };
@@ -97,6 +99,7 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				7E6141E22F86DE070080471E /* hand_landmarker.task */,
 				7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */,
 				7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */,
 				7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */,
@@ -210,6 +213,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E6141E32F86DE080080471E /* hand_landmarker.task in Resources */,
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,

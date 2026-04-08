@@ -171,7 +171,7 @@ export default function GripCaptureScreen() {
     }
     try {
       const photo = await cameraRef.current.takePhoto();
-      console.log('[GripCapture] takePhoto result:', JSON.stringify(photo));
+      
 
       if (!photo.path) {
         setError('takePhoto returned no path');
@@ -180,7 +180,7 @@ export default function GripCaptureScreen() {
       }
 
       const uri = photo.path.startsWith('file://') ? photo.path : `file://${photo.path}`;
-      console.log('[GripCapture] preview URI:', uri);
+      
       setError(null);
       setPhotoUri(uri);
       frozenHandsRef.current = [...handResultsRef.current];
@@ -341,6 +341,7 @@ export default function GripCaptureScreen() {
         video={false}
         audio={false}
         onInitialized={() => setCameraReady(true)}
+        pixelFormat="rgb"
         frameProcessor={frameProcessor}
       />
 
