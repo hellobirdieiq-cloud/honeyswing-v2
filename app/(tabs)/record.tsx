@@ -131,6 +131,17 @@ export default function RecordTab() {
   }
 
   function tryNavigate() {
+    const blockReason =
+      capturePhaseRef.current !== 'complete' ? 'phase' :
+      !analysisReadyRef.current ? 'analysis' :
+      videoUriRef.current === 'pending' ? 'video' :
+      navigatedRef.current ? 'navigated' :
+      null;
+
+    console.log(
+      `[tryNavigate] phase=${capturePhaseRef.current} analysis=${analysisReadyRef.current} video=${videoUriRef.current === 'pending' ? 'pending' : typeof videoUriRef.current === 'string' ? 'ready' : videoUriRef.current} navigated=${navigatedRef.current} → ${blockReason ? `BLOCKED(${blockReason})` : 'NAVIGATING'}`
+    );
+
     if (capturePhaseRef.current !== 'complete') return;
     if (!analysisReadyRef.current) return;
     if (videoUriRef.current === 'pending') return;
