@@ -72,12 +72,6 @@ export type V1PoseLandmark = {
   isPresent?: boolean;
 };
 
-export type V1MotionFrame = {
-  landmarks: V1PoseLandmark[];
-  timestamp: number;
-  frameIndex: number;
-};
-
 export function createEmptyJoints(): Record<JointName, NormalizedJoint | undefined> {
   return {
     nose: undefined,

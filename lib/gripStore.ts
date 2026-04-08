@@ -14,7 +14,3 @@ export function setGrip(photoUri: string): void {
 export function getGrip(): GripData | null {
   return current;
 }
-
-function clearGrip(): void {
-  current = null;
-}
