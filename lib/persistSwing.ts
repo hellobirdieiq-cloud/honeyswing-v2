@@ -3,7 +3,7 @@ import { incrementLocalSwingCount } from './swingLimit';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
-import type { CaptureClassification } from './captureValidity';
+import { isGoodFrame, type CaptureClassification } from './captureValidity';
 import { getCoachCode, resolveCoachName } from './coachCode';
 import { getIsLeftHanded } from './handedness';
 import { getFrequencyDebugInfo } from './tipFrequency';
@@ -20,26 +20,9 @@ export interface CameraGuidanceSnapshot {
   camera_guidance_color: CameraGuidanceColor | null;
 }
 
-const JOINT_CONFIDENCE_THRESHOLD = 0.3;
-const KEY_JOINTS = [
-  'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
-  'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
-];
-const MIN_KEY_JOINTS = 4;
-
 function calcPoseSuccessRate(frames: PoseFrame[]): number {
   if (frames.length === 0) return 0;
-  let good = 0;
-  for (const frame of frames) {
-    let confident = 0;
-    for (const name of KEY_JOINTS) {
-      const joint = frame.joints[name as keyof typeof frame.joints];
-      if (joint && (joint.confidence ?? 0) >= JOINT_CONFIDENCE_THRESHOLD) {
-        confident++;
-      }
-    }
-    if (confident >= MIN_KEY_JOINTS) good++;
-  }
+  const good = frames.filter(isGoodFrame).length;
   return Math.round((good / frames.length) * 100) / 100;
 }
 
