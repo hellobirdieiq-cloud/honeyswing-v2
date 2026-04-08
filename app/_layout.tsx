@@ -84,7 +84,6 @@ export default function RootLayout() {
       if (initialUrl) await handleAuthUrl(initialUrl);
       if (initialUrl) {
         await handleReferralUrl(initialUrl);
-        router.replace('/(tabs)' as Href);
       }
       await commitPendingReferral();
 
@@ -96,7 +95,9 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
 
       // Redirect after splash hides so the navigator is fully mounted
-      if (session && !onboarded) {
+      if (initialUrl) {
+        router.replace('/(tabs)' as Href);
+      } else if (session && !onboarded) {
         router.replace('/onboarding' as Href);
       }
     }
