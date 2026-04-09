@@ -38,6 +38,7 @@ export async function commitPendingReferral(): Promise<void> {
 
   if (coachError || !coach) {
     console.error('[HoneySwing] coach lookup failed:', coachError?.message ?? 'not found');
+    await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
     return;
   }
 
