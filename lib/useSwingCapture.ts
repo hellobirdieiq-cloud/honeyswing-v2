@@ -15,7 +15,7 @@ import {
 } from '../packages/domain/swing/analysisPipeline';
 import { persistSwing } from './persistSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
-import { classifyCapture } from './captureValidity';
+import { classifyCapture, isGoodFrame } from './captureValidity';
 import { getIsLeftHanded } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
@@ -27,12 +27,6 @@ export const MAX_BUFFERED_POSE_FRAMES = 180;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
 
-const JOINT_CONFIDENCE_THRESHOLD = 0.3;
-const KEY_JOINTS: import('../packages/pose/PoseTypes').JointName[] = [
-  'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
-  'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
-];
-const MIN_KEY_JOINTS_PER_FRAME = 4;
 const MIN_GOOD_FRAMES = 4;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -131,17 +125,6 @@ export function useSwingCapture({
     }
     setCurrentSwingVideoUri(videoUriRef.current);
     router.push('/analysis/result');
-  }
-
-  function isGoodFrame(frame: PoseFrame): boolean {
-    let confidentJoints = 0;
-    for (const jointName of KEY_JOINTS) {
-      const joint = frame.joints[jointName];
-      if (joint && (joint.confidence ?? 0) >= JOINT_CONFIDENCE_THRESHOLD) {
-        confidentJoints++;
-      }
-    }
-    return confidentJoints >= MIN_KEY_JOINTS_PER_FRAME;
   }
 
   async function finalizeCapture() {
