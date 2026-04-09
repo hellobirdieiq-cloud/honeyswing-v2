@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { styles } from './resultStyles';
 import {
@@ -12,7 +12,7 @@ import {
   saveFocus,
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
-import { getUser } from '../../lib/supabase';
+import { getUser, supabase } from '../../lib/supabase';
 import {
   analyzePoseSequence,
   type AnalysisResult,
@@ -38,6 +38,7 @@ import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '..
 
 export default function ResultScreen() {
   const router = useRouter();
+  const { swingId } = useLocalSearchParams<{ swingId?: string }>();
   const { width: screenW } = useWindowDimensions();
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
@@ -168,6 +169,30 @@ export default function ResultScreen() {
     }
     return insight;
   }, [analysis, processedTips]);
+
+  // Persist session insight to the swing row
+  useEffect(() => {
+    if (!swingId || !sessionInsight) return;
+    supabase
+      .from('swings')
+      .select('swing_debug')
+      .eq('id', swingId)
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        const debug = (data.swing_debug as Record<string, unknown>) ?? {};
+        debug.session_insight_shown = sessionInsight.message;
+        supabase
+          .from('swings')
+          .update({ swing_debug: debug })
+          .eq('id', swingId)
+          .then(({ error: updateError }) => {
+            if (updateError) {
+              console.error('[HoneySwing] session_insight_shown update error:', updateError.message);
+            }
+          });
+      });
+  }, [swingId, sessionInsight]);
 
   // Metro log for verification before tip UI exists
   useEffect(() => {

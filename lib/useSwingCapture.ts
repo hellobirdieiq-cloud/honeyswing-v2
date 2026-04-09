@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Camera } from 'react-native-vision-camera';
-import type { Router } from 'expo-router';
+import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
 import type { PoseFrame, PoseSequence } from '../packages/pose/PoseTypes';
 import {
@@ -102,7 +102,7 @@ export function useSwingCapture({
     }
   }
 
-  function tryNavigate() {
+  async function tryNavigate() {
     const blockReason =
       capturePhaseRef.current !== 'complete' ? 'phase' :
       !analysisReadyRef.current ? 'analysis' :
@@ -124,7 +124,14 @@ export function useSwingCapture({
       safetyTimeoutRef.current = null;
     }
     setCurrentSwingVideoUri(videoUriRef.current);
-    router.push('/analysis/result');
+
+    let swingId: string | null = null;
+    try {
+      swingId = await (swingIdPromiseRef.current ?? Promise.resolve(null));
+    } catch {
+      // persist failed — navigate without swingId
+    }
+    router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
 
   async function finalizeCapture() {
