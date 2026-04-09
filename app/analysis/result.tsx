@@ -17,6 +17,7 @@ import {
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
 import type { PoseSequence } from '../../packages/pose/PoseTypes';
+import { GOLD } from '../../lib/colors';
 import {
   TEMPO_LABELS,
   TEMPO_COLORS,
@@ -404,7 +405,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   speedButtonActive: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
   },
   speedButtonText: {
     color: '#999',
@@ -435,7 +436,7 @@ const styles = StyleSheet.create({
     lineHeight: 104,
   },
   honeyBoom: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 22,
     fontWeight: '700',
     marginTop: 4,
@@ -492,7 +493,7 @@ const styles = StyleSheet.create({
 
   // CTA
   primaryButton: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
@@ -527,7 +528,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   signInPromptCta: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 15,
     fontWeight: '600',
   },

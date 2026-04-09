@@ -6,6 +6,7 @@ import type { GolfAngles } from '../packages/domain/swing/angles';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
+import { GOLD } from '../lib/colors';
 
 /** Same skeleton connections as SkeletonOverlay. */
 const SKELETON_CONNECTIONS: [string, string][] = [
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   cardTitle: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.5,

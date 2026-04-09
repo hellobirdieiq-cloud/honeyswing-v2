@@ -16,6 +16,7 @@ import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
+import { GOLD } from '../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {
   junior: 'Little Kid (6-8)',
@@ -308,7 +309,7 @@ const styles = StyleSheet.create({
   },
   signInButton: {
     marginTop: 12,
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 10,
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -326,10 +327,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderWidth: 2,
-    borderColor: '#F5A623',
+    borderColor: GOLD,
   },
   subscriptionText: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 17,
     fontWeight: '700',
   },
@@ -345,7 +346,7 @@ const styles = StyleSheet.create({
     paddingTop: 80,
   },
   title: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 8,
@@ -424,7 +425,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   optionSelected: {
-    borderColor: '#F5A623',
+    borderColor: GOLD,
   },
   optionText: {
     fontSize: 16,

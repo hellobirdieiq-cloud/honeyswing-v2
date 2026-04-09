@@ -15,6 +15,7 @@ import { Worklets } from 'react-native-worklets-core';
 import Svg, { Circle, Line } from 'react-native-svg';
 import { setGrip } from '../../lib/gripStore';
 import { detectHands, type HandResult } from '../../lib/handDetection';
+import { GOLD } from '../../lib/colors';
 
 const HAND_CONNECTIONS: [number, number][] = [
   [0, 1], [0, 5], [0, 9], [0, 13], [0, 17],
@@ -236,7 +237,7 @@ export default function GripCaptureScreen() {
   if (hasPermission === null) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#F5A623" />
+        <ActivityIndicator size="large" color={GOLD} />
       </View>
     );
   }
@@ -257,7 +258,7 @@ export default function GripCaptureScreen() {
   if (!device) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#F5A623" />
+        <ActivityIndicator size="large" color={GOLD} />
         <Text style={styles.msgText}>Loading camera...</Text>
       </View>
     );
@@ -508,7 +509,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 16,
     borderRadius: 14,
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
   },
   captureBtnDisabled: { opacity: 0.4 },
   captureBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
@@ -535,7 +536,7 @@ const styles = StyleSheet.create({
     height: 60,
     borderRadius: 30,
     borderWidth: 2,
-    borderColor: '#F5A623',
+    borderColor: GOLD,
   },
   previewButtons: {
     flexDirection: 'row',
@@ -547,7 +548,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 12,
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
   },
   btnSecondary: { backgroundColor: '#555' },
   btnDisabled: { opacity: 0.4 },

@@ -16,6 +16,7 @@ import { supabase, getUserId } from '../lib/supabase';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
+import { GOLD } from '../lib/colors';
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
@@ -207,7 +208,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 6,
@@ -250,7 +251,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   optionSelected: {
-    borderColor: '#F5A623',
+    borderColor: GOLD,
   },
   optionText: {
     color: '#999',
@@ -289,7 +290,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   cta: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',

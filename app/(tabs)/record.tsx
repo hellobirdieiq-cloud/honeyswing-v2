@@ -20,6 +20,7 @@ import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraG
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture, MAX_BUFFERED_POSE_FRAMES } from '../../lib/useSwingCapture';
+import { GOLD } from '../../lib/colors';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
@@ -373,7 +374,7 @@ export default function RecordTab() {
         </>
       ) : (
         <View style={styles.placeholder}>
-          <ActivityIndicator size="large" color="#F5A623" />
+          <ActivityIndicator size="large" color={GOLD} />
           <Text style={styles.placeholderText}>
             {hasPermission === false ? 'Camera permission denied' : 'Starting camera...'}
           </Text>
@@ -404,7 +405,7 @@ export default function RecordTab() {
       <View style={styles.overlay} pointerEvents="box-none">
         {isInitializing ? (
           <View style={styles.recordingIndicator}>
-            <ActivityIndicator size="small" color="#F5A623" />
+            <ActivityIndicator size="small" color={GOLD} />
             <Text style={styles.recordingText}>Preparing camera...</Text>
           </View>
         ) : isCapturing ? (
@@ -528,12 +529,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(245,166,35,0.3)',
   },
   countdownButtonText: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 17,
     fontWeight: '600',
   },
   recordButton: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     paddingVertical: 16,
     paddingHorizontal: 36,
     borderRadius: 32,
@@ -596,7 +597,7 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     marginTop: 16,
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     paddingVertical: 12,
     paddingHorizontal: 36,
     borderRadius: 24,

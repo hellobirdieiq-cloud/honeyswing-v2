@@ -3,13 +3,14 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Line, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import type { PoseFrame, JointName, NormalizedJoint } from '../packages/pose/PoseTypes';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
+import { GOLD } from '../lib/colors';
 
 // ── Color palette ────────────────────────────────────────────────────
 const HERO_GRADIENT = [
   { offset: '0%', color: '#4A7CF7' },
   { offset: '25%', color: '#3BC4C4' },
   { offset: '45%', color: '#44CC88' },
-  { offset: '65%', color: '#F5A623' },
+  { offset: '65%', color: GOLD },
   { offset: '82%', color: '#FF6B35' },
   { offset: '100%', color: '#C850C0' },
 ];

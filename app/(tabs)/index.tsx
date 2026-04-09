@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
 import { getGrip } from '../../lib/gripStore';
 import { getCoachCode, setCoachCode, resolveCoachName } from '../../lib/coachCode';
+import { GOLD } from '../../lib/colors';
 
 export default function TabsHomeScreen() {
   const router = useRouter();
@@ -78,7 +79,7 @@ export default function TabsHomeScreen() {
           onPress={() => setModalVisible(true)}
           activeOpacity={0.8}
         >
-          <Ionicons name="person-outline" size={18} color="#F5A623" />
+          <Ionicons name="person-outline" size={18} color={GOLD} />
           <Text style={styles.coachBtnText}>Link a Coach</Text>
         </TouchableOpacity>
       )}
@@ -148,7 +149,7 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   title: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 36,
     fontWeight: '800',
     marginBottom: 8,
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   focusTitle: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 0.5,
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   cta: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     paddingVertical: 18,
     paddingHorizontal: 48,
     borderRadius: 16,
@@ -215,7 +216,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   gripBtnText: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -236,7 +237,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   coachBtnText: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -307,7 +308,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   modalConfirm: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,

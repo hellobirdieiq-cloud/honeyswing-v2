@@ -11,6 +11,7 @@ import { useRouter, type Href } from 'expo-router';
 import { Linking } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { getOfferings, restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
+import { GOLD } from '../lib/colors';
 
 export default function PaywallScreen() {
   const router = useRouter();
@@ -90,7 +91,7 @@ export default function PaywallScreen() {
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#F5A623" style={styles.loader} />
+        <ActivityIndicator size="large" color={GOLD} style={styles.loader} />
       ) : (
         <View style={styles.plans}>
           <TouchableOpacity
@@ -180,7 +181,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   title: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 8,
@@ -222,10 +223,10 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   planSelected: {
-    borderColor: '#F5A623',
+    borderColor: GOLD,
   },
   planBadge: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 6,
     paddingVertical: 2,
     paddingHorizontal: 8,
@@ -244,7 +245,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   planPrice: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 20,
     fontWeight: '800',
   },
@@ -254,7 +255,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   subscribeButton: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 16,
     paddingVertical: 18,
     alignSelf: 'stretch',

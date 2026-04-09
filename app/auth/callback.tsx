@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../lib/storageKeys';
+import { GOLD } from '../../lib/colors';
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
@@ -25,7 +26,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#F5A623" />
+      <ActivityIndicator size="large" color={GOLD} />
     </View>
   );
 }

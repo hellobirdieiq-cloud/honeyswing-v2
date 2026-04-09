@@ -16,6 +16,7 @@ import {
   type GripClassification,
   type GripError,
 } from '../../lib/classifyGrip';
+import { GOLD } from '../../lib/colors';
 
 type ResultState =
   | { status: 'loading' }
@@ -82,7 +83,7 @@ export default function GripResultScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         {state.status === 'loading' && (
           <View style={styles.centerContent}>
-            <ActivityIndicator size="large" color="#F5A623" />
+            <ActivityIndicator size="large" color={GOLD} />
             <Text style={styles.loadingText}>Analyzing your grip...</Text>
           </View>
         )}
@@ -194,7 +195,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
-  headerTitle: { color: '#F5A623', fontSize: 18, fontWeight: '700' },
+  headerTitle: { color: GOLD, fontSize: 18, fontWeight: '700' },
   container: { flexGrow: 1, padding: 24, paddingTop: 8 },
 
   // Loading / Error centered
@@ -286,7 +287,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',

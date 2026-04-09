@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { GOLD } from '../../lib/colors';
 
 export default function TabLayout() {
   return (
     <Tabs screenOptions={{
-      tabBarActiveTintColor: '#F5A623',
+      tabBarActiveTintColor: GOLD,
       tabBarStyle: { backgroundColor: '#111' },
       headerShown: false,
     }}>

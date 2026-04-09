@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import { GOLD } from '../lib/colors';
 
 export default function SignInScreen() {
   const router = useRouter();
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 32,
     fontWeight: '800',
     marginBottom: 8,
@@ -173,7 +174,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   cta: {
-    backgroundColor: '#F5A623',
+    backgroundColor: GOLD,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
@@ -204,7 +205,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   secondaryButtonText: {
-    color: '#F5A623',
+    color: GOLD,
     fontSize: 16,
     fontWeight: '600',
   },
