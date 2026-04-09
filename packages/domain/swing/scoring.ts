@@ -1,5 +1,6 @@
 import { GolfAngles } from "./angles";
 import { MetricConfidenceWeights } from "./cameraAngle";
+import { METRIC_DEFINITIONS } from "./metricDefinitions";
 import { SwingTempo } from "./tempoAnalysis";
 
 export type ScoringBreakdownEntry = {
@@ -30,12 +31,12 @@ export function scoreSwing(params: {
   const { angles, tempo, weights } = params;
 
   const entries: { score: number; weight: number }[] = [
-    { score: scoreAngle(angles.spineAngle, 35, 20),       weight: (weights?.spineAngle ?? 1) * (angles.spineAngle != null ? 1 : 0.5) },
-    { score: scoreAngle(angles.leftElbowAngle, 165, 40),  weight: (weights?.leftElbowAngle ?? 1) * (angles.leftElbowAngle != null ? 1 : 0.5) },
-    { score: scoreAngle(angles.rightElbowAngle, 165, 40), weight: (weights?.rightElbowAngle ?? 1) * (angles.rightElbowAngle != null ? 1 : 0.5) },
-    { score: scoreAngle(angles.leftKneeAngle, 155, 35),   weight: (weights?.leftKneeAngle ?? 1) * (angles.leftKneeAngle != null ? 1 : 0.5) },
-    { score: scoreAngle(angles.rightKneeAngle, 155, 35),  weight: (weights?.rightKneeAngle ?? 1) * (angles.rightKneeAngle != null ? 1 : 0.5) },
-    { score: scoreAngle(angles.shoulderTilt, 0, 25),       weight: (weights?.shoulderTilt ?? 1) * (angles.shoulderTilt != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.spineAngle, METRIC_DEFINITIONS.spineAngle.ideal, METRIC_DEFINITIONS.spineAngle.tolerance),             weight: (weights?.spineAngle ?? 1) * (angles.spineAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.leftElbowAngle, METRIC_DEFINITIONS.leftElbowAngle.ideal, METRIC_DEFINITIONS.leftElbowAngle.tolerance),  weight: (weights?.leftElbowAngle ?? 1) * (angles.leftElbowAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.rightElbowAngle, METRIC_DEFINITIONS.rightElbowAngle.ideal, METRIC_DEFINITIONS.rightElbowAngle.tolerance), weight: (weights?.rightElbowAngle ?? 1) * (angles.rightElbowAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.leftKneeAngle, METRIC_DEFINITIONS.leftKneeAngle.ideal, METRIC_DEFINITIONS.leftKneeAngle.tolerance),   weight: (weights?.leftKneeAngle ?? 1) * (angles.leftKneeAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.rightKneeAngle, METRIC_DEFINITIONS.rightKneeAngle.ideal, METRIC_DEFINITIONS.rightKneeAngle.tolerance), weight: (weights?.rightKneeAngle ?? 1) * (angles.rightKneeAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.shoulderTilt, METRIC_DEFINITIONS.shoulderTilt.ideal, METRIC_DEFINITIONS.shoulderTilt.tolerance),         weight: (weights?.shoulderTilt ?? 1) * (angles.shoulderTilt != null ? 1 : 0.5) },
     { score: tempo ? scoreAngle(tempo.tempoRatio, 3, 1.5) : 50, weight: (weights?.tempo ?? 1) * (tempo ? 1 : 0.5) },
   ];
 
