@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
-import { getGrip } from '../../lib/gripStore';
+import { getGrip, clearGrip } from '../../lib/gripStore';
 import {
   classifyGrip,
   GripClassifyError,
@@ -61,11 +61,13 @@ export default function GripResultScreen() {
           console.log('[grip/result] analysis_failed triggered, data:', JSON.stringify(data));
         }
         setState({ status: 'success', data });
+        clearGrip();
       })
       .catch((err) => {
         const errorType: GripError =
           err instanceof GripClassifyError ? err.type : 'server';
         setState({ status: 'error', errorType });
+        clearGrip();
       });
   }, []);
 
