@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { GolfAngles } from '../packages/domain/swing/angles';
+import { scoreAngle } from '../packages/domain/swing/scoring';
 
 export type LiveSwingMotionData = {
   frames: PoseFrame[];
@@ -59,13 +60,6 @@ export type FocusData = {
 import { STORAGE_KEYS } from './storageKeys';
 import { getCachedAgeTier } from './ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
-
-function scoreAngle(value: number | null, ideal: number, tolerance: number): number {
-  if (value == null) return 50;
-  const diff = Math.abs(value - ideal);
-  const raw = 100 - (diff / tolerance) * 100;
-  return Math.max(0, Math.min(100, Math.round(raw)));
-}
 
 
 export function computeFocus(angles: GolfAngles): FocusData | null {
