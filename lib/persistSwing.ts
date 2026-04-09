@@ -78,8 +78,6 @@ export async function persistSwing(
     app_version: APP_VERSION,
     coach_name: coachName ?? null,
     swing_debug: {
-      app_version: APP_VERSION,
-      capture_validity: classification?.validity ?? 'unknown',
       classification_reason: classification?.reason ?? null,
       handedness: isLeftHanded ? 'left' : 'right',
       ...analysis.swing_debug,
