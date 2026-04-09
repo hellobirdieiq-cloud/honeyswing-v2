@@ -1,5 +1,7 @@
 // In-memory only, current-session only grip photo store.
 
+const GRIP_TTL_MS = 30 * 60 * 1000;
+
 interface GripData {
   photoUri: string;
   acceptedAt: number;
@@ -12,6 +14,10 @@ export function setGrip(photoUri: string): void {
 }
 
 export function getGrip(): GripData | null {
+  if (current && Date.now() - current.acceptedAt > GRIP_TTL_MS) {
+    clearGrip();
+    return null;
+  }
   return current;
 }
 
