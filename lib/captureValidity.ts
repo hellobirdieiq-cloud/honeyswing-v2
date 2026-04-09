@@ -7,7 +7,7 @@ export const PARTIAL_MIN_FRAMES = 15;
 export const PARTIAL_MIN_POSE_RATE = 0.40;
 
 // ── "Good frame" definition — matches record.tsx quality gate exactly ─
-const JOINT_CONFIDENCE_THRESHOLD = 0.3;
+export const JOINT_CONFIDENCE_THRESHOLD = 0.3;
 const KEY_JOINTS: JointName[] = [
   'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
   'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import type { Landmark } from './SkeletonOverlay';
 import type { GolfAngles } from '../packages/domain/swing/angles';
+import { JOINT_CONFIDENCE_THRESHOLD } from '@/lib/captureValidity';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
@@ -50,7 +51,7 @@ const SKELETON_CONNECTIONS: [string, string][] = [
   ['rightHeel', 'rightFootIndex'],
 ];
 
-const MIN_CONFIDENCE = 0.3;
+
 
 function scoreColor(score: number): string {
   if (score >= 80) return '#00FF66';
@@ -90,7 +91,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   // Build joint lookup
   const byName = new Map<string, Landmark>();
   for (const lm of landmarks) {
-    if (lm.inFrameLikelihood >= MIN_CONFIDENCE) {
+    if (lm.inFrameLikelihood >= JOINT_CONFIDENCE_THRESHOLD) {
       byName.set(lm.name, lm);
     }
   }

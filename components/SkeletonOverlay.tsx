@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
+import { JOINT_CONFIDENCE_THRESHOLD } from '@/lib/captureValidity';
 
 /** Landmark as returned by the native frame processor plugin (camelCase names). */
 export interface Landmark {
@@ -52,7 +53,7 @@ const SKELETON_CONNECTIONS: [string, string][] = [
   ['rightHeel', 'rightFootIndex'],
 ];
 
-const MIN_CONFIDENCE = 0.3;
+
 const STROKE_COLOR = '#00FF66';
 const DOT_COLOR = '#00FF66';
 
