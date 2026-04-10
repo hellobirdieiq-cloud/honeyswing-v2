@@ -23,12 +23,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
+import { tryNavigate } from '../lib/navigationLock';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
 import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
 import { sessionAccumulator } from '../lib/sessionAccumulator';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { getAgeTier } from '../lib/ageTier';
+import { migrateAnonSwings } from '../lib/migrateAnonSwings';
 
 /** Session resets after this many ms in background */
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
@@ -96,7 +98,7 @@ export default function RootLayout() {
 
       // Redirect after splash hides so the navigator is fully mounted
       if (initialUrl) {
-        router.replace('/(tabs)' as Href);
+        if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
       } else if (session && !onboarded) {
         router.replace('/onboarding' as Href);
       }
@@ -131,7 +133,9 @@ export default function RootLayout() {
             await commitPendingReferral();
             const user = session?.user ?? null;
             if (user) await syncAuthState(user.id);
-            router.replace('/(tabs)' as Href);
+            if (session) await migrateAnonSwings(session.user.id);
+            const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
+            if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
           } else if (event === 'INITIAL_SESSION') {
             const user = session?.user ?? null;
             if (user) {

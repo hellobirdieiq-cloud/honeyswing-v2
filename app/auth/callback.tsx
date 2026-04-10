@@ -3,6 +3,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../lib/storageKeys';
+import { tryNavigate } from '../../lib/navigationLock';
 import { GOLD } from '../../lib/colors';
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
@@ -15,9 +16,9 @@ export default function AuthCallbackScreen() {
       // Session is already set by _layout.tsx via Linking.getInitialURL()
       const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
       if (onboarded) {
-        router.replace('/(tabs)' as Href);
+        if (tryNavigate()) router.replace('/(tabs)' as Href);
       } else {
-        router.replace('/onboarding' as Href);
+        if (tryNavigate()) router.replace('/onboarding' as Href);
       }
     }
 
