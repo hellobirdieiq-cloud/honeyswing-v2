@@ -20,7 +20,6 @@ import {
 import type { PoseSequence } from '../../packages/pose/PoseTypes';
 import {
   TEMPO_LABELS,
-  TEMPO_COLORS,
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
 import VisualCoachCard from '../../components/VisualCoachCard';
@@ -210,7 +209,6 @@ export default function ResultScreen() {
 
   const tempoRating = tempo?.tempoRating as TempoRating | undefined;
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
-  const tempoColor = tempoRating ? TEMPO_COLORS[tempoRating] : '#999';
 
   const keyFrame = useMemo(
     () => (motion ? pickKeyFrame(motion.frames) : null),

@@ -93,7 +93,20 @@ export async function checkSwingLimit(): Promise<SwingLimitStatus> {
     };
   }
 
-  const swingCount = count ?? 0;
+  let anonCount = 0;
+  const { data: anonProfile, error: anonError } = await supabase
+    .from('profiles')
+    .select('anonymous_swing_count')
+    .eq('id', user.id)
+    .single();
+
+  if (anonError) {
+    console.error('[HoneySwing] anonymous_swing_count lookup error:', anonError.message);
+  } else {
+    anonCount = anonProfile?.anonymous_swing_count ?? 0;
+  }
+
+  const swingCount = (count ?? 0) + anonCount;
   const remaining = Math.max(0, limit - swingCount);
   return {
     allowed: remaining > 0,

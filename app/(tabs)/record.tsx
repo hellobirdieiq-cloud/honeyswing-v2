@@ -163,14 +163,9 @@ export default function RecordTab() {
 
         // Skeleton update + dropout fallback
         if (Array.isArray(landmarks) && landmarks.length > 0) {
-          const rotated = (landmarks as Landmark[]).map((lm) => ({
-            ...lm,
-            x: 1 - lm.y,
-            y: lm.x,
-          }));
-          lastGoodLandmarksRef.current = rotated;
+          lastGoodLandmarksRef.current = landmarks as Landmark[];
           lastGoodTimestampRef.current = Date.now();
-          updateLandmarks(rotated);
+          updateLandmarks(landmarks as Landmark[]);
 
           // Camera guidance: update EMA shoulder separation during pre-recording
           if (capturePhaseRef.current === 'idle' || capturePhaseRef.current === 'countdown') {
