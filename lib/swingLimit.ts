@@ -19,7 +19,23 @@ export async function incrementLocalSwingCount(): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.localSwingCount, String(count + 1));
 }
 
+let cachedResult: SwingLimitStatus | null = null;
+let cachedAt = 0;
+const CACHE_TTL_MS = 60_000;
+
+export function invalidateSwingLimitCache(): void {
+  cachedResult = null;
+}
+
 export async function checkSwingLimit(): Promise<SwingLimitStatus> {
+  if (cachedResult && Date.now() - cachedAt < CACHE_TTL_MS) return cachedResult;
+  const result = await doCheckSwingLimit();
+  cachedResult = result;
+  cachedAt = Date.now();
+  return result;
+}
+
+async function doCheckSwingLimit(): Promise<SwingLimitStatus> {
   // Subscriber tier — unlimited swings (default-allow on error via getSubscriptionStatus)
   const isSubscribed = await getSubscriptionStatus();
   if (isSubscribed) {

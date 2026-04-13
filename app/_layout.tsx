@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 import { tryNavigate } from '../lib/navigationLock';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
+import { invalidateSwingLimitCache } from '../lib/swingLimit';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
 import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
 import { sessionAccumulator } from '../lib/sessionAccumulator';
@@ -112,6 +113,7 @@ export default function RootLayout() {
       async (event, session) => {
         try {
           if (event === 'SIGNED_IN') {
+            invalidateSwingLimitCache();
             await commitPendingReferral();
             const user = session?.user ?? null;
             if (user) await syncAuthState(user.id);
@@ -119,11 +121,13 @@ export default function RootLayout() {
             const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
             if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
           } else if (event === 'INITIAL_SESSION') {
+            invalidateSwingLimitCache();
             const user = session?.user ?? null;
             if (user) {
               await syncAuthState(user.id);
             }
           } else if (event === 'SIGNED_OUT') {
+            invalidateSwingLimitCache();
             await syncAuthState(null);
           }
         } catch (err) {
