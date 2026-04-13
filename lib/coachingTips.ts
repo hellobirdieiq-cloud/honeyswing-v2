@@ -108,6 +108,7 @@ export function buildRawTips(breakdown: ScoringBreakdownEntry[], ageTier: AgeTie
   const best: Map<string, { scoringMetric: string; score: number }> = new Map();
 
   for (const entry of breakdown) {
+    if (entry.dataQuality === 'missing') continue;
     if (entry.score >= TIP_SCORE_THRESHOLD) continue;
     const mappedKey = METRIC_KEY_MAP[entry.metric];
     if (!mappedKey) continue;

@@ -13,6 +13,7 @@ export type ScoringBreakdownEntry = {
   score: number;
   weight: number;
   weighted: number;
+  dataQuality: 'measured' | 'missing';
 };
 
 export type ScoringResult = {
@@ -40,13 +41,13 @@ export function scoreSwing(params: {
     const value = angles[key];
     const score = scoreAngle(value, def.ideal, def.tolerance);
     const weight = (weights?.[key] ?? 1) * (value != null ? 1 : 0.5);
-    return { metric: key, score, weight, weighted: score * weight };
+    return { metric: key, score, weight, weighted: score * weight, dataQuality: value != null ? 'measured' as const : 'missing' as const };
   });
 
   // Tempo — not an angle metric, appended separately
   const tempoScore = tempo ? scoreAngle(tempo.tempoRatio, 3, 1.5) : 50;
   const tempoWeight = (weights?.tempo ?? 1) * (tempo ? 1 : 0.5);
-  breakdown.push({ metric: 'tempo', score: tempoScore, weight: tempoWeight, weighted: tempoScore * tempoWeight });
+  breakdown.push({ metric: 'tempo', score: tempoScore, weight: tempoWeight, weighted: tempoScore * tempoWeight, dataQuality: tempo != null ? 'measured' as const : 'missing' as const });
 
   const totalWeight = breakdown.reduce((sum, e) => sum + e.weight, 0);
   const weightedSum = breakdown.reduce((sum, e) => sum + e.weighted, 0);
