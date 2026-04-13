@@ -107,9 +107,10 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
     for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
+      if (!(labelKey in angles)) continue;
       if (suppressedSet.has(labelKey)) continue;
       const def = METRIC_DEFINITIONS[labelKey];
-      const value = angles[labelKey];
+      const value = angles[labelKey as keyof GolfAngles];
       scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
     }
   }
@@ -123,7 +124,7 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   // Build set of highlighted segments — remap joint names for lefty display
   const highlightedSegments = new Set<string>();
   if (worst) {
-    for (const [a, b] of METRIC_DEFINITIONS[worst.key].segments) {
+    for (const [a, b] of METRIC_DEFINITIONS[worst.key].segments ?? []) {
       const ra = remapSegmentJoint(a, isLeftHanded);
       const rb = remapSegmentJoint(b, isLeftHanded);
       highlightedSegments.add(`${ra}-${rb}`);

@@ -14,10 +14,11 @@ export type MetricKey =
   | 'rightElbowAngle'
   | 'leftKneeAngle'
   | 'rightKneeAngle'
-  | 'shoulderTilt';
+  | 'shoulderTilt'
+  | 'tempo';
 
 export interface MetricDefinition {
-  segments: [string, string][];
+  segments?: [string, string][];
   ideal: number;
   tolerance: number;
   label: string;
@@ -84,5 +85,13 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
       if (v > 0) return junior ? 'Try to keep your shoulders even' : 'Your lead shoulder is too high at address — try to level them';
       return junior ? 'Try to keep your shoulders even' : 'Your trail shoulder is too high at address — try to level them';
     },
+  },
+  tempo: {
+    ideal: 3, tolerance: 1.5,
+    label: 'Tempo',
+    cue: (_v, _i, ageTier) =>
+      ageTier === 'junior'
+        ? 'Nice and slow going back'
+        : 'Smooth out your tempo — controlled backswing, accelerating downswing',
   },
 };

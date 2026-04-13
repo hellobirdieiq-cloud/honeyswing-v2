@@ -65,8 +65,9 @@ import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/met
 export function computeFocus(angles: GolfAngles): FocusData | null {
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
+    if (!(labelKey in angles)) continue;
     const def = METRIC_DEFINITIONS[labelKey];
-    const value = angles[labelKey];
+    const value = angles[labelKey as keyof GolfAngles];
     scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
   }
 
