@@ -7,7 +7,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useCameraDevices, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
-import { honeyPoseDetect, classifyGripFrames, releaseGripBuffer } from '../../modules/vision-camera-pose/src';
+import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
 import type { PoseFrame, PoseSequence } from '../../packages/pose/PoseTypes';
 import { MLKitProvider } from '../../packages/pose/providers/MLKitProvider';
 import {

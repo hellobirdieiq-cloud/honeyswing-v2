@@ -173,28 +173,30 @@ export function useSwingCapture({
     const isLeftHanded = await getIsLeftHanded();
     const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
 
-    // Grip estimation — proof of pipeline. Non-blocking, does not affect navigation.
-    (async () => {
-      try {
-        const addressPhase = analysis.phases?.find(p => p.phase === 'address');
-        if (addressPhase && addressPhase.index < frames.length) {
-          const frame = frames[addressPhase.index];
-          const leadWrist = isLeftHanded ? frame.joints.rightWrist : frame.joints.leftWrist;
-          if (leadWrist) {
-            const result = await classifyGripFrames({
+    // Grip estimation — awaited with 500ms timeout, result passed to persistSwing
+    let nativeGripResult: Record<string, unknown>[] | null = null;
+    try {
+      const addressPhase = analysis.phases?.find(p => p.phase === 'address');
+      if (addressPhase && addressPhase.index < frames.length) {
+        const frame = frames[addressPhase.index];
+        const leadWrist = isLeftHanded ? frame.joints.rightWrist : frame.joints.leftWrist;
+        if (leadWrist) {
+          nativeGripResult = await Promise.race([
+            classifyGripFrames({
               timestamps: [addressPhase.timestamp],
               wristX: [leadWrist.x],
               wristY: [leadWrist.y],
-            });
-            console.log('[GripEstimation]', JSON.stringify(result));
-          }
+            }),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+          ]);
+          console.log('[GripEstimation]', JSON.stringify(nativeGripResult));
         }
-      } catch (e) {
-        console.warn('[GripEstimation] Error:', e);
-      } finally {
-        try { await releaseGripBuffer(); } catch {}
       }
-    })();
+    } catch (e) {
+      console.warn('[GripEstimation] Error:', e);
+    } finally {
+      try { await releaseGripBuffer(); } catch {}
+    }
 
     setCurrentSwingMotion({
       frames,
@@ -209,7 +211,7 @@ export function useSwingCapture({
     swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
       camera_angle_at_start: guidanceSnapshotRef.current.separation,
       camera_guidance_color: guidanceSnapshotRef.current.color,
-    }).then((swingId) => {
+    }, nativeGripResult).then((swingId) => {
       if (swingId) {
         console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
       } else {

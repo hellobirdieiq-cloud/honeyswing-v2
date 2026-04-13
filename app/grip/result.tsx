@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
-import { getGrip, clearGrip } from '../../lib/gripStore';
+import { getGrip, clearGrip, setGripClassification } from '../../lib/gripStore';
 import {
   classifyGrip,
   GripClassifyError,
@@ -60,6 +60,9 @@ export default function GripResultScreen() {
       .then((data) => {
         if (data.analysis_failed) {
           console.log('[grip/result] analysis_failed triggered, data:', JSON.stringify(data));
+        }
+        if (!data.analysis_failed) {
+          setGripClassification(data);
         }
         setState({ status: 'success', data });
         clearGrip();

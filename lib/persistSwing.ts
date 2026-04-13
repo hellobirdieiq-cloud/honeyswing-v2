@@ -11,6 +11,7 @@ import { positiveReinforcementEngine } from './positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
+import { getGripClassification, clearGripClassification } from './gripStore';
 
 const APP_VERSION = '1.9.3';
 
@@ -39,6 +40,7 @@ export async function persistSwing(
   analysis: AnalysisResult,
   classification: CaptureClassification | null,
   cameraGuidance?: CameraGuidanceSnapshot,
+  nativeGrip?: Record<string, unknown>[] | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -52,6 +54,9 @@ export async function persistSwing(
     return null;
   }
   const profileId = authUserId;
+
+  const cloudGrip = getGripClassification();
+  clearGripClassification();
 
   const coachCode = await getCoachCode();
   const coachName = resolveCoachName(coachCode);
@@ -88,6 +93,8 @@ export async function persistSwing(
       session_swing_number: sessionAccumulator.swingCount + 1,
       session_insight_shown: null, // Set by result screen after persist — logged to Metro
       age_tier: ageTier,
+      grip_native: nativeGrip ?? null,
+      grip_cloud: cloudGrip ?? null,
     },
   };
 
