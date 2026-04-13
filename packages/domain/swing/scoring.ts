@@ -1,6 +1,6 @@
 import { GolfAngles } from "./angles";
 import { MetricConfidenceWeights } from "./cameraAngle";
-import { METRIC_DEFINITIONS, type MetricKey } from "./metricDefinitions";
+import { METRIC_DEFINITIONS } from "./metricDefinitions";
 import { SwingTempo } from "./tempoAnalysis";
 
 export type ScoringBreakdownEntry = {
@@ -30,19 +30,30 @@ export function scoreSwing(params: {
 }): ScoringResult {
   const { angles, tempo, weights } = params;
 
-  const metricKeys = Object.keys(METRIC_DEFINITIONS) as MetricKey[];
-  const breakdown: ScoringBreakdownEntry[] = metricKeys.map((key) => {
-    const def = METRIC_DEFINITIONS[key];
-    const value = key === 'tempo'
-      ? (tempo?.tempoRatio ?? null)
-      : (angles[key as keyof GolfAngles] ?? null);
-    const score = scoreAngle(value, def.ideal, def.tolerance);
-    const weight = (weights?.[key as keyof MetricConfidenceWeights] ?? 1) * (value != null ? 1 : 0.5);
-    return { metric: key, score, weight, weighted: score * weight };
-  });
+  const entries: { score: number; weight: number }[] = [
+    { score: scoreAngle(angles.spineAngle, METRIC_DEFINITIONS.spineAngle.ideal, METRIC_DEFINITIONS.spineAngle.tolerance),             weight: (weights?.spineAngle ?? 1) * (angles.spineAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.leftElbowAngle, METRIC_DEFINITIONS.leftElbowAngle.ideal, METRIC_DEFINITIONS.leftElbowAngle.tolerance),  weight: (weights?.leftElbowAngle ?? 1) * (angles.leftElbowAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.rightElbowAngle, METRIC_DEFINITIONS.rightElbowAngle.ideal, METRIC_DEFINITIONS.rightElbowAngle.tolerance), weight: (weights?.rightElbowAngle ?? 1) * (angles.rightElbowAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.leftKneeAngle, METRIC_DEFINITIONS.leftKneeAngle.ideal, METRIC_DEFINITIONS.leftKneeAngle.tolerance),   weight: (weights?.leftKneeAngle ?? 1) * (angles.leftKneeAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.rightKneeAngle, METRIC_DEFINITIONS.rightKneeAngle.ideal, METRIC_DEFINITIONS.rightKneeAngle.tolerance), weight: (weights?.rightKneeAngle ?? 1) * (angles.rightKneeAngle != null ? 1 : 0.5) },
+    { score: scoreAngle(angles.shoulderTilt, METRIC_DEFINITIONS.shoulderTilt.ideal, METRIC_DEFINITIONS.shoulderTilt.tolerance),         weight: (weights?.shoulderTilt ?? 1) * (angles.shoulderTilt != null ? 1 : 0.5) },
+    { score: tempo ? scoreAngle(tempo.tempoRatio, 3, 1.5) : 50, weight: (weights?.tempo ?? 1) * (tempo ? 1 : 0.5) },
+  ];
 
-  const totalWeight = breakdown.reduce((sum, e) => sum + e.weight, 0);
-  const weightedSum = breakdown.reduce((sum, e) => sum + e.weighted, 0);
+  const metricNames = [
+    'spineAngle', 'leftElbowAngle', 'rightElbowAngle',
+    'leftKneeAngle', 'rightKneeAngle', 'shoulderTilt', 'tempo',
+  ];
+
+  const breakdown: ScoringBreakdownEntry[] = entries.map((e, i) => ({
+    metric: metricNames[i],
+    score: e.score,
+    weight: e.weight,
+    weighted: e.score * e.weight,
+  }));
+
+  const totalWeight = entries.reduce((sum, e) => sum + e.weight, 0);
+  const weightedSum = entries.reduce((sum, e) => sum + e.score * e.weight, 0);
 
   const score = totalWeight > 0
     ? Math.max(0, Math.min(100, Math.round(weightedSum / totalWeight)))
