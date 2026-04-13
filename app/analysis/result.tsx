@@ -169,27 +169,18 @@ export default function ResultScreen() {
     return insight;
   }, [analysis, processedTips]);
 
-  // Persist session insight to the swing row
+  // Persist session insight to the swing row (atomic JSONB merge — no read-modify-write race)
   useEffect(() => {
     if (!swingId || !sessionInsight) return;
     supabase
-      .from('swings')
-      .select('swing_debug')
-      .eq('id', swingId)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) return;
-        const debug = (data.swing_debug as Record<string, unknown>) ?? {};
-        debug.session_insight_shown = sessionInsight.message;
-        supabase
-          .from('swings')
-          .update({ swing_debug: debug })
-          .eq('id', swingId)
-          .then(({ error: updateError }) => {
-            if (updateError) {
-              console.error('[HoneySwing] session_insight_shown update error:', updateError.message);
-            }
-          });
+      .rpc('merge_swing_debug', {
+        swing_id: swingId,
+        patch: { session_insight_shown: sessionInsight.message },
+      })
+      .then(({ error }) => {
+        if (error) {
+          console.error('[HoneySwing] session_insight_shown update error:', error.message);
+        }
       });
   }, [swingId, sessionInsight]);
 
