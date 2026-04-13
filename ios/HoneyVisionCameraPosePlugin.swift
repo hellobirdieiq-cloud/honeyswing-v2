@@ -11,6 +11,42 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
   private var poseLandmarker: PoseLandmarker?
   private var initError: String?
 
+  private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+  private static var frameCount: Int = 0
+
+  private static func convertToBGRA(_ pixelBuffer: CVPixelBuffer, orientation: UIImage.Orientation) -> CVPixelBuffer? {
+    let exif: Int32 = {
+      switch orientation {
+      case .up:            return 1
+      case .down:          return 3
+      case .left:          return 6
+      case .right:         return 8
+      case .upMirrored:    return 2
+      case .downMirrored:  return 4
+      case .leftMirrored:  return 5
+      case .rightMirrored: return 7
+      @unknown default:    return 1
+      }
+    }()
+
+    let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(forExifOrientation: exif)
+    let extent = ciImage.extent
+
+    var outBuffer: CVPixelBuffer?
+    let status = CVPixelBufferCreate(
+      kCFAllocatorDefault,
+      Int(extent.width),
+      Int(extent.height),
+      kCVPixelFormatType_32BGRA,
+      nil,
+      &outBuffer
+    )
+    guard status == kCVReturnSuccess, let bgraBuffer = outBuffer else { return nil }
+
+    ciContext.render(ciImage, to: bgraBuffer)
+    return bgraBuffer
+  }
+
   /// MediaPipe BlazePose GHUM — all 33 landmarks mapped to JS joint names.
   private static let jointMapping: [(mpIndex: Int, id: Int, name: String)] = [
     ( 0,  0, "nose"),
@@ -99,12 +135,16 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(frame.buffer) else {
       return [["_diagnostic": "no_pixel_buffer"]]
     }
+    if Self.frameCount % 60 == 0 {
+      print("[HoneyPose] orientation=\(frame.orientation.rawValue) w=\(CVPixelBufferGetWidth(pixelBuffer)) h=\(CVPixelBufferGetHeight(pixelBuffer))")
+    }
+    Self.frameCount += 1
+    guard let bgraBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
+      return [["_diagnostic": "bgra_conversion_failed"]]
+    }
 
     do {
-      // Pass the sample buffer directly to MediaPipe with VisionCamera's orientation.
-      // No manual CIImage/UIImage rotation — frame.orientation already describes
-      // the correct display orientation for the pixel data.
-      let mpImage = try MPImage(sampleBuffer: frame.buffer, orientation: frame.orientation)
+      let mpImage = try MPImage(pixelBuffer: bgraBuffer, orientation: .up)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
       let result = try poseLandmarker.detect(videoFrame: mpImage, timestampInMilliseconds: timestampMs)
 
@@ -129,7 +169,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
 
       // Step 1: Stash pixel buffer in ring buffer for post-capture grip estimation
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
-      Self.stashGripFrame(pixelBuffer: pixelBuffer, timestamp: CMTimeGetSeconds(pts))
+      Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
 
       return landmarks
     } catch {
