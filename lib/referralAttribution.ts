@@ -7,67 +7,63 @@ export async function storePendingReferral(code: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.pendingReferralCode, code.toLowerCase().trim());
 }
 
-let isCommitting = false;
-let committingSince = 0;
-const STALE_MUTEX_MS = 10_000;
+let commitPromise: Promise<void> | null = null;
 
-export async function commitPendingReferral(): Promise<void> {
-  if (isCommitting) {
-    if (Date.now() - committingSince < STALE_MUTEX_MS) return;
-    console.warn('[HoneySwing] referral commit mutex stale, force-resetting');
+export function commitPendingReferral(): Promise<void> {
+  if (commitPromise) return commitPromise;
+  commitPromise = doCommitPendingReferral().finally(() => {
+    commitPromise = null;
+  });
+  return commitPromise;
+}
+
+async function doCommitPendingReferral(): Promise<void> {
+  const pendingCode = await AsyncStorage.getItem(STORAGE_KEYS.pendingReferralCode);
+  if (!pendingCode) return;
+
+  const userId = await getUserId();
+  if (!userId) return;
+
+  const { data: profile, error: fetchError } = await supabase
+    .from('profiles')
+    .select('referral_coach_id')
+    .eq('id', userId)
+    .single();
+
+  if (fetchError) {
+    console.error('[HoneySwing] referral fetch error:', fetchError.message);
+    return;
   }
-  isCommitting = true;
-  committingSince = Date.now();
-  try {
-    const pendingCode = await AsyncStorage.getItem(STORAGE_KEYS.pendingReferralCode);
-    if (!pendingCode) return;
 
-    const userId = await getUserId();
-    if (!userId) return;
-
-    const { data: profile, error: fetchError } = await supabase
-      .from('profiles')
-      .select('referral_coach_id')
-      .eq('id', userId)
-      .single();
-
-    if (fetchError) {
-      console.error('[HoneySwing] referral fetch error:', fetchError.message);
-      return;
-    }
-
-    if (profile?.referral_coach_id) {
-      await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
-      return;
-    }
-
-    const { data: coach, error: coachError } = await supabase
-      .from('coaches')
-      .select('id')
-      .eq('code', pendingCode)
-      .single();
-
-    if (coachError || !coach) {
-      console.error('[HoneySwing] coach lookup failed:', coachError?.message ?? 'not found');
-      await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from('profiles')
-      .update({ referral_coach_id: coach.id })
-      .eq('id', userId);
-
-    if (updateError) {
-      console.error('[HoneySwing] referral update error:', updateError.message);
-      return;
-    }
-
+  if (profile?.referral_coach_id) {
     await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
-    await setCoachCode(pendingCode);
-  } finally {
-    isCommitting = false;
+    return;
   }
+
+  const { data: coach, error: coachError } = await supabase
+    .from('coaches')
+    .select('id')
+    .eq('code', pendingCode)
+    .single();
+
+  if (coachError || !coach) {
+    console.error('[HoneySwing] coach lookup failed:', coachError?.message ?? 'not found');
+    await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({ referral_coach_id: coach.id })
+    .eq('id', userId);
+
+  if (updateError) {
+    console.error('[HoneySwing] referral update error:', updateError.message);
+    return;
+  }
+
+  await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
+  await setCoachCode(pendingCode);
 }
 
 export async function handleReferralUrl(url: string): Promise<void> {
