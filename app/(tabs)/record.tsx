@@ -19,7 +19,7 @@ import CameraGuidance from '../../components/CameraGuidance';
 import { extractShoulderSeparation, emaSmooth, classifyCameraAngle, type CameraGuidanceColor, GOOD_MIN, GOOD_MAX, BORDERLINE_LOW_MIN, BORDERLINE_HIGH_MAX } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
-import { useSwingCapture, MAX_BUFFERED_POSE_FRAMES } from '../../lib/useSwingCapture';
+import { useSwingCapture } from '../../lib/useSwingCapture';
 import { GOLD } from '../../lib/colors';
 import { styles } from './recordStyles';
 
@@ -105,6 +105,7 @@ export default function RecordTab() {
     motionFramesRef,
     capturePhaseRef,
     clearTimers,
+    bufferPoseFrame,
   } = useSwingCapture({
     cameraRef,
     router,
@@ -199,12 +200,7 @@ export default function RecordTab() {
           frameHeight,
         });
 
-        if (!poseFrame) return;
-
-        motionFramesRef.current.push(poseFrame);
-        if (motionFramesRef.current.length > MAX_BUFFERED_POSE_FRAMES) {
-          motionFramesRef.current = motionFramesRef.current.slice(-MAX_BUFFERED_POSE_FRAMES);
-        }
+        if (poseFrame) bufferPoseFrame(poseFrame);
       }
     );
   }

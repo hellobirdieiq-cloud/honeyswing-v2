@@ -102,6 +102,13 @@ export function useSwingCapture({
     }
   }
 
+  function bufferPoseFrame(poseFrame: PoseFrame) {
+    motionFramesRef.current.push(poseFrame);
+    if (motionFramesRef.current.length > MAX_BUFFERED_POSE_FRAMES) {
+      motionFramesRef.current = motionFramesRef.current.slice(-MAX_BUFFERED_POSE_FRAMES);
+    }
+  }
+
   async function tryNavigate() {
     const blockReason =
       capturePhaseRef.current !== 'complete' ? 'phase' :
@@ -310,5 +317,6 @@ export function useSwingCapture({
     motionFramesRef,
     capturePhaseRef,
     clearTimers,
+    bufferPoseFrame,
   };
 }
