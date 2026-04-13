@@ -8,10 +8,16 @@ export async function storePendingReferral(code: string): Promise<void> {
 }
 
 let isCommitting = false;
+let committingSince = 0;
+const STALE_MUTEX_MS = 10_000;
 
 export async function commitPendingReferral(): Promise<void> {
-  if (isCommitting) return;
+  if (isCommitting) {
+    if (Date.now() - committingSince < STALE_MUTEX_MS) return;
+    console.warn('[HoneySwing] referral commit mutex stale, force-resetting');
+  }
   isCommitting = true;
+  committingSince = Date.now();
   try {
     const pendingCode = await AsyncStorage.getItem(STORAGE_KEYS.pendingReferralCode);
     if (!pendingCode) return;

@@ -135,9 +135,11 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     guard let pixelBuffer = CMSampleBufferGetImageBuffer(frame.buffer) else {
       return [["_diagnostic": "no_pixel_buffer"]]
     }
+    #if DEBUG
     if Self.frameCount % 60 == 0 {
       print("[HoneyPose] orientation=\(frame.orientation.rawValue) w=\(CVPixelBufferGetWidth(pixelBuffer)) h=\(CVPixelBufferGetHeight(pixelBuffer))")
     }
+    #endif
     Self.frameCount += 1
     guard let bgraBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
       return [["_diagnostic": "bgra_conversion_failed"]]

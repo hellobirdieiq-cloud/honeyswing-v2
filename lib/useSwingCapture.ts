@@ -268,7 +268,7 @@ export function useSwingCapture({
     goPlayer.play();
 
     captureTimeoutRef.current = setTimeout(() => {
-      finalizeCapture();
+      finalizeCapture().catch(err => console.error('[finalizeCapture] timeout error:', err));
     }, CAPTURE_WINDOW_MS);
   }
 

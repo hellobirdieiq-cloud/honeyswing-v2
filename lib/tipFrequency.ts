@@ -94,7 +94,7 @@ export interface RawCoachingTip {
   metricKey: string;
   title: string;
   body: string;
-  shortBody: string;
+  shortBody: string | null;
 }
 
 /**

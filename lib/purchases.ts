@@ -24,11 +24,16 @@ export function configurePurchases(): void {
 
 // ── Auth Sync ────────────────────────────────────────────────────────────────
 
+let syncedUserId: string | null = null;
+
 export async function syncAuthState(userId: string | null): Promise<void> {
   try {
     if (userId) {
+      if (userId === syncedUserId) return;
       await Purchases.logIn(userId);
+      syncedUserId = userId;
     } else {
+      syncedUserId = null;
       const customerInfo = await Purchases.getCustomerInfo();
       if (!customerInfo.originalAppUserId.startsWith('$RCAnonymousID')) {
         await Purchases.logOut();

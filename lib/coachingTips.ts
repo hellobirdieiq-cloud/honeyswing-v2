@@ -128,7 +128,7 @@ export function buildRawTips(breakdown: ScoringBreakdownEntry[], ageTier: AgeTie
       metricKey: mappedKey,
       title: text.title,
       body: useJunior && text.juniorBody ? text.juniorBody : text.body,
-      shortBody: useJunior && text.juniorBody ? text.juniorBody : '',
+      shortBody: useJunior && text.juniorBody ? text.juniorBody : null,
     });
   }
   return tips;

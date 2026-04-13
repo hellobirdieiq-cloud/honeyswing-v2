@@ -59,12 +59,12 @@ export const styles = StyleSheet.create({
     gap: 16,
   },
   countdownButton: {
-    backgroundColor: 'rgba(245,166,35,0.15)',
+    backgroundColor: `${GOLD}26`,
     paddingVertical: 14,
     paddingHorizontal: 22,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.3)',
+    borderColor: `${GOLD}4D`,
   },
   countdownButtonText: {
     color: GOLD,
