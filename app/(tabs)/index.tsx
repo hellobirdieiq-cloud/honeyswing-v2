@@ -4,7 +4,8 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loadFocus, type FocusData } from '../../lib/swingMotionStore';
 import { getGrip } from '../../lib/gripStore';
-import { getCoachCode, setCoachCode, resolveCoachName } from '../../lib/coachCode';
+import { getCoachCode } from '../../lib/coachCode';
+import { linkCoach } from '../../lib/referralAttribution';
 import { GOLD } from '../../lib/colors';
 
 export default function TabsHomeScreen() {
@@ -15,13 +16,14 @@ export default function TabsHomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [codeInput, setCodeInput] = useState('');
   const [codeError, setCodeError] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       loadFocus().then(setFocus).catch((err) => console.error('[HoneySwing]', err));
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
+      getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
     }, []),
   );
 
@@ -111,18 +113,24 @@ export default function TabsHomeScreen() {
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalConfirm}
+                style={[styles.modalConfirm, linking && { opacity: 0.5 }]}
+                disabled={linking}
                 onPress={async () => {
-                  const resolved = resolveCoachName(codeInput);
-                  if (!resolved) {
+                  if (!codeInput.trim()) {
                     setCodeError(true);
                     return;
                   }
-                  await setCoachCode(codeInput);
-                  setCoachName(resolved);
-                  setModalVisible(false);
-                  setCodeInput('');
-                  setCodeError(false);
+                  setLinking(true);
+                  const result = await linkCoach(codeInput);
+                  setLinking(false);
+                  if (result.success && result.coachName) {
+                    setCoachName(result.coachName);
+                    setModalVisible(false);
+                    setCodeInput('');
+                    setCodeError(false);
+                  } else {
+                    setCodeError(true);
+                  }
                 }}
               >
                 <Text style={styles.modalConfirmText}>Confirm</Text>
