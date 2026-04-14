@@ -13,7 +13,7 @@ import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
 import { getGripClassification, clearGripClassification } from './gripStore';
 
-const APP_VERSION = '1.9.3';
+const APP_VERSION = '1.9.4';
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {

@@ -404,11 +404,6 @@ export function correctForPhoneTilt(
     const before = metrics.shoulderTilt!;
     corrected.shoulderTilt = round(before - tilt.pitchDeg);
     corrections.shoulderTilt = { before: round(before), after: corrected.shoulderTilt };
-    console.log('[HoneySwing][shoulderTilt]', {
-      raw: round(before),
-      pitchDeg: round(tilt.pitchDeg),
-      corrected: corrected.shoulderTilt,
-    });
   }
 
   const didCorrect = Object.keys(corrections).length > 0;

@@ -147,6 +147,27 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Grip chip
+  gripChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#1A1A1C',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 16,
+  },
+  gripChipLabel: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  gripChipValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
   // CTA
   primaryButton: {
     backgroundColor: GOLD,

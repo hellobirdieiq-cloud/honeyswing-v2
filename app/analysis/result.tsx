@@ -34,6 +34,13 @@ import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { getCachedAgeTier } from '../../lib/ageTier';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
+import type { GripClassification } from '../../lib/classifyGrip';
+
+const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
+  solid:            { label: 'Solid',            color: '#00FF66' },
+  playable:         { label: 'Playable',         color: '#FFB020' },
+  needs_adjustment: { label: 'Needs Adjustment', color: '#FF4444' },
+};
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -47,6 +54,7 @@ export default function ResultScreen() {
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
   const swingAddedRef = useRef(false);
+  const [gripCloud, setGripCloud] = useState<GripClassification | null>(null);
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -71,6 +79,19 @@ export default function ResultScreen() {
       }
     }).catch((err) => console.error('[HoneySwing]', err));
   }, []);
+
+  useEffect(() => {
+    if (!swingId) return;
+    supabase
+      .from('swings')
+      .select('swing_debug')
+      .eq('id', swingId)
+      .single()
+      .then(({ data }) => {
+        const gc = data?.swing_debug?.grip_cloud as GripClassification | undefined;
+        if (gc && !gc.analysis_failed) setGripCloud(gc);
+      });
+  }, [swingId]);
 
   const classification: CaptureClassification | null = useMemo(
     () => (motion ? classifyCapture(motion.frames) : null),
@@ -315,6 +336,16 @@ export default function ResultScreen() {
               <View style={styles.coachChip}>
                 <Text style={styles.coachChipLabel}>Coach</Text>
                 <Text style={styles.coachChipValue}>{coachName}</Text>
+              </View>
+            )}
+
+            {/* 5b. Grip */}
+            {gripCloud && GRIP_CHIP_COLORS[gripCloud.overall] && (
+              <View style={styles.gripChip}>
+                <Text style={styles.gripChipLabel}>Grip</Text>
+                <Text style={[styles.gripChipValue, { color: GRIP_CHIP_COLORS[gripCloud.overall].color }]}>
+                  {GRIP_CHIP_COLORS[gripCloud.overall].label}
+                </Text>
               </View>
             )}
 
