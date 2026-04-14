@@ -25,7 +25,7 @@ import {
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
-import { getCoachCode, resolveCoachName } from '../../lib/coachCode';
+import { getCoachCode } from '../../lib/coachCode';
 import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import SwingArtCard from '../../components/SwingArtCard';
@@ -68,7 +68,7 @@ export default function ResultScreen() {
 
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
-    getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
+    getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
 
     // Check swing limit after this swing was persisted
     checkSwingLimit().then((status) => {

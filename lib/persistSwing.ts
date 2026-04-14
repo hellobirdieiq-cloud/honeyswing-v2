@@ -4,7 +4,7 @@ import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import { isGoodFrame, type CaptureClassification } from './captureValidity';
-import { getCoachCode, resolveCoachName } from './coachCode';
+import { getCoachCode } from './coachCode';
 import { getIsLeftHanded } from './handedness';
 import { getFrequencyDebugInfo } from './tipFrequency';
 import { positiveReinforcementEngine } from './positiveReinforcement';
@@ -59,7 +59,6 @@ export async function persistSwing(
   clearGripClassification();
 
   const coachCode = await getCoachCode();
-  const coachName = resolveCoachName(coachCode);
   const isLeftHanded = await getIsLeftHanded();
   const ageTier = await getAgeTier();
 
@@ -81,7 +80,7 @@ export async function persistSwing(
     failure_reason: classification?.reason ?? null,
     capture_validity: classification?.validity ?? 'unknown',
     app_version: APP_VERSION,
-    coach_name: coachName ?? null,
+    coach_name: coachCode ?? null,
     swing_debug: {
       classification_reason: classification?.reason ?? null,
       handedness: isLeftHanded ? 'left' : 'right',

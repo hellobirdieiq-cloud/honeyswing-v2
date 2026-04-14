@@ -42,7 +42,7 @@ async function doCommitPendingReferral(): Promise<void> {
 
   const { data: coach, error: coachError } = await supabase
     .from('coaches')
-    .select('id')
+    .select('id, name')
     .eq('code', pendingCode)
     .single();
 
@@ -63,7 +63,7 @@ async function doCommitPendingReferral(): Promise<void> {
   }
 
   await AsyncStorage.removeItem(STORAGE_KEYS.pendingReferralCode);
-  await setCoachCode(pendingCode);
+  await setCoachCode(coach.name ?? pendingCode);
 }
 
 export async function handleReferralUrl(url: string): Promise<void> {
@@ -113,7 +113,7 @@ export async function linkCoach(
 
   if (updateError) return { success: false, error: 'Failed to link coach' };
 
-  await setCoachCode(normalized);
+  await setCoachCode(coach.name ?? normalized);
 
   return { success: true, coachName: coach.name ?? coach.code };
 }
