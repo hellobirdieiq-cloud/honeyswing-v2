@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from './supabase';
-import { setCoachCode } from './coachCode';
+import { setCoachCode, clearCoachCode } from './coachCode';
 import { STORAGE_KEYS } from './storageKeys';
 
 export async function storePendingReferral(code: string): Promise<void> {
@@ -77,4 +77,59 @@ export async function handleReferralUrl(url: string): Promise<void> {
   } catch {
     // malformed URL — ignore
   }
+}
+
+export async function linkCoach(
+  code: string,
+): Promise<{ success: boolean; coachName?: string; error?: string }> {
+  const normalized = code.toLowerCase().trim();
+  if (!normalized) return { success: false, error: 'Enter a coach code' };
+
+  const userId = await getUserId();
+  if (!userId) return { success: false, error: 'Not signed in' };
+
+  const { data: coach, error: coachError } = await supabase
+    .from('coaches')
+    .select('id, code, name')
+    .eq('code', normalized)
+    .single();
+
+  if (coachError || !coach) return { success: false, error: 'Coach not found' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('referral_coach_id')
+    .eq('id', userId)
+    .single();
+
+  if (profile?.referral_coach_id === coach.id) {
+    return { success: false, error: 'Already linked to this coach' };
+  }
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({ referral_coach_id: coach.id })
+    .eq('id', userId);
+
+  if (updateError) return { success: false, error: 'Failed to link coach' };
+
+  await setCoachCode(normalized);
+
+  return { success: true, coachName: coach.name ?? coach.code };
+}
+
+export async function unlinkCoach(): Promise<{ success: boolean; error?: string }> {
+  const userId = await getUserId();
+  if (!userId) return { success: false, error: 'Not signed in' };
+
+  const { error: updateError } = await supabase
+    .from('profiles')
+    .update({ referral_coach_id: null })
+    .eq('id', userId);
+
+  if (updateError) return { success: false, error: 'Failed to remove coach' };
+
+  await clearCoachCode();
+
+  return { success: true };
 }

@@ -11,7 +11,8 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { supabase, deleteAccount } from '../lib/supabase';
-import { getCoachCode, clearCoachCode, resolveCoachName } from '../lib/coachCode';
+import { getCoachCode } from '../lib/coachCode';
+import { linkCoach, unlinkCoach } from '../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
@@ -31,18 +32,50 @@ export default function SettingsScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [coachName, setCoachName] = useState<string | null>(null);
+  const [coachLoading, setCoachLoading] = useState(false);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
 
   useFocusEffect(
     useCallback(() => {
-      getCoachCode().then((code) => setCoachName(resolveCoachName(code))).catch((err) => console.error('[HoneySwing]', err));
+      getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
       supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch((err) => console.error('[HoneySwing]', err));
     }, []),
   );
+
+  function handleAddCoach() {
+    Alert.prompt(
+      'Add Coach',
+      'Enter your coach code',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add',
+          onPress: async (input?: string) => {
+            if (!input?.trim()) return;
+            setCoachLoading(true);
+            try {
+              const result = await linkCoach(input);
+              if (result.success) {
+                setCoachName(result.coachName!);
+                Alert.alert('Coach Added', `Connected to coach ${result.coachName}`);
+              } else {
+                Alert.alert('Error', result.error ?? 'Something went wrong');
+              }
+            } catch {
+              Alert.alert('Error', 'Something went wrong');
+            } finally {
+              setCoachLoading(false);
+            }
+          },
+        },
+      ],
+      'plain-text',
+    );
+  }
 
   function handleRemoveCoach() {
     Alert.alert(
@@ -54,8 +87,19 @@ export default function SettingsScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            await clearCoachCode();
-            setCoachName(null);
+            setCoachLoading(true);
+            try {
+              const result = await unlinkCoach();
+              if (result.success) {
+                setCoachName(null);
+              } else {
+                Alert.alert('Error', result.error ?? 'Something went wrong');
+              }
+            } catch {
+              Alert.alert('Error', 'Something went wrong');
+            } finally {
+              setCoachLoading(false);
+            }
           },
         },
       ],
@@ -196,11 +240,25 @@ export default function SettingsScreen() {
           <TouchableOpacity
             style={styles.removeCoachButton}
             onPress={handleRemoveCoach}
+            disabled={coachLoading}
             activeOpacity={0.7}
           >
-            <Text style={styles.removeCoachText}>Remove Coach</Text>
+            <Text style={styles.removeCoachText}>
+              {coachLoading ? 'Removing...' : 'Remove Coach'}
+            </Text>
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          <TouchableOpacity
+            style={styles.addCoachButton}
+            onPress={handleAddCoach}
+            disabled={coachLoading}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.addCoachText}>
+              {coachLoading ? 'Adding...' : 'Add Coach'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.handednessSection}>
@@ -386,6 +444,20 @@ const styles = StyleSheet.create({
   },
   removeCoachText: {
     color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  addCoachButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: GOLD,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  addCoachText: {
+    color: GOLD,
     fontSize: 14,
     fontWeight: '500',
   },
