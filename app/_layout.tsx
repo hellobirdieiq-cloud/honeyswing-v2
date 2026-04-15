@@ -5,7 +5,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
-import { tryNavigate } from '../lib/navigationLock';
+import { tryNavigate, resetNavigationLock } from '../lib/navigationLock';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { invalidateSwingLimitCache } from '../lib/swingLimit';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
@@ -23,34 +23,40 @@ const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 // Keep splash visible while we initialize
 SplashScreen.preventAutoHideAsync();
 
-function extractTokensFromUrl(url: string): { accessToken: string; refreshToken: string } | null {
-  // Supabase magic link redirects with fragment: #access_token=...&refresh_token=...
-  const hash = url.split('#')[1];
-  if (!hash) return null;
-  const params = new URLSearchParams(hash);
-  const accessToken = params.get('access_token');
-  const refreshToken = params.get('refresh_token');
-  if (accessToken && refreshToken) return { accessToken, refreshToken };
-  return null;
+function extractCodeFromUrl(url: string): string | null {
+  // PKCE flow: Supabase redirects with ?code=XXXXXX (query param, not fragment).
+  // Short code in query params avoids the iOS/Hermes fragment-truncation bug
+  // that caused ~12-char refresh_tokens under the implicit flow.
+  const match = url.match(/[?&]code=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+let pkceSessionEstablished = false;
+
+function exchangeWithTimeout(code: string, ms: number) {
+  return Promise.race([
+    supabase.auth.exchangeCodeForSession(code),
+    new Promise<{ data: null; error: { message: string } }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: { message: 'Exchange timeout' } }), ms),
+    ),
+  ]);
 }
 
 async function handleAuthUrl(url: string): Promise<boolean> {
-  const tokens = extractTokensFromUrl(url);
-  if (!tokens) return false;
+  const code = extractCodeFromUrl(url);
+  if (!code) return false;
 
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const { error } = await supabase.auth.setSession({
-      access_token: tokens.accessToken,
-      refresh_token: tokens.refreshToken,
-    });
-    if (!error) {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session !== null;
+  pkceSessionEstablished = false;
+
+  const { error } = await exchangeWithTimeout(code, 6000);
+
+  if (error) {
+    if (!pkceSessionEstablished) {
+      return false;
     }
-    console.error('[HoneySwing] setSession error (attempt ' + (attempt + 1) + '):', error.message);
-    if (attempt === 0) await new Promise((r) => setTimeout(r, 1000));
   }
-  return false;
+
+  return pkceSessionEstablished || !error;
 }
 
 export default function RootLayout() {
@@ -94,13 +100,29 @@ export default function RootLayout() {
 
     // Listen for magic link while app is already open (warm start)
     const subscription = Linking.addEventListener('url', async ({ url }) => {
-      await handleAuthUrl(url);
+      if (url.includes('code=')) {
+        tryNavigate(); // consume lock — blocks onAuthStateChange from navigating
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Auth URLs: let onAuthStateChange own post-auth navigation.
-      // handleAuthUrl may return false even though SIGNED_IN already fired
-      // (setSession triggers onAuthStateChange as a side effect before resolving).
-      if (url.includes('#access_token=')) return;
+        handleAuthUrl(url)
+          .then(async () => {
+            resetNavigationLock();
+            const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
+            if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
+          })
+          .catch(async () => {
+            resetNavigationLock();
 
+            if (!pkceSessionEstablished) {
+              const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
+              if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
+            }
+          });
+        return;
+      }
+
+      // Non-auth deep links (referrals, etc.)
+      resetNavigationLock();
       await handleReferralUrl(url);
       router.replace('/(tabs)' as Href);
     });
@@ -113,6 +135,7 @@ export default function RootLayout() {
       async (event, session) => {
         try {
           if (event === 'SIGNED_IN') {
+            pkceSessionEstablished = true;
             invalidateSwingLimitCache();
             await commitPendingReferral();
             const user = session?.user ?? null;

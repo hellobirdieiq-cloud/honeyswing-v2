@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -42,10 +42,20 @@ export default function SettingsScreen() {
       getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
-      supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null)).catch((err) => console.error('[HoneySwing]', err));
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user?.email) setUserEmail(data.session.user.email);
+      });
     }, []),
   );
-
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user?.email) setUserEmail(data.session.user.email);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
   function handleAddCoach() {
     Alert.prompt(
       'Add Coach',

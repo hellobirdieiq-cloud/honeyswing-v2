@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -59,12 +60,23 @@ export default function SignInScreen() {
         <Text style={styles.subtitle}>
           We sent a sign-in link to {email.trim()}. Tap the link to continue.
         </Text>
+        <Text style={styles.spamHint}>Check your spam folder if you don't see it.</Text>
         <TouchableOpacity
-          style={styles.secondaryButton}
+          style={styles.cta}
+          onPress={() => {
+            const url = Platform.OS === 'ios' ? 'message://' : 'mailto:';
+            Linking.openURL(url).catch(() => {});
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.ctaText}>Open your email</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.skipButton}
           onPress={() => setSent(false)}
           activeOpacity={0.7}
         >
-          <Text style={styles.secondaryButtonText}>Try a different email</Text>
+          <Text style={styles.textLink}>Try a different email</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.skipButton}
@@ -197,16 +209,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
-  secondaryButton: {
-    backgroundColor: '#1A1A1C',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginBottom: 4,
+  spamHint: {
+    color: '#888',
+    fontSize: 13,
+    marginBottom: 24,
   },
-  secondaryButtonText: {
-    color: GOLD,
-    fontSize: 16,
-    fontWeight: '600',
+  textLink: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

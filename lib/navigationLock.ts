@@ -9,3 +9,7 @@ export function tryNavigate(): boolean {
   hasNavigated = true;
   return true;
 }
+
+export function resetNavigationLock(): void {
+  hasNavigated = false;
+}
