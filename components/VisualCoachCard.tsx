@@ -6,6 +6,7 @@ import type { GolfAngles } from '../packages/domain/swing/angles';
 import { JOINT_CONFIDENCE_THRESHOLD } from '@/lib/captureValidity';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
+import { isMetricEligible } from '../lib/tipFrequency';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
 import { GOLD } from '../lib/colors';
 
@@ -102,12 +103,14 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   const px = (lm: Landmark) => lm.x * width;
   const py = (lm: Landmark) => lm.y * height;
 
-  // Score each metric — skip those suppressed by angle gating
+  // Score each metric — skip those suppressed by angle gating or ineligible for age tier
   const suppressedSet = new Set(suppressedMetrics);
+  const ageTier = getCachedAgeTier();
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   if (angles) {
     for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
       if (suppressedSet.has(labelKey)) continue;
+      if (!isMetricEligible(labelKey, ageTier)) continue;
       const def = METRIC_DEFINITIONS[labelKey];
       const value = angles[labelKey];
       scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });

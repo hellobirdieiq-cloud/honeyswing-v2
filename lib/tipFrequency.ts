@@ -180,6 +180,25 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
 const DEFAULT_LIMIT = 5;
 
 // ---------------------------------------------------------------------------
+// Metric eligibility predicate
+// ---------------------------------------------------------------------------
+
+/**
+ * Single source of truth for whether a metric is eligible to be shown.
+ * Returns false for metrics that should never surface at a given age tier.
+ */
+export function isMetricEligible(metricKey: string, ageTier: AgeTier): boolean {
+  // tempo has no System B representation (no cue()), must be suppressed
+  if (metricKey === 'tempo') return false;
+
+  const limit = METRIC_LIMITS[ageTier]?.[metricKey];
+  // undefined = key not in METRIC_LIMITS (e.g. lateralized names like leftElbowAngle);
+  // default eligible to avoid blocking valid metrics with no explicit limit entry.
+  if (limit === undefined) return true;
+  return limit !== 0;
+}
+
+// ---------------------------------------------------------------------------
 // Short body fallback map
 // ---------------------------------------------------------------------------
 
@@ -418,6 +437,9 @@ export function processSwingTips(
       tipFrequencyLimiter.recordBlockedByConfidence();
       continue;
     }
+
+    // Gate 1.75: Metric eligibility — suppress metrics ineligible for this age tier
+    if (!isMetricEligible(tip.metricKey, tipFrequencyLimiter.ageTier)) continue;
 
     // Gate 2: Frequency limit (pure read)
     const decision = tipFrequencyLimiter.getTipDecision(tip.metricKey);
