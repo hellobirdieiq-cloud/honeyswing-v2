@@ -8,7 +8,6 @@
  *   - 50-swing roadmap acceptance criteria
  *   - Sliding window behavior for multi-hour sessions
  *   - Age tier limit switching
- *   - shortBody fallback chain
  *   - Edge cases (empty tips, unknown metrics, zero-limit)
  *   - processSwingTips integration with shouldShowMetric gate
  *   - Debug output shape stability
@@ -19,12 +18,9 @@ import {
   tipFrequencyLimiter,
   processSwingTips,
   getFrequencyDebugInfo,
-  resolveShortBody,
   METRIC_LIMITS,
   DEFAULT_LIMIT,
-  SHORT_BODY_FALLBACKS,
   type RawCoachingTip,
-  type ProcessedCoachingTip,
   type SwingConfidence,
   type CameraAngleResult,
   type ShouldShowMetricFn,
@@ -87,13 +83,8 @@ function selectiveShow(...allowed: string[]): ShouldShowMetricFn {
   return (metric) => set.has(metric);
 }
 
-function makeTip(metricKey: string, shortBody?: string): RawCoachingTip {
-  return {
-    metricKey,
-    title: `Fix your ${metricKey}`,
-    body: `Full coaching card for ${metricKey}. Keep working on it!`,
-    shortBody: shortBody ?? '',
-  };
+function makeTip(metricKey: string): RawCoachingTip {
+  return { metricKey };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,16 +207,14 @@ tipFrequencyLimiter.reset();
   // First pass
   const p1 = processSwingTips(tips, alwaysShow, MOCK_CONFIDENCE, MOCK_CAMERA);
   assertEq(p1.length, 2, 'pass 1: spineAngle filtered (limit=0), 2 remain');
-  assertEq(p1[0].displayTier, 'full', 'pass 1: grip = full');
-  assertEq(p1[1].displayTier, 'full', 'pass 1: shoulderTilt = full');
-  assert(p1[0].displayBody === p1[0].fullBody, 'pass 1: full tier uses body');
+  assertEq(p1[0].decision.tier, 'full', 'pass 1: grip = full');
+  assertEq(p1[1].decision.tier, 'full', 'pass 1: shoulderTilt = full');
 
   // Second pass
   const p2 = processSwingTips(tips, alwaysShow, MOCK_CONFIDENCE, MOCK_CAMERA);
   assertEq(p2.length, 2, 'pass 2: still 2 tips');
-  assertEq(p2[0].displayTier, 'shortened', 'pass 2: grip = shortened');
-  assertEq(p2[1].displayTier, 'shortened', 'pass 2: shoulderTilt = shortened');
-  assert(p2[0].displayBody !== p2[0].fullBody, 'pass 2: shortened tier uses shortBody');
+  assertEq(p2[0].decision.tier, 'shortened', 'pass 2: grip = shortened');
+  assertEq(p2[1].decision.tier, 'shortened', 'pass 2: shoulderTilt = shortened');
 }
 
 // ── 7. shouldShowMetric gate blocks before frequency check ──
@@ -352,63 +341,6 @@ tipFrequencyLimiter.reset();
   tipFrequencyLimiter.setWindowMinutes(60);
 }
 
-// ── 12. resolveShortBody fallback chain ──
-
-group('12. resolveShortBody fallback chain');
-{
-  // Priority 1: tip.shortBody when provided
-  const tipWithShort = makeTip('grip', 'My custom short text.');
-  assertEq(resolveShortBody(tipWithShort), 'My custom short text.', 'uses tip.shortBody first');
-
-  // Priority 2: fallback map
-  const tipNoShort = makeTip('grip');
-  assertEq(
-    resolveShortBody(tipNoShort),
-    SHORT_BODY_FALLBACKS['grip'],
-    'falls back to SHORT_BODY_FALLBACKS',
-  );
-
-  // Priority 3: first sentence of body
-  const tipUnknown: RawCoachingTip = {
-    metricKey: 'brandNewMetric',
-    title: 'New',
-    body: 'This is the first sentence. And this is the second.',
-    shortBody: '',
-  };
-  assertEq(
-    resolveShortBody(tipUnknown),
-    'This is the first sentence.',
-    'falls back to first sentence of body',
-  );
-
-  // Edge: single-sentence body
-  const tipOneSentence: RawCoachingTip = {
-    metricKey: 'another',
-    title: 'X',
-    body: 'Only one sentence here',
-    shortBody: '',
-  };
-  assertEq(
-    resolveShortBody(tipOneSentence),
-    'Only one sentence here',
-    'single sentence body returned as-is',
-  );
-}
-
-// ── 13. SHORT_BODY_FALLBACKS coverage ──
-
-group('13. Fallback map covers all youth metrics');
-{
-  const youthMetrics = Object.keys(METRIC_LIMITS['youth']);
-  for (const metric of youthMetrics) {
-    if (METRIC_LIMITS['youth'][metric] === 0) continue; // zero-limit = never shown
-    assert(
-      typeof SHORT_BODY_FALLBACKS[metric] === 'string' && SHORT_BODY_FALLBACKS[metric].length > 0,
-      `SHORT_BODY_FALLBACKS["${metric}"] exists`,
-    );
-  }
-}
-
 // ── 14. TipDecision has correct shape ──
 
 group('14. TipDecision shape validation');
@@ -446,21 +378,6 @@ tipFrequencyLimiter.reset();
   assert(typeof tf.swings === 'number', 'swings is number');
   assert(typeof tf.sessionMs === 'number' && (tf.sessionMs as number) >= 0, 'sessionMs ≥ 0');
   assert(typeof tf.counts === 'object' && tf.counts !== null, 'counts is object');
-}
-
-// ── 16. processSwingTips displayBody correctness ──
-
-group('16. displayBody content correctness');
-tipFrequencyLimiter.reset();
-{
-  const tip = makeTip('grip', 'Short grip tip.');
-  const p1 = processSwingTips([tip], alwaysShow, MOCK_CONFIDENCE, MOCK_CAMERA);
-  assertEq(p1[0].displayBody, tip.body, 'full tier → body');
-  assertEq(p1[0].fullBody, tip.body, 'fullBody always carries original');
-
-  const p2 = processSwingTips([tip], alwaysShow, MOCK_CONFIDENCE, MOCK_CAMERA);
-  assertEq(p2[0].displayBody, 'Short grip tip.', 'shortened tier → shortBody');
-  assertEq(p2[0].fullBody, tip.body, 'fullBody still carries original on shortened');
 }
 
 // ── 17. Stats tracking across multiple swings ──
@@ -624,16 +541,13 @@ tipFrequencyLimiter.reset();
 group('23. ProcessedCoachingTip has all required fields');
 tipFrequencyLimiter.reset();
 {
-  const tips = [makeTip('grip', 'Short.')];
+  const tips = [makeTip('grip')];
   const processed = processSwingTips(tips, alwaysShow, MOCK_CONFIDENCE, MOCK_CAMERA);
   const tip = processed[0];
 
   assert(typeof tip.metricKey === 'string', 'has metricKey');
-  assert(typeof tip.title === 'string', 'has title');
-  assert(typeof tip.displayBody === 'string', 'has displayBody');
-  assert(typeof tip.fullBody === 'string', 'has fullBody');
-  assert(['full', 'shortened'].includes(tip.displayTier), 'has valid displayTier');
   assert(typeof tip.decision === 'object' && tip.decision !== null, 'has decision');
+  assert(['full', 'shortened'].includes(tip.decision.tier), 'decision has valid tier');
   assert(typeof tip.decision.reason === 'string', 'decision has reason');
 }
 
@@ -650,5 +564,5 @@ if (failed > 0) {
 } else {
   console.log('✅ All tests passed — Task 7 validated');
   console.log('   Roadmap criteria met: 50-swing, shoulderTilt ≤ 3');
-  console.log('   Sliding window, age tiers, shortBody fallback all verified');
+  console.log('   Sliding window, age tiers, gating pipeline all verified');
 }

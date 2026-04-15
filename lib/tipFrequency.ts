@@ -12,8 +12,8 @@
  *         AnalysisResult       confidence + angle       frequency + tier
  *
  * Display tiers:
- *   - 'full'       First mention → full coaching card with body text
- *   - 'shortened'  Repeat under limit → abbreviated card with shortBody
+ *   - 'full'       First mention in window
+ *   - 'shortened'  Repeat under limit
  *   - 'suppressed' At/beyond limit → not shown at all
  *
  * Session lifecycle:
@@ -88,27 +88,20 @@ export interface SessionStats {
 
 /**
  * A raw coaching tip from the analysis pipeline.
- * Each tip targets one metric and carries full + short text.
+ * Each tip identifies a metric that passed score filtering + deduplication.
+ * Text responsibility belongs to metricDefinitions.ts cue functions.
  */
 export interface RawCoachingTip {
   metricKey: string;
-  title: string;
-  body: string;
-  shortBody: string | null;
 }
 
 /**
- * A tip that passed both the confidence gate and frequency limiter.
- * Ready for rendering in the result screen.
+ * A tip that passed confidence gate, angle gating, and frequency limiter.
+ * Carries only the metric key and gating decision — no text.
+ * Text responsibility belongs to metricDefinitions.ts cue functions.
  */
 export interface ProcessedCoachingTip {
   metricKey: string;
-  title: string;
-  /** Text to display — automatically chosen based on displayTier */
-  displayBody: string;
-  /** Original full body (available if UI wants to offer "Show more") */
-  fullBody: string;
-  displayTier: 'full' | 'shortened';
   decision: TipDecision;
 }
 
@@ -190,40 +183,6 @@ const DEFAULT_LIMIT = 5;
 // Short body fallback map
 // ---------------------------------------------------------------------------
 
-/**
- * Fallback short coaching text when the analysis pipeline's shortBody is empty.
- * Cross-referenced with Dave's real coaching language (April 3, 2026).
- */
-const SHORT_BODY_FALLBACKS: Record<string, string> = {
-  grip: 'Check your grip.',
-  posture: 'Watch your posture.',
-  tempo: 'Smooth that tempo.',
-  balance: 'Stay balanced.',
-  armExtension: 'Extend those arms.',
-  shoulderTilt: 'Watch shoulder tilt.',
-  hipRotation: 'Rotate those hips.',
-  kneeFlex: 'Check your knees.',
-  elbow: 'Watch the elbow.',
-  spineAngle: 'Check spine angle.',
-  wristAngle: 'Watch your wrists.',
-  clubfaceAngle: 'Check clubface.',
-};
-
-/**
- * Resolve short body text with fallback chain:
- *   1. tip.shortBody (from analysis pipeline — preferred)
- *   2. SHORT_BODY_FALLBACKS[metricKey]
- *   3. First sentence of tip.body
- */
-export function resolveShortBody(tip: RawCoachingTip): string {
-  if (tip.shortBody) return tip.shortBody;
-  const fallback = SHORT_BODY_FALLBACKS[tip.metricKey];
-  if (fallback) return fallback;
-  const firstSentence = tip.body.split(/[.!]\s/)[0];
-  return firstSentence.length < tip.body.length
-    ? firstSentence + '.'
-    : tip.body;
-}
 
 // ---------------------------------------------------------------------------
 // TipFrequencyLimiter class
@@ -423,7 +382,7 @@ export const tipFrequencyLimiter = new TipFrequencyLimiter();
  *     analysis.swingConfidence,
  *     analysis.cameraAngleResult,
  *   );
- *   // Render tips — each has .displayBody and .displayTier
+ *   // Each tip has .metricKey and .decision (gating metadata)
  *
  * ⚠️ BYPASS PATH: "Record Again" may skip checkSwingLimit() but still
  * reaches the result screen. This function is independent of swing limits,
@@ -435,7 +394,7 @@ export const tipFrequencyLimiter = new TipFrequencyLimiter();
  * @param swingConfidence - From analysis.swingConfidence.
  * @param cameraAngleResult - From analysis.cameraAngleResult.
  * @param estimatedAngleDeg - Camera angle in degrees (0-90) from foreshortening, for Task 9 angle gating.
- * @returns Only non-suppressed tips with displayBody set by tier.
+ * @returns Only non-suppressed tips with metric key and gating decision.
  */
 export function processSwingTips(
   tips: readonly RawCoachingTip[],
@@ -467,18 +426,11 @@ export function processSwingTips(
       continue;
     }
 
-    // Commit: record show + build processed tip
+    // Commit: record show
     tipFrequencyLimiter.recordShown(tip.metricKey);
-
-    const displayBody =
-      decision.tier === 'full' ? tip.body : resolveShortBody(tip);
 
     result.push({
       metricKey: tip.metricKey,
-      title: tip.title,
-      displayBody,
-      fullBody: tip.body,
-      displayTier: decision.tier,
       decision,
     });
   }
@@ -514,4 +466,4 @@ export function getFrequencyDebugInfo(): { tipFrequency: Record<string, unknown>
 // Exports for testing internals
 // ---------------------------------------------------------------------------
 
-export { METRIC_LIMITS, DEFAULT_LIMIT, SHORT_BODY_FALLBACKS };
+export { METRIC_LIMITS, DEFAULT_LIMIT };

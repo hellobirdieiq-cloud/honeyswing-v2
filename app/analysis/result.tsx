@@ -32,7 +32,6 @@ import SwingArtCard from '../../components/SwingArtCard';
 import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
-import { getCachedAgeTier } from '../../lib/ageTier';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
 import type { GripClassification } from '../../lib/classifyGrip';
 
@@ -129,10 +128,9 @@ export default function ResultScreen() {
     positiveResult: ProcessSwingResult;
   }>(() => {
     if (!analysis) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
-    const ageTier = getCachedAgeTier();
     const breakdown = analysis.swing_debug?.scoring_breakdown;
     if (!breakdown) return { processedTips: [], positiveResult: { card: null, improvements: [] } };
-    const rawTips = buildRawTips(breakdown, ageTier);
+    const rawTips = buildRawTips(breakdown);
     const estimatedAngleDeg = analysis.swing_debug?.foreshortening?.estimatedAngleDegrees ?? null;
     const tips = processSwingTips(
       rawTips,
@@ -208,7 +206,7 @@ export default function ResultScreen() {
   // Metro log for verification before tip UI exists
   useEffect(() => {
     if (processedTips.length > 0) {
-      console.log('[tipFrequency]', processedTips.map(t => `${t.metricKey}:${t.displayTier}`));
+      console.log('[tipFrequency]', processedTips.map(t => `${t.metricKey}:${t.decision.tier}`));
     }
   }, [processedTips]);
 
