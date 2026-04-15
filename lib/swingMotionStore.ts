@@ -60,11 +60,14 @@ export type FocusData = {
 import { STORAGE_KEYS } from './storageKeys';
 import { getCachedAgeTier } from './ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
+import { isMetricEligible } from './tipFrequency';
 
 
 export function computeFocus(angles: GolfAngles): FocusData | null {
   const scored: { key: MetricKey; score: number; value: number | null }[] = [];
+  const ageTier = getCachedAgeTier();
   for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
+    if (!isMetricEligible(labelKey, ageTier)) continue;
     const def = METRIC_DEFINITIONS[labelKey];
     const value = angles[labelKey];
     scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
