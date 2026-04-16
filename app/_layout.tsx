@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { ClerkProvider } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
@@ -19,6 +21,11 @@ import { migrateAnonSwings } from '../lib/migrateAnonSwings';
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
+
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+if (!publishableKey) {
+  throw new Error('EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is not set');
+}
 
 // Keep splash visible while we initialize
 SplashScreen.preventAutoHideAsync();
@@ -183,16 +190,18 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="onboarding" />
-      <Stack.Screen name="signin" />
-      <Stack.Screen name="settings" />
-      <Stack.Screen name="paywall" />
-      <Stack.Screen name="auth/callback" />
-      <Stack.Screen name="analysis/result" />
-      <Stack.Screen name="grip/capture" />
-      <Stack.Screen name="grip/result" />
-    </Stack>
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" />
+        <Stack.Screen name="signin" />
+        <Stack.Screen name="settings" />
+        <Stack.Screen name="paywall" />
+        <Stack.Screen name="auth/callback" />
+        <Stack.Screen name="analysis/result" />
+        <Stack.Screen name="grip/capture" />
+        <Stack.Screen name="grip/result" />
+      </Stack>
+    </ClerkProvider>
   );
 }
