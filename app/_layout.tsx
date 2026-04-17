@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { ClerkProvider } from '@clerk/expo';
+import { ClerkProvider, useUser } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
@@ -78,36 +78,6 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        try {
-          if (event === 'SIGNED_IN') {
-            invalidateSwingLimitCache();
-            await commitPendingReferral();
-            const user = session?.user ?? null;
-            if (user) await syncAuthState(user.id);
-            if (session) await migrateAnonSwings(session.user.id);
-            const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
-            if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
-          } else if (event === 'INITIAL_SESSION') {
-            invalidateSwingLimitCache();
-            const user = session?.user ?? null;
-            if (user) {
-              await syncAuthState(user.id);
-            }
-          } else if (event === 'SIGNED_OUT') {
-            invalidateSwingLimitCache();
-            await syncAuthState(null);
-          }
-        } catch (err) {
-          console.error('[HoneySwing] auth state change error:', err);
-        }
-      }
-    );
-    return () => subscription.unsubscribe();
-  }, []);
-
   // Task 7 + 14: reset tip frequency, positive reinforcement, and session accumulator
   const backgroundAtRef = useRef<number | null>(null);
   useEffect(() => {
@@ -131,6 +101,7 @@ export default function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <AuthListener />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />
@@ -144,4 +115,62 @@ export default function RootLayout() {
       </Stack>
     </ClerkProvider>
   );
+}
+
+function AuthListener() {
+  const { user, isLoaded, isSignedIn } = useUser();
+  const prevSignedInRef = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (isSignedIn && !user) return;
+    const prev = prevSignedInRef.current;
+
+    if (prev === null) {
+      if (!isSignedIn) {
+        invalidateSwingLimitCache();
+      } else {
+        (async () => {
+          try {
+            invalidateSwingLimitCache();
+            await syncAuthState(user!.id);
+          } catch (err) {
+            console.error('[HoneySwing] AuthListener INITIAL_SESSION error:', err);
+          }
+        })();
+      }
+      prevSignedInRef.current = isSignedIn === true;
+      return;
+    }
+
+    if (prev === false && isSignedIn) {
+      (async () => {
+        try {
+          invalidateSwingLimitCache();
+          await commitPendingReferral();
+          await syncAuthState(user!.id);
+          await migrateAnonSwings(user!.id);
+        } catch (err) {
+          console.error('[HoneySwing] AuthListener SIGNED_IN error:', err);
+        }
+      })();
+      prevSignedInRef.current = true;
+      return;
+    }
+
+    if (prev === true && !isSignedIn) {
+      (async () => {
+        try {
+          invalidateSwingLimitCache();
+          await syncAuthState(null);
+        } catch (err) {
+          console.error('[HoneySwing] AuthListener SIGNED_OUT error:', err);
+        }
+      })();
+      prevSignedInRef.current = false;
+      return;
+    }
+  }, [isLoaded, isSignedIn, user?.id]);
+
+  return null;
 }
