@@ -35,3 +35,4 @@ ios/.xcode.env
 
 expo-env.d.ts
 # @end expo-cli.venv/
+.venv/
