@@ -30,42 +30,6 @@ if (!publishableKey) {
 // Keep splash visible while we initialize
 SplashScreen.preventAutoHideAsync();
 
-function extractCodeFromUrl(url: string): string | null {
-  // PKCE flow: Supabase redirects with ?code=XXXXXX (query param, not fragment).
-  // Short code in query params avoids the iOS/Hermes fragment-truncation bug
-  // that caused ~12-char refresh_tokens under the implicit flow.
-  const match = url.match(/[?&]code=([^&]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-let pkceSessionEstablished = false;
-
-function exchangeWithTimeout(code: string, ms: number) {
-  return Promise.race([
-    supabase.auth.exchangeCodeForSession(code),
-    new Promise<{ data: null; error: { message: string } }>((resolve) =>
-      setTimeout(() => resolve({ data: null, error: { message: 'Exchange timeout' } }), ms),
-    ),
-  ]);
-}
-
-async function handleAuthUrl(url: string): Promise<boolean> {
-  const code = extractCodeFromUrl(url);
-  if (!code) return false;
-
-  pkceSessionEstablished = false;
-
-  const { error } = await exchangeWithTimeout(code, 6000);
-
-  if (error) {
-    if (!pkceSessionEstablished) {
-      return false;
-    }
-  }
-
-  return pkceSessionEstablished || !error;
-}
-
 export default function RootLayout() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -77,9 +41,8 @@ export default function RootLayout() {
       // Task 15: load age tier and apply to frequency limiter
       getAgeTier().then((tier) => tipFrequencyLimiter.setAgeTier(tier)).catch((err) => console.error('[HoneySwing]', err));
 
-      // Check for magic link or referral link that opened the app (cold start)
+      // Check for referral link that opened the app (cold start)
       const initialUrl = await Linking.getInitialURL();
-      if (initialUrl) await handleAuthUrl(initialUrl);
       if (initialUrl) {
         await handleReferralUrl(initialUrl);
       }
@@ -105,30 +68,8 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     });
 
-    // Listen for magic link while app is already open (warm start)
+    // Listen for deep links while app is already open (warm start)
     const subscription = Linking.addEventListener('url', async ({ url }) => {
-      if (url.includes('code=')) {
-        tryNavigate(); // consume lock — blocks onAuthStateChange from navigating
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        handleAuthUrl(url)
-          .then(async () => {
-            resetNavigationLock();
-            const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
-            if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
-          })
-          .catch(async () => {
-            resetNavigationLock();
-
-            if (!pkceSessionEstablished) {
-              const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
-              if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
-            }
-          });
-        return;
-      }
-
-      // Non-auth deep links (referrals, etc.)
       resetNavigationLock();
       await handleReferralUrl(url);
       router.replace('/(tabs)' as Href);
@@ -142,7 +83,6 @@ export default function RootLayout() {
       async (event, session) => {
         try {
           if (event === 'SIGNED_IN') {
-            pkceSessionEstablished = true;
             invalidateSwingLimitCache();
             await commitPendingReferral();
             const user = session?.user ?? null;

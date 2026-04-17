@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { useUser, useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../lib/storageKeys';
-import { supabase, deleteAccount } from '../lib/supabase';
+import { deleteAccount } from '../lib/supabase';
 import { getCoachCode } from '../lib/coachCode';
 import { linkCoach, unlinkCoach } from '../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
@@ -28,13 +29,15 @@ const AGE_TIER_LABELS: Record<AgeTier, string> = {
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { user, isLoaded, isSignedIn } = useUser();
+  const { signOut } = useAuth();
+  const email = user?.primaryEmailAddress?.emailAddress ?? null;
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
 
   useFocusEffect(
@@ -42,20 +45,8 @@ export default function SettingsScreen() {
       getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session?.user?.email) setUserEmail(data.session.user.email);
-      });
     }, []),
   );
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user?.email) setUserEmail(data.session.user.email);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user?.email ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
   function handleAddCoach() {
     Alert.prompt(
       'Add Coach',
@@ -141,8 +132,8 @@ export default function SettingsScreen() {
         onPress: async () => {
           setSigningOut(true);
           try {
-            await supabase.auth.signOut();
-            router.replace('/(tabs)' as Href);
+            await signOut();
+            router.replace('/signin' as Href);
           } catch (err: unknown) {
             const message =
               err instanceof Error ? err.message : 'Something went wrong';
@@ -203,34 +194,37 @@ export default function SettingsScreen() {
         <Text style={styles.backText}>Back</Text>
       </TouchableOpacity>
 
-      {userEmail ? (
-        <View style={styles.accountSection}>
-          <Text style={styles.coachLabel}>Account</Text>
-          <Text style={styles.coachStatus}>{userEmail}</Text>
-          <TouchableOpacity
-            style={styles.signOutButton}
-            onPress={handleSignOut}
-            disabled={signingOut}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.signOutText}>
-              {signingOut ? 'Signing Out...' : 'Sign Out'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.accountSection}>
-          <Text style={styles.coachLabel}>Account</Text>
-          <Text style={styles.coachStatus}>Not signed in</Text>
-          <TouchableOpacity
-            style={styles.signInButton}
-            onPress={() => router.push('/signin' as Href)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.signInText}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <View style={styles.accountSection}>
+        <Text style={styles.coachLabel}>Account</Text>
+        {!isLoaded ? (
+          <ActivityIndicator color={GOLD} style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+        ) : isSignedIn ? (
+          <>
+            <Text style={styles.coachStatus}>{email ?? 'Signed in'}</Text>
+            <TouchableOpacity
+              style={styles.signOutButton}
+              onPress={handleSignOut}
+              disabled={signingOut}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.signOutText}>
+                {signingOut ? 'Signing Out...' : 'Sign Out'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={styles.coachStatus}>Not signed in</Text>
+            <TouchableOpacity
+              style={styles.signInButton}
+              onPress={() => router.push('/signin' as Href)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.signInText}>Sign In</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
 
       <TouchableOpacity
         style={styles.subscriptionButton}
