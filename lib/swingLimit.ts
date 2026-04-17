@@ -69,7 +69,7 @@ async function doCheckSwingLimit(): Promise<SwingLimitStatus> {
     .from('profiles')
     .select('referral_coach_id')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (profileError) {
     console.error('[HoneySwing] profile lookup error:', profileError.message);
@@ -114,7 +114,7 @@ async function doCheckSwingLimit(): Promise<SwingLimitStatus> {
     .from('profiles')
     .select('anonymous_swing_count')
     .eq('id', user.id)
-    .single();
+    .maybeSingle();
 
   if (anonError) {
     console.error('[HoneySwing] anonymous_swing_count lookup error:', anonError.message);

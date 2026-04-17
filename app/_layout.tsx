@@ -6,6 +6,7 @@ import { ClerkProvider, useUser } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { ensureProfile } from '../lib/ensureProfile';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 import { tryNavigate, resetNavigationLock } from '../lib/navigationLock';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
@@ -133,6 +134,7 @@ function AuthListener() {
         (async () => {
           try {
             invalidateSwingLimitCache();
+            await ensureProfile(user!.id);
             await syncAuthState(user!.id);
           } catch (err) {
             console.error('[HoneySwing] AuthListener INITIAL_SESSION error:', err);
@@ -147,6 +149,7 @@ function AuthListener() {
       (async () => {
         try {
           invalidateSwingLimitCache();
+          await ensureProfile(user!.id);
           await commitPendingReferral();
           await syncAuthState(user!.id);
           await migrateAnonSwings(user!.id);
