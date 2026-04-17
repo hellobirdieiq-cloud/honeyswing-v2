@@ -59,24 +59,36 @@ export async function deleteAccount(): Promise<void> {
   const userId = await getUserId();
   if (!userId) throw new Error('Not signed in');
 
-  const { data: files } = await supabase.storage.from('swing-videos').list(userId);
-  if (files?.length) {
-    await supabase.storage
-      .from('swing-videos')
-      .remove(files.map((f) => `${userId}/${f.name}`));
+  const token = await getClerkToken();
+  if (!token) throw new Error('Not signed in');
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${SUPABASE_URL}/functions/v1/delete-account`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('delete_account_timeout');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 
-  const { error: swingsError } = await supabase
-    .from('swings')
-    .delete()
-    .eq('user_id', userId);
-  if (swingsError) throw swingsError;
-
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .delete()
-    .eq('id', userId);
-  if (profileError) throw profileError;
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`delete_account_failed: ${response.status} ${body}`);
+  }
 
   await getClerkInstance().signOut();
 }
