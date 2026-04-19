@@ -28,15 +28,23 @@ export function clearGrip(): void {
 
 // Cloud grip classification — written by grip/result screen, consumed by persistSwing
 let currentClassification: GripClassification | null = null;
+let classificationExpiresAt = 0;
 
 export function setGripClassification(c: GripClassification): void {
   currentClassification = c;
+  classificationExpiresAt = Date.now() + GRIP_TTL_MS;
 }
 
 export function getGripClassification(): GripClassification | null {
+  if (!currentClassification) return null;
+  if (Date.now() > classificationExpiresAt) {
+    clearGripClassification();
+    return null;
+  }
   return currentClassification;
 }
 
 export function clearGripClassification(): void {
   currentClassification = null;
+  classificationExpiresAt = 0;
 }

@@ -11,7 +11,7 @@ import { positiveReinforcementEngine } from './positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
-import { getGripClassification, clearGripClassification } from './gripStore';
+import { getGripClassification } from './gripStore';
 
 const APP_VERSION = '1.9.4';
 
@@ -56,7 +56,6 @@ export async function persistSwing(
   const profileId = authUserId;
 
   const cloudGrip = getGripClassification();
-  clearGripClassification();
 
   const coachCode = await getCoachCode();
   const isLeftHanded = await getIsLeftHanded();

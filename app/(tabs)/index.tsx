@@ -7,6 +7,7 @@ import { getGrip } from '../../lib/gripStore';
 import { getCoachCode } from '../../lib/coachCode';
 import { linkCoach } from '../../lib/referralAttribution';
 import { GOLD } from '../../lib/colors';
+import GripHistoryRow from '../../components/GripHistoryRow';
 
 export default function TabsHomeScreen() {
   const router = useRouter();
@@ -85,6 +86,8 @@ export default function TabsHomeScreen() {
           <Text style={styles.coachBtnText}>Link a Coach</Text>
         </TouchableOpacity>
       )}
+
+      <GripHistoryRow />
 
       <Modal visible={modalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
