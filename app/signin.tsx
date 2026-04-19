@@ -80,7 +80,7 @@ export default function SignInScreen() {
           return;
         }
 
-        if ((signUp.status as string) === 'complete') {
+        if (signUp.status === 'complete') {
           router.replace('/(tabs)' as Href);
           setLoading(false);
           return;

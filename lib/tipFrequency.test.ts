@@ -563,6 +563,5 @@ if (failed > 0) {
   process.exit(1);
 } else {
   console.log('✅ All tests passed — Task 7 validated');
-  console.log('   Roadmap criteria met: 50-swing, shoulderTilt ≤ 3');
   console.log('   Sliding window, age tiers, gating pipeline all verified');
 }

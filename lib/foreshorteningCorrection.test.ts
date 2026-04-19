@@ -726,5 +726,4 @@ if (failed > 0) {
   console.log('\n✅ ALL TESTS PASSED — Task 5 validated');
   console.log('   Roadmap: 45° spine/hip/elbow/knee roundtrips within tolerance');
   console.log('   Guards: NaN, null, boundary, too-small, too-large all verified');
-  console.log('   Monotonicity, immutability, shoulderTilt exclusion all verified');
 }
