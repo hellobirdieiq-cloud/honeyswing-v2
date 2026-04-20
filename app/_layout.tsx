@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -33,7 +33,6 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -53,7 +52,6 @@ export default function RootLayout() {
       const { data: { session } } = await supabase.auth.getSession();
       const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
 
-      setReady(true);
       SplashScreen.hideAsync();
 
       // Redirect after splash hides so the navigator is fully mounted
@@ -109,7 +107,6 @@ export default function RootLayout() {
         <Stack.Screen name="signin" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="paywall" />
-        <Stack.Screen name="auth/callback" />
         <Stack.Screen name="analysis/result" />
         <Stack.Screen name="grip/capture" />
         <Stack.Screen name="grip/result" />

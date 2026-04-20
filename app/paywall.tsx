@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { Linking } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
 import { getOfferings, restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
 import { GOLD } from '../lib/colors';
