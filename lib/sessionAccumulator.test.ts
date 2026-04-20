@@ -19,6 +19,7 @@ import {
   SESSION_INSIGHT_MIN_SWINGS,
   type AccumulatorMetricKey,
 } from './sessionAccumulator';
+import { _resetCacheForTesting } from './ageTier';
 
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 
@@ -222,6 +223,31 @@ group('Null metric values are skipped');
   sessionAccumulator.addSwing(makeAnalysis({ spineAngle: null }), []);
   const stats = sessionAccumulator.getMetricStats('spineAngle');
   assert(stats === undefined, 'null spineAngle creates no stats entry');
+}
+
+group('Age-tier gate suppresses ineligible metrics');
+{
+  // spineAngle is ineligible at youth (METRIC_LIMITS.youth.spineAngle === 0)
+  // and eligible at adult. Same flagged data, different tier → different outcome.
+  _resetCacheForTesting('adult');
+  sessionAccumulator.reset();
+  for (let i = 0; i < 10; i++) {
+    sessionAccumulator.addSwing(makeAnalysis({ spineAngle: 45 }), ['spineAngle']);
+  }
+  const adultInsight = sessionAccumulator.getInsight();
+  assertEq(adultInsight?.type, 'focus', 'adult tier: spineAngle focus fires');
+  assertEq(adultInsight?.metricKey, 'spineAngle', 'adult tier: focus keyed on spineAngle');
+
+  _resetCacheForTesting('youth');
+  sessionAccumulator.reset();
+  for (let i = 0; i < 10; i++) {
+    sessionAccumulator.addSwing(makeAnalysis({ spineAngle: 45 }), ['spineAngle']);
+  }
+  const youthInsight = sessionAccumulator.getInsight();
+  assert(
+    youthInsight?.metricKey !== 'spineAngle',
+    'youth tier: spineAngle never selected by any insight helper',
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,8 @@
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { GolfAngles } from '../packages/domain/swing/angles';
 import { generateFocusInsight, generateImprovementInsight, generateConsistencyInsight } from './sessionInsights';
+import { getCachedAgeTier, type AgeTier } from './ageTier';
+import { isMetricEligible } from './tipFrequency';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -212,16 +214,18 @@ class SessionAccumulatorImpl {
   getInsight(): SessionInsight | null {
     if (this._swingCount < SESSION_INSIGHT_MIN_SWINGS) return null;
 
+    const ageTier = getCachedAgeTier();
+
     // Priority 1: Focus suggestion
-    const focus = this._getFocusInsight();
+    const focus = this._getFocusInsight(ageTier);
     if (focus) return focus;
 
     // Priority 2: Improvement notice
-    const improvement = this._getImprovementInsight();
+    const improvement = this._getImprovementInsight(ageTier);
     if (improvement) return improvement;
 
     // Priority 3: Consistency praise
-    const consistency = this._getConsistencyInsight();
+    const consistency = this._getConsistencyInsight(ageTier);
     if (consistency) return consistency;
 
     return null;
@@ -252,10 +256,11 @@ class SessionAccumulatorImpl {
     stats.sumSq += value * value;
   }
 
-  private _getFocusInsight(): SessionInsight | null {
+  private _getFocusInsight(ageTier: AgeTier): SessionInsight | null {
     let best: { key: AccumulatorMetricKey; flagCount: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
+      if (!isMetricEligible(key, ageTier)) continue;
       const flagRate = stats.flagCount / this._swingCount;
       if (flagRate >= FOCUS_FLAG_RATE && stats.flagCount >= FOCUS_MIN_FLAGS) {
         if (!best || stats.flagCount > best.flagCount) {
@@ -273,10 +278,11 @@ class SessionAccumulatorImpl {
     };
   }
 
-  private _getImprovementInsight(): SessionInsight | null {
+  private _getImprovementInsight(ageTier: AgeTier): SessionInsight | null {
     let best: { key: AccumulatorMetricKey; slope: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
+      if (!isMetricEligible(key, ageTier)) continue;
       // Must have been flagged at least twice earlier in session
       if (stats.flagCount < 2) continue;
       if (stats.values.length < TREND_WINDOW) continue;
@@ -299,10 +305,11 @@ class SessionAccumulatorImpl {
     };
   }
 
-  private _getConsistencyInsight(): SessionInsight | null {
+  private _getConsistencyInsight(ageTier: AgeTier): SessionInsight | null {
     let best: { key: AccumulatorMetricKey; cv: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
+      if (!isMetricEligible(key, ageTier)) continue;
       // Must never have been flagged
       if (stats.flagCount > 0) continue;
       if (stats.values.length < 3) continue;
