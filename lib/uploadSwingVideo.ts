@@ -1,12 +1,12 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { supabase, getUserId, getSession, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
+import { decode } from 'base64-arraybuffer';
+import { supabase, getUserId, getSession } from './supabase';
 
 export async function uploadSwingVideo(swingId: string, videoPath: string): Promise<void> {
   const userId = await getUserId();
   if (!userId) return; // anonymous user — skip upload
 
   const storagePath = `${userId}/${swingId}.mov`;
-  const uploadUrl = `${SUPABASE_URL}/storage/v1/object/swing-videos/${storagePath}`;
 
   try {
     const session = await getSession();
@@ -17,18 +17,21 @@ export async function uploadSwingVideo(swingId: string, videoPath: string): Prom
 
     const fileUri = videoPath.startsWith('file://') ? videoPath : `file://${videoPath}`;
 
-    const result = await FileSystem.uploadAsync(uploadUrl, fileUri, {
-      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      httpMethod: 'POST',
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-        apikey: SUPABASE_ANON_KEY,
-        'Content-Type': 'video/quicktime',
-      },
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
     });
 
-    if (result.status < 200 || result.status >= 300) {
-      console.error('[HoneySwing] uploadSwingVideo upload failed:', result.status, result.body);
+    const arrayBuffer = decode(base64);
+
+    const { error: uploadError } = await supabase.storage
+      .from('swing-videos')
+      .upload(storagePath, arrayBuffer, {
+        contentType: 'video/quicktime',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      console.error('[HoneySwing] uploadSwingVideo upload failed:', JSON.stringify(uploadError, null, 2));
       return;
     }
 

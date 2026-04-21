@@ -4,7 +4,8 @@ import { createRemoteJWKSet, jwtVerify, errors as JoseErrors } from "https://esm
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const CLERK_JWKS_URL = "https://blessed-marlin-24.clerk.accounts.dev/.well-known/jwks.json";
+const CLERK_SECRET_KEY = Deno.env.get("CLERK_SECRET_KEY")!;
+const CLERK_JWKS_URL = "https://clerk.honeyswing.com/.well-known/jwks.json";
 const JWKS = createRemoteJWKSet(new URL(CLERK_JWKS_URL));
 
 const CORS_HEADERS = {
@@ -100,6 +101,20 @@ Deno.serve(async (req) => {
       .delete({ count: "exact" })
       .eq("id", userId);
     if (pErr) throw new Error(`profiles_delete_failed: ${pErr.message}`);
+
+    // Delete Clerk user via Backend API
+    const clerkResp = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${CLERK_SECRET_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!clerkResp.ok) {
+      const clerkBody = await clerkResp.text();
+      throw new Error(`clerk_delete_failed: ${clerkResp.status} ${clerkBody}`);
+    }
+    console.log(`[delete-account] clerk user deleted: ${userId}`);
 
     console.log(`[delete-account] counts sv=${swingVideosDeleted} gp=${gripPhotosDeleted} ga=${gripAnalysesCount} s=${swingsCount} p=${profilesCount}`);
 

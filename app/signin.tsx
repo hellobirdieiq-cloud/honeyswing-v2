@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Text,
+  View,
   TextInput,
   StyleSheet,
   TouchableOpacity,
@@ -79,13 +80,13 @@ export default function SignInScreen() {
           return;
         }
 
-        if (signUp.status === 'complete') {
-          router.replace('/(tabs)' as Href);
+        if (signUp.status !== 'complete') {
+          setError('Sign-up incomplete. Please try again.');
+          setCode('');
           setLoading(false);
           return;
         }
 
-        // Transfer carried the verified email. Go straight to finalize.
         const finalizeResult = await signUp.finalize();
         if (finalizeResult.error) {
           setError(finalizeResult.error.message ?? 'Could not complete sign-up.');
@@ -237,6 +238,8 @@ export default function SignInScreen() {
       >
         <Text style={styles.skipText}>Not now</Text>
       </TouchableOpacity>
+
+      <View nativeID="clerk-captcha" />
     </KeyboardAvoidingView>
   );
 }
