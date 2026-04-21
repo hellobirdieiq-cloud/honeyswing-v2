@@ -29,6 +29,15 @@ export interface ImpactData {
   source: "heuristic" | "fallback";
 }
 
+export type FallbackGate =
+  | 'points_too_short'
+  | 'top_search_bounds'
+  | 'impact_search_bounds'
+  | 'impact_distance_out_of_range'
+  | 'temporal_inversion'
+  | 'phases_too_bunched'
+  | 'backswing_ratio_check_failed';
+
 function velocity(a: SwingTrailPoint, b: SwingTrailPoint): number {
   const dt = b.timestamp - a.timestamp;
   if (dt === 0) return 0;
@@ -155,22 +164,50 @@ export function detectSwingPhases(points: SwingTrailPoint[]): DetectedPhase[] {
 
   const heuristicResult = tryHeuristicDetection(points);
 
-  if (heuristicResult.length === 6) {
-    const topTs = heuristicResult[2].timestamp;
-    const addressTs = heuristicResult[0].timestamp;
-    const impactTs = heuristicResult[4].timestamp;
+  if (heuristicResult.phases.length === 6) {
+    const topTs = heuristicResult.phases[2].timestamp;
+    const addressTs = heuristicResult.phases[0].timestamp;
+    const impactTs = heuristicResult.phases[4].timestamp;
     const backswing = topTs - addressTs;
     const downswing = impactTs - topTs;
 
     if (downswing > 0 && backswing > 0 && backswing / downswing >= 0.8) {
-      return heuristicResult;
+      return heuristicResult.phases;
     }
   }
 
   return fallbackPhases(points);
 }
 
-function tryHeuristicDetection(points: SwingTrailPoint[]): DetectedPhase[] {
+export function detectSwingPhasesWithDebug(
+  points: SwingTrailPoint[],
+): { phases: DetectedPhase[]; fallbackGate: FallbackGate | null } {
+  if (points.length < 6) {
+    return { phases: [], fallbackGate: 'points_too_short' };
+  }
+
+  const heuristicResult = tryHeuristicDetection(points);
+
+  if (heuristicResult.phases.length === 6) {
+    const topTs = heuristicResult.phases[2].timestamp;
+    const addressTs = heuristicResult.phases[0].timestamp;
+    const impactTs = heuristicResult.phases[4].timestamp;
+    const backswing = topTs - addressTs;
+    const downswing = impactTs - topTs;
+
+    if (downswing > 0 && backswing > 0 && backswing / downswing >= 0.8) {
+      return { phases: heuristicResult.phases, fallbackGate: null };
+    }
+
+    return { phases: fallbackPhases(points), fallbackGate: 'backswing_ratio_check_failed' };
+  }
+
+  return { phases: fallbackPhases(points), fallbackGate: heuristicResult.failureGate };
+}
+
+function tryHeuristicDetection(
+  points: SwingTrailPoint[],
+): { phases: DetectedPhase[]; failureGate: FallbackGate | null } {
   const velocities = computeVelocities(points);
   const smoothed = smoothVelocities(velocities, 5);
   const lastIdx = points.length - 1;
@@ -181,20 +218,20 @@ function tryHeuristicDetection(points: SwingTrailPoint[]): DetectedPhase[] {
   const topSearchStart = Math.max(addressIdx + 2, Math.floor(lastIdx * 0.2));
   const topSearchEnd = Math.floor(lastIdx * 0.6);
 
-  if (topSearchStart >= topSearchEnd) return [];
+  if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
 
   const topIdx = findMinYIndex(points, topSearchStart, topSearchEnd);
 
   const impactSearchStart = topIdx + 2;
   const impactSearchEnd = Math.min(lastIdx, Math.floor(lastIdx * 0.85));
 
-  if (impactSearchStart >= impactSearchEnd) return [];
+  if (impactSearchStart >= impactSearchEnd) return { phases: [], failureGate: 'impact_search_bounds' };
 
   const impactIdx = findMaxVelocityIndex(smoothed, impactSearchStart, impactSearchEnd);
 
   const maxImpactDistance = Math.floor(lastIdx * 0.4);
   const actualDistance = impactIdx - topIdx;
-  if (actualDistance > maxImpactDistance || actualDistance < 2) return [];
+  if (actualDistance > maxImpactDistance || actualDistance < 2) return { phases: [], failureGate: 'impact_distance_out_of_range' };
 
   const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
@@ -204,24 +241,27 @@ function tryHeuristicDetection(points: SwingTrailPoint[]): DetectedPhase[] {
 
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] <= indices[i - 1]) {
-      return [];
+      return { phases: [], failureGate: 'temporal_inversion' };
     }
   }
 
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] - indices[i - 1] < 2) {
-      return [];
+      return { phases: [], failureGate: 'phases_too_bunched' };
     }
   }
 
-  return PHASE_ORDER.map((phase, i) => ({
-    phase,
-    label: PHASE_LABELS[phase],
-    point: points[indices[i]],
-    index: indices[i],
-    timestamp: points[indices[i]].timestamp,
-    source: "heuristic" as const,
-  }));
+  return {
+    phases: PHASE_ORDER.map((phase, i) => ({
+      phase,
+      label: PHASE_LABELS[phase],
+      point: points[indices[i]],
+      index: indices[i],
+      timestamp: points[indices[i]].timestamp,
+      source: "heuristic" as const,
+    })),
+    failureGate: null,
+  };
 }
 
 export function detectImpact(points: SwingTrailPoint[]): ImpactData | null {

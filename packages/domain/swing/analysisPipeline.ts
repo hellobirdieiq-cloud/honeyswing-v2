@@ -5,7 +5,7 @@ import { CameraAngle, CameraAngleResult, detectCameraAngle } from "./cameraAngle
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
-import { detectSwingPhases, DetectedPhase, SwingTrailPoint } from "./phaseDetection";
+import { detectSwingPhasesWithDebug, DetectedPhase, SwingTrailPoint, type FallbackGate } from "./phaseDetection";
 import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
@@ -32,6 +32,7 @@ import type { ConfidenceComponents } from './confidenceScore';
 
 export type FrameSelectionDebug = {
   frame_selection_method: 'phase_windowed' | 'mid_frame_fallback';
+  fallback_gate: FallbackGate | null;
   address_frame_range?: [number, number];
   impact_frame_index?: number;
   backswing_peak_frame_index?: number;
@@ -143,7 +144,7 @@ function averageFrames(frames: PoseFrame[], start: number, end: number): PoseFra
 
 type PhaseWindowResult = {
   angles: GolfAngles;
-  debug: FrameSelectionDebug;
+  debug: Omit<FrameSelectionDebug, 'fallback_gate'>;
 };
 
 /** Compute angles using phase-specific measurement windows for reduced variance. */
@@ -384,12 +385,12 @@ export function analyzePoseSequence(
   }
 
   const trail = buildTrailPoints(canonical);
-  const phases = detectSwingPhases(trail);
+  const { phases, fallbackGate } = detectSwingPhasesWithDebug(trail);
 
   const addressFrame = averageFrames(canonical.frames, 0, Math.min(9, canonical.frames.length - 1));
 
   let angles: GolfAngles;
-  let frameDebug: FrameSelectionDebug;
+  let frameDebug: Omit<FrameSelectionDebug, 'fallback_gate'>;
   let isHeuristicPhases = false;
 
   if (shouldFallback(canonical.frames, phases)) {
@@ -453,6 +454,7 @@ export function analyzePoseSequence(
     cameraAngleResult: cameraAngle,
     swing_debug: {
       ...frameDebug,
+      fallback_gate: fallbackGate,
       camera_angle: cameraAngle.angle,
       camera_angle_avg_spread: Math.round(cameraAngle.avgSpread * 1000) / 1000,
       camera_angle_shoulder_spread: Math.round(cameraAngle.shoulderSpread * 1000) / 1000,
