@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { supabase, getUserId } from '../lib/supabase';
+import { getGripHistory, type GripHistoryRecord } from '../lib/swingStore';
 
 // Duplicate of the const at app/analysis/result.tsx:38-42.
 // Extraction to a shared lib is deferred — see plan FUTURE ONLY.
@@ -14,15 +14,8 @@ const GRIP_CHIP_COLORS: Record<string, string> = {
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MIN_ROWS = 3;
 
-type Row = {
-  id: string;
-  created_at: string;
-  grip_overall: string | null;
-  grip_failed: string | null;
-};
-
 export default function GripHistoryRow() {
-  const [rows, setRows] = useState<Row[] | null>(null);
+  const [rows, setRows] = useState<GripHistoryRecord[] | null>(null);
   const loggedOnceRef = useRef(false);
 
   useFocusEffect(
@@ -35,32 +28,9 @@ export default function GripHistoryRow() {
 
       let cancelled = false;
       (async () => {
-        const userId = await getUserId();
-        if (!userId) {
-          if (!cancelled) setRows([]);
-          return;
-        }
-        const since = new Date(Date.now() - WINDOW_MS).toISOString();
-        const { data, error } = await supabase
-          .from('swings')
-          .select(
-            'id, created_at, grip_overall:swing_debug->grip_cloud->>overall, grip_failed:swing_debug->grip_cloud->>analysis_failed',
-          )
-          .eq('user_id', userId)
-          .gte('created_at', since)
-          .not('swing_debug->grip_cloud', 'is', null)
-          .not('swing_debug->grip_cloud->>overall', 'is', null)
-          .or(
-            'swing_debug->grip_cloud->>analysis_failed.is.null,swing_debug->grip_cloud->>analysis_failed.neq.true',
-          )
-          .order('created_at', { ascending: false });
+        const fetched = await getGripHistory({ windowMs: WINDOW_MS });
         if (cancelled) return;
-        if (error) {
-          console.error('[HoneySwing] grip history fetch error:', error.message);
-          setRows([]);
-          return;
-        }
-        setRows((data ?? []) as Row[]);
+        setRows(fetched);
       })();
 
       return () => {

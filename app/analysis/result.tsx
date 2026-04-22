@@ -13,6 +13,7 @@ import {
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getUser, supabase } from '../../lib/supabase';
+import { getSwingById } from '../../lib/swingStore';
 import {
   analyzePoseSequence,
   type AnalysisResult,
@@ -81,15 +82,10 @@ export default function ResultScreen() {
 
   useEffect(() => {
     if (!swingId) return;
-    supabase
-      .from('swings')
-      .select('swing_debug')
-      .eq('id', swingId)
-      .single()
-      .then(({ data }) => {
-        const gc = data?.swing_debug?.grip_cloud as GripClassification | undefined;
-        if (gc && !gc.analysis_failed) setGripCloud(gc);
-      });
+    getSwingById(swingId).then((swing) => {
+      const gc = swing?.swing_debug?.grip_cloud as GripClassification | undefined;
+      if (gc && !gc.analysis_failed) setGripCloud(gc);
+    });
   }, [swingId]);
 
   const classification: CaptureClassification | null = useMemo(
