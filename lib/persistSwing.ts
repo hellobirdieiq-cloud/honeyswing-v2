@@ -12,6 +12,7 @@ import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
 import { getGripClassification } from './gripStore';
+import { emit as emitEvent } from './eventBus';
 
 const APP_VERSION = '1.9.4';
 
@@ -107,5 +108,25 @@ export async function persistSwing(
   }
 
   console.log('[HoneySwing] Swing persisted, frames:', frames.length);
-  return data?.id ?? null;
+
+  const swingId = data?.id ?? null;
+  if (swingId) {
+    emitEvent('swing.recorded', {
+      swingId,
+      userId: profileId,
+      score: analysis.score,
+      honeyBoom: analysis.honeyBoom,
+      tempoRatio: analysis.tempo?.tempoRatio ?? null,
+      confidenceTier: analysis.swingConfidence.tier,
+      cameraAngle: analysis.cameraAngleResult.angle,
+      captureValidity: classification?.validity ?? null,
+      sessionSwingNumber: sessionAccumulator.swingCount + 1,
+      coachCode: coachCode ?? null,
+      isLeftHanded,
+      ageTier: ageTier ?? null,
+      appVersion: APP_VERSION,
+    });
+  }
+
+  return swingId;
 }
