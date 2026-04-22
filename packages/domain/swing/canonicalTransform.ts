@@ -36,6 +36,10 @@ function mirrorJoint(
   joint: NormalizedJoint,
   newName: JointName,
 ): NormalizedJoint {
+  // Z pass-through under lefty x-mirror: MediaPipe pose z is subject-centered
+  // depth (origin at mid-hips), sign-preserved under horizontal reflection.
+  // Mirroring a right-handed swing to canonical (right-handed) form flips x
+  // but leaves z and y unchanged. Verify with real lefty capture in Phase 3.
   return {
     name: newName,
     x: 1.0 - joint.x,

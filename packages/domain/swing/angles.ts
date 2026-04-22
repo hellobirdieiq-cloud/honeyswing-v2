@@ -12,8 +12,17 @@ export interface GolfAngles {
 
 type Point = { x: number; y: number; z?: number };
 
-/** Z is considered reliable when the range across joints exceeds this threshold */
-const Z_RANGE_THRESHOLD = 0.02;
+/**
+ * Z is considered reliable when the range across joints exceeds this threshold.
+ *
+ * EXTERNAL ASSUMPTION (Rule 42): value 0.02 was chosen before real MediaPipe z
+ * was emitted from the native pose plugin (previously hardcoded to 0.0). It is
+ * a placeholder awaiting device-measured z-distributions from Track D. Do not
+ * treat this constant as calibrated — recalibration is a post-Track-D ticket.
+ * MediaPipe pose z is normalized subject-centered depth (origin at mid-hips,
+ * same scale as x), so 0.02 ≈ 2% of the x-normalized frame extent.
+ */
+export const Z_RANGE_THRESHOLD = 0.02;
 
 function isZReliable(...joints: (Point | undefined)[]): boolean {
   const zValues = joints

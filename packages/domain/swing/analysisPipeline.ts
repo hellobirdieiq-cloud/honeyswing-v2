@@ -1,6 +1,6 @@
 import { JointName, PoseFrame } from "../../pose/PoseTypes";
 import { PoseSequence } from "../../pose/PoseTypes";
-import { calculateGolfAngles, GolfAngles } from "./angles";
+import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
@@ -53,6 +53,22 @@ export type FrameSelectionDebug = {
   angle_gating?: AngleGatingResult;
   visibility_weighting?: VisibilityWeightingResult;
   implausible_frame_filter?: ImplausibleFrameDebug;
+  z_trace?: ZTraceDebug;
+};
+
+/** Dev-only per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
+export type ZTraceDebug = {
+  z_min: number | null;
+  z_max: number | null;
+  z_range: number | null;
+  use_3d_triggered: boolean;
+  z_threshold: number;
+  sample_count: number;
+  window_frame_counts: {
+    address: number;
+    top: number;
+    impact: number;
+  };
 };
 
 export type AnalysisResult = {
@@ -395,6 +411,60 @@ function applyVisibilityWeighting(
   return { angles: weightedAngles, debug: weightingResult, implausibleDebug };
 }
 
+/** Dev-only: compute per-swing z-distribution over address/top/impact frame windows. */
+function computeZTrace(
+  frames: PoseFrame[],
+  phases: DetectedPhase[],
+): ZTraceDebug {
+  const addressRange: [number, number] = [0, Math.min(9, frames.length - 1)];
+  const topPhase = phases.find(p => p.phase === 'top');
+  const impactPhase = phases.find(p => p.phase === 'impact');
+  const topRange: [number, number] | null =
+    topPhase ? [topPhase.index - 2, topPhase.index + 2] : null;
+  const impactRange: [number, number] | null =
+    impactPhase ? [impactPhase.index - 2, impactPhase.index + 2] : null;
+
+  const zValues: number[] = [];
+  const counts = { address: 0, top: 0, impact: 0 };
+  const sample = (range: [number, number] | null, key: 'address' | 'top' | 'impact') => {
+    if (!range) return;
+    const [s, e] = [Math.max(0, range[0]), Math.min(frames.length - 1, range[1])];
+    if (s > e) return;
+    for (let i = s; i <= e; i++) {
+      counts[key] += 1;
+      for (const j of Object.values(frames[i].joints)) {
+        const z = j?.z;
+        if (z != null && Number.isFinite(z)) zValues.push(z);
+      }
+    }
+  };
+  sample(addressRange, 'address');
+  sample(topRange, 'top');
+  sample(impactRange, 'impact');
+
+  if (zValues.length === 0) {
+    return {
+      z_min: null, z_max: null, z_range: null,
+      use_3d_triggered: false,
+      z_threshold: Z_RANGE_THRESHOLD,
+      sample_count: 0,
+      window_frame_counts: counts,
+    };
+  }
+  const zMin = Math.min(...zValues);
+  const zMax = Math.max(...zValues);
+  const zRange = zMax - zMin;
+  return {
+    z_min: Math.round(zMin * 1000) / 1000,
+    z_max: Math.round(zMax * 1000) / 1000,
+    z_range: Math.round(zRange * 1000) / 1000,
+    use_3d_triggered: zRange >= Z_RANGE_THRESHOLD,
+    z_threshold: Z_RANGE_THRESHOLD,
+    sample_count: zValues.length,
+    window_frame_counts: counts,
+  };
+}
+
 export function analyzePoseSequence(
   sequence: PoseSequence,
   isLeftHanded = false,
@@ -558,6 +628,9 @@ export function analyzePoseSequence(
       angle_gating: angleGating,
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
+      ...(__DEV__
+        ? { z_trace: computeZTrace(canonical.frames, phases) }
+        : {}),
     },
   };
 }

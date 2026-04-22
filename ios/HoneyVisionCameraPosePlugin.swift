@@ -163,7 +163,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
           "name": mapping.name,
           "x": lm.x,
           "y": lm.y,
-          "z": 0.0,
+          "z": lm.z,
           "inFrameLikelihood": visibility,
           "isPresent": true,
         ]
