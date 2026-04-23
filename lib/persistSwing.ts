@@ -64,7 +64,6 @@ export async function persistSwing(
 
   const row: Record<string, unknown> = {
     ...(profileId ? { user_id: profileId } : {}),
-    motion_frames: frames,
     frame_count: frames.length,
     duration_ms: Math.round(durationMs),
     score: analysis.score,
