@@ -9,7 +9,7 @@ PODS:
     - GoogleUtilities/Environment (~> 8.0)
     - GoogleUtilities/UserDefaults (~> 8.0)
     - PromisesObjC (~> 2.4)
-  - ClerkGoogleSignIn (3.1.12):
+  - ClerkGoogleSignIn (3.2.1):
     - GoogleSignIn (~> 9.0)
     - hermes-engine
     - RCTRequired
@@ -2686,7 +2686,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
-  ClerkGoogleSignIn: de3036168b9112c4a52234c58e19c1aaba9ecf8d
+  ClerkGoogleSignIn: befb7556adad57fdbfc2f866b84ae8b8b08ff518
   EXConstants: fce59a631a06c4151602843667f7cfe35f81e271
   EXImageLoader: 189e3476581efe3ad4d1d3fb4735b7179eb26f05
   EXJSONUtils: 1d3e4590438c3ee593684186007028a14b3686cd
