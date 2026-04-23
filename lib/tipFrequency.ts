@@ -118,6 +118,22 @@ export interface ProcessedCoachingTip {
  *
  * Zero = never show for this age tier.
  */
+
+// METRIC_LIMITS is tipCategory-scoped (4 age tiers × 12 unique keys).
+// 2 keys overlap MetricDefinitions (spineAngle, shoulderTilt — not placeholders).
+// 10 placeholders, retained per Session 25 audit decision. Audited 2026-04-22:
+//   LIVE (keep):    posture, tempo, balance, armExtension, kneeFlex
+//                   consumers in lib/positiveReinforcement.ts, lib/coachingTips.ts,
+//                   packages/domain/swing/confidenceScore.ts, analysisPipeline
+//   MIXED (keep):   grip, hipRotation, elbow
+//                   live consumers + unrelated repo noise; Session 25 audit found
+//                   a keyed match at lib/positiveReinforcement.ts:114 plus unrelated
+//                   matches in grip-photo / edge-function surfaces
+//   TEST-only:      wristAngle, clubfaceAngle (delete-eligible)
+// Deletion gates:
+//   hipRotation:    gated on #34 RIP (V43 Phase B — scoring recalibration)
+//   clubfaceAngle:  gated on #36 RIP (V43 Phase B — scoring recalibration)
+//   wristAngle:     no upstream gate; delete standalone post-Phase B review
 const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
   junior: {
     grip: 15,
