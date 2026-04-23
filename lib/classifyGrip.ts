@@ -1,6 +1,7 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
-import { SUPABASE_URL, SUPABASE_ANON_KEY, getSession } from './supabase';
+import { FunctionsFetchError } from '@supabase/supabase-js';
+import { supabase } from './supabase';
 import { getIsLeftHanded } from './handedness';
 
 export interface GripClassification {
@@ -41,61 +42,53 @@ export async function classifyGrip(
     encoding: FileSystem.EncodingType.Base64,
   });
 
-  // 3. Get handedness and auth
+  // 3. Get handedness (auth is injected by supabase client's clerkFetch)
   const isLeftHanded = await getIsLeftHanded();
-  const session = await getSession();
 
-  // 4. Build request
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    apikey: SUPABASE_ANON_KEY,
-  };
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`;
-  }
-
-  // 5. POST with 10s timeout
+  // 4. Invoke edge function with 10s timeout
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  let response: Response;
+  let result: Awaited<
+    ReturnType<
+      typeof supabase.functions.invoke<{
+        success?: boolean;
+        classification?: GripClassification;
+      }>
+    >
+  >;
   try {
-    response = await fetch(`${SUPABASE_URL}/functions/v1/classify-grip`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
+    result = await supabase.functions.invoke<{
+      success?: boolean;
+      classification?: GripClassification;
+    }>('classify-grip', {
+      body: {
         image_base64: imageBase64,
         handedness: isLeftHanded ? 'left' : 'right',
         ...(landmarks && landmarks.length > 0 ? { landmarks } : {}),
-      }),
+      },
       signal: controller.signal,
     });
-  } catch (err: unknown) {
-    clearTimeout(timer);
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new GripClassifyError('timeout');
-    }
-    throw new GripClassifyError('network');
   } finally {
     clearTimeout(timer);
   }
 
-  if (!response.ok) {
+  if (result.error) {
+    if (controller.signal.aborted) {
+      throw new GripClassifyError('timeout');
+    }
+    if (result.error instanceof FunctionsFetchError) {
+      throw new GripClassifyError('network');
+    }
     throw new GripClassifyError('server');
   }
 
-  let body: { success?: boolean; classification?: GripClassification };
-  try {
-    body = await response.json();
-  } catch {
+  const data = result.data;
+  console.log('[classifyGrip] raw response:', JSON.stringify(data));
+
+  if (!data || !data.success || !data.classification) {
     throw new GripClassifyError('server');
   }
 
-  console.log('[classifyGrip] raw response:', JSON.stringify(body));
-
-  if (!body.success || !body.classification) {
-    throw new GripClassifyError('server');
-  }
-
-  return body.classification;
+  return data.classification;
 }
