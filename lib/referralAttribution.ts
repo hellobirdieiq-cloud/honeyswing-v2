@@ -28,7 +28,7 @@ async function doCommitPendingReferral(): Promise<void> {
     .from('profiles')
     .select('referral_coach_id')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (fetchError) {
     console.error('[HoneySwing] referral fetch error:', fetchError.message);
@@ -100,7 +100,7 @@ export async function linkCoach(
     .from('profiles')
     .select('referral_coach_id')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (profile?.referral_coach_id === coach.id) {
     return { success: false, error: 'Already linked to this coach' };
