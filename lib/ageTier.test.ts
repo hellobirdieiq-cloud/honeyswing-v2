@@ -72,7 +72,6 @@ group('Junior has zero limits for advanced metrics');
 {
   const junior = METRIC_LIMITS.junior;
   assertEq(junior.spineAngle, 0, 'spineAngle suppressed for junior');
-  assertEq(junior.wristAngle, 0, 'wristAngle suppressed for junior');
   assertEq(junior.clubfaceAngle, 0, 'clubfaceAngle suppressed for junior');
 }
 

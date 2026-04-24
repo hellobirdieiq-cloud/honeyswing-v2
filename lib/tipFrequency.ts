@@ -119,9 +119,9 @@ export interface ProcessedCoachingTip {
  * Zero = never show for this age tier.
  */
 
-// METRIC_LIMITS is tipCategory-scoped (4 age tiers × 12 unique keys).
+// METRIC_LIMITS is tipCategory-scoped (4 age tiers × 11 unique keys).
 // 2 keys overlap MetricDefinitions (spineAngle, shoulderTilt — not placeholders).
-// 10 placeholders, retained per Session 25 audit decision. Audited 2026-04-22:
+// 9 placeholders, retained per Session 25 audit decision. Audited 2026-04-22:
 //   LIVE (keep):    posture, tempo, balance, armExtension, kneeFlex
 //                   consumers in lib/positiveReinforcement.ts, lib/coachingTips.ts,
 //                   packages/domain/swing/confidenceScore.ts, analysisPipeline
@@ -129,11 +129,10 @@ export interface ProcessedCoachingTip {
 //                   live consumers + unrelated repo noise; Session 25 audit found
 //                   a keyed match at lib/positiveReinforcement.ts:114 plus unrelated
 //                   matches in grip-photo / edge-function surfaces
-//   TEST-only:      wristAngle, clubfaceAngle (delete-eligible)
+//   TEST-only:      clubfaceAngle (delete-eligible)
 // Deletion gates:
 //   hipRotation:    gated on #34 RIP (V43 Phase B — scoring recalibration)
 //   clubfaceAngle:  gated on #36 RIP (V43 Phase B — scoring recalibration)
-//   wristAngle:     no upstream gate; delete standalone post-Phase B review
 const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
   junior: {
     grip: 15,
@@ -146,7 +145,6 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     kneeFlex: 3,
     elbow: 1,
     spineAngle: 0,
-    wristAngle: 0,
     clubfaceAngle: 0,
   },
   youth: {
@@ -160,7 +158,6 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     kneeFlex: 4,
     elbow: 2,
     spineAngle: 0,
-    wristAngle: 0,
     clubfaceAngle: 0,
   },
   teen: {
@@ -174,7 +171,6 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     kneeFlex: 6,
     elbow: 4,
     spineAngle: 3,
-    wristAngle: 2,
     clubfaceAngle: 2,
   },
   adult: {
@@ -188,7 +184,6 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     kneeFlex: 8,
     elbow: 8,
     spineAngle: 6,
-    wristAngle: 4,
     clubfaceAngle: 4,
   },
 };

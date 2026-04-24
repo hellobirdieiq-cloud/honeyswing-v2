@@ -137,11 +137,6 @@ tipFrequencyLimiter.reset();
     'spineAngle (youth limit=0) suppressed on first mention',
   );
   assertEq(
-    tipFrequencyLimiter.getTipDisplayTier('wristAngle'),
-    'suppressed',
-    'wristAngle (youth limit=0) suppressed on first mention',
-  );
-  assertEq(
     tipFrequencyLimiter.getTipDisplayTier('clubfaceAngle'),
     'suppressed',
     'clubfaceAngle (youth limit=0) suppressed on first mention',
