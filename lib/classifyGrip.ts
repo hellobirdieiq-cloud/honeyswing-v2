@@ -75,11 +75,14 @@ export async function classifyGrip(
 
   if (result.error) {
     if (controller.signal.aborted) {
+      console.log('[classifyGrip] error branch: timeout');
       throw new GripClassifyError('timeout');
     }
     if (result.error instanceof FunctionsFetchError) {
+      console.log('[classifyGrip] error branch: network');
       throw new GripClassifyError('network');
     }
+    console.log('[classifyGrip] error branch: server');
     throw new GripClassifyError('server');
   }
 
@@ -87,6 +90,7 @@ export async function classifyGrip(
   console.log('[classifyGrip] raw response:', JSON.stringify(data));
 
   if (!data || !data.success || !data.classification) {
+    console.log('[classifyGrip] error branch: server');
     throw new GripClassifyError('server');
   }
 
