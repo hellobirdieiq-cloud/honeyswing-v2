@@ -12,7 +12,7 @@
  *   - spineAngle: angle from vertical → atan(tan(measured) / cos(camera))
  *   - leftElbowAngle / rightElbowAngle: 3-joint bend → deviation stretch
  *   - leftKneeAngle / rightKneeAngle: 3-joint bend → deviation stretch
- *   - hipRotation: pure horizontal → divide by cos(camera)
+ *   - hipSpreadDelta: pure horizontal → divide by cos(camera)
  *
  * NOT corrected (unaffected or unreliable under correction):
  *   - shoulderTilt: primarily vertical (dy between shoulders)
@@ -167,7 +167,7 @@ function correctJointAngle(
  * Hip rotation is measured as abs(rightHip.x - leftHip.x) × 100 — a pure
  * horizontal measurement directly compressed by cos(cameraAngle).
  *
- * Also correct when hipRotation is a delta (impact - address) since:
+ * Also correct when hipSpreadDelta is a delta (impact - address) since:
  *   true_delta = (measured_impact - measured_address) / cos(camera)
  *
  * Edge cases:
@@ -203,7 +203,7 @@ export interface ForeshorteningDebug {
     rightElbowAngle?: { before: number; after: number };
     leftKneeAngle?: { before: number; after: number };
     rightKneeAngle?: { before: number; after: number };
-    hipRotation?: { before: number; after: number };
+    hipSpreadDelta?: { before: number; after: number };
   };
 }
 
@@ -282,10 +282,10 @@ export function correctForeshortening(
     corrections.rightKneeAngle = { before, after: corrected.rightKneeAngle };
   }
 
-  if (angles.hipRotation != null && isFiniteNumber(angles.hipRotation)) {
-    const before = angles.hipRotation;
-    corrected.hipRotation = correctHipRotation(before, cameraRad);
-    corrections.hipRotation = { before, after: corrected.hipRotation };
+  if (angles.hipSpreadDelta != null && isFiniteNumber(angles.hipSpreadDelta)) {
+    const before = angles.hipSpreadDelta;
+    corrected.hipSpreadDelta = correctHipRotation(before, cameraRad);
+    corrections.hipSpreadDelta = { before, after: corrected.hipSpreadDelta };
   }
 
   // shoulderTilt: NOT corrected (primarily vertical measurement)

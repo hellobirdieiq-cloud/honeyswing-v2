@@ -125,13 +125,13 @@ export interface ProcessedCoachingTip {
 //   LIVE (keep):    posture, tempo, balance, armExtension, kneeFlex
 //                   consumers in lib/positiveReinforcement.ts, lib/coachingTips.ts,
 //                   packages/domain/swing/confidenceScore.ts, analysisPipeline
-//   MIXED (keep):   grip, hipRotation, elbow
+//   MIXED (keep):   grip, hipSpreadDelta, elbow
 //                   live consumers + unrelated repo noise; Session 25 audit found
 //                   a keyed match at lib/positiveReinforcement.ts:114 plus unrelated
 //                   matches in grip-photo / edge-function surfaces
 //   TEST-only:      clubfaceAngle (delete-eligible)
 // Deletion gates:
-//   hipRotation:    gated on #34 RIP (V43 Phase B — scoring recalibration)
+//   hipSpreadDelta:    gated on #34 RIP (V43 Phase B — scoring recalibration)
 //   clubfaceAngle:  gated on #36 RIP (V43 Phase B — scoring recalibration)
 const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
   junior: {
@@ -141,7 +141,7 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     balance: 8,
     armExtension: 3,
     shoulderTilt: 2,
-    hipRotation: 1,
+    hipSpreadDelta: 1,
     kneeFlex: 3,
     elbow: 1,
     spineAngle: 0,
@@ -154,7 +154,7 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     balance: 12,
     armExtension: 5,
     shoulderTilt: 3,
-    hipRotation: 2,
+    hipSpreadDelta: 2,
     kneeFlex: 4,
     elbow: 2,
     spineAngle: 0,
@@ -167,7 +167,7 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     balance: 15,
     armExtension: 8,
     shoulderTilt: 5,
-    hipRotation: 4,
+    hipSpreadDelta: 4,
     kneeFlex: 6,
     elbow: 4,
     spineAngle: 3,
@@ -180,7 +180,7 @@ const METRIC_LIMITS: Record<AgeTier, Record<string, number>> = {
     balance: 20,
     armExtension: 12,
     shoulderTilt: 8,
-    hipRotation: 8,
+    hipSpreadDelta: 8,
     kneeFlex: 8,
     elbow: 8,
     spineAngle: 6,

@@ -166,9 +166,9 @@ function computePhaseWindowedAngles(
   const topAngles = calculateGolfAngles(topFrame);
 
   // Hip rotation as delta: how much the hips opened from address to impact
-  let hipRotation: number | null = null;
-  if (impactAngles.hipRotation != null && addressAngles.hipRotation != null) {
-    hipRotation = impactAngles.hipRotation - addressAngles.hipRotation;
+  let hipSpreadDelta: number | null = null;
+  if (impactAngles.hipSpreadDelta != null && addressAngles.hipSpreadDelta != null) {
+    hipSpreadDelta = impactAngles.hipSpreadDelta - addressAngles.hipSpreadDelta;
   }
 
   const angles: GolfAngles = {
@@ -177,7 +177,7 @@ function computePhaseWindowedAngles(
     rightElbowAngle: impactAngles.rightElbowAngle,
     leftKneeAngle: addressAngles.leftKneeAngle,
     rightKneeAngle: addressAngles.rightKneeAngle,
-    hipRotation,
+    hipSpreadDelta,
     shoulderTilt: topAngles.shoulderTilt,
   };
 
@@ -291,13 +291,13 @@ function applyVisibilityWeighting(
     metricFrames[key] = buildPipelineFrameData(frames, range[0], range[1], key, extract);
   }
 
-  // hipRotation is a delta (impact - address) — weight each component separately
-  if (currentAngles.hipRotation != null) {
-    metricFrames['hipRotation_address'] = buildPipelineFrameData(
-      frames, addressRange[0], addressRange[1], 'hipRotation', a => a.hipRotation,
+  // hipSpreadDelta is a delta (impact - address) — weight each component separately
+  if (currentAngles.hipSpreadDelta != null) {
+    metricFrames['hipSpreadDelta_address'] = buildPipelineFrameData(
+      frames, addressRange[0], addressRange[1], 'hipSpreadDelta', a => a.hipSpreadDelta,
     );
-    metricFrames['hipRotation_impact'] = buildPipelineFrameData(
-      frames, impactRange[0], impactRange[1], 'hipRotation', a => a.hipRotation,
+    metricFrames['hipSpreadDelta_impact'] = buildPipelineFrameData(
+      frames, impactRange[0], impactRange[1], 'hipSpreadDelta', a => a.hipSpreadDelta,
     );
   }
 
@@ -312,20 +312,20 @@ function applyVisibilityWeighting(
     }
   }
 
-  // Apply weighted hipRotation delta
-  const addrResult = weightingResult.metrics['hipRotation_address'];
-  const impResult = weightingResult.metrics['hipRotation_impact'];
+  // Apply weighted hipSpreadDelta delta
+  const addrResult = weightingResult.metrics['hipSpreadDelta_address'];
+  const impResult = weightingResult.metrics['hipSpreadDelta_impact'];
   if (addrResult && impResult &&
       (addrResult.applied || impResult.applied) &&
       Number.isFinite(addrResult.weightedValue) && Number.isFinite(impResult.weightedValue)) {
-    weightedAngles.hipRotation = Math.round(impResult.weightedValue - addrResult.weightedValue);
+    weightedAngles.hipSpreadDelta = Math.round(impResult.weightedValue - addrResult.weightedValue);
   }
 
   // Task 12: Build implausible frame debug from already-computed plausibility scores
   const implausibleMetrics: Record<string, PlausibilityDebugMetric> = {};
   let anyImplausible = false;
 
-  const allMetricKeys = [...config.map(c => c.key), 'hipRotation_address', 'hipRotation_impact'];
+  const allMetricKeys = [...config.map(c => c.key), 'hipSpreadDelta_address', 'hipSpreadDelta_impact'];
   for (const key of allMetricKeys) {
     const frameData = metricFrames[key];
     if (!frameData) continue;
@@ -379,7 +379,7 @@ export function analyzePoseSequence(
         shoulderSpread: 0,
         hipSpread: 0,
         avgSpread: 0,
-        weights: { spineAngle: 0, leftElbowAngle: 0, rightElbowAngle: 0, leftKneeAngle: 0, rightKneeAngle: 0, hipRotation: 0, shoulderTilt: 0, tempo: 0 },
+        weights: { spineAngle: 0, leftElbowAngle: 0, rightElbowAngle: 0, leftKneeAngle: 0, rightKneeAngle: 0, hipSpreadDelta: 0, shoulderTilt: 0, tempo: 0 },
       },
     };
   }

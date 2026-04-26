@@ -120,7 +120,7 @@ export interface ImplausibleFrameDebug {
 
 /**
  * Only 3-joint angle metrics have limb segment ratios to check.
- * spineAngle, hipRotation, shoulderTilt use midpoints or spreads — no ratio.
+ * spineAngle, hipSpreadDelta, shoulderTilt use midpoints or spreads — no ratio.
  */
 export const METRIC_LIMB_CHECKS: Readonly<Record<string, LimbSegmentCheck>> = {
   leftElbowAngle: {

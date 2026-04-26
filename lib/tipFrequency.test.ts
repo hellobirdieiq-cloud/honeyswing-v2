@@ -280,7 +280,7 @@ group('10. Age tier limit tables comprehensive');
   const tiers: AgeTier[] = ['youth', 'teen', 'adult'];
   const coreMetrics = [
     'grip', 'posture', 'tempo', 'balance', 'armExtension',
-    'shoulderTilt', 'hipRotation', 'kneeFlex', 'elbow',
+    'shoulderTilt', 'hipSpreadDelta', 'kneeFlex', 'elbow',
   ];
 
   for (const tier of tiers) {
@@ -490,17 +490,17 @@ tipFrequencyLimiter.setAgeTier('teen');
 group('21. Boundary: behavior at exact limit');
 tipFrequencyLimiter.reset();
 {
-  // hipRotation limit=2 (youth)
-  tipFrequencyLimiter.recordShown('hipRotation');
+  // hipSpreadDelta limit=2 (youth)
+  tipFrequencyLimiter.recordShown('hipSpreadDelta');
   assertEq(
-    tipFrequencyLimiter.getTipDisplayTier('hipRotation'),
+    tipFrequencyLimiter.getTipDisplayTier('hipSpreadDelta'),
     'shortened',
     'count=1 < limit=2 → shortened',
   );
 
-  tipFrequencyLimiter.recordShown('hipRotation');
+  tipFrequencyLimiter.recordShown('hipSpreadDelta');
   assertEq(
-    tipFrequencyLimiter.getTipDisplayTier('hipRotation'),
+    tipFrequencyLimiter.getTipDisplayTier('hipSpreadDelta'),
     'suppressed',
     'count=2 === limit=2 → suppressed',
   );

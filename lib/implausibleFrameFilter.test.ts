@@ -156,7 +156,7 @@ assert(METRIC_LIMB_CHECKS['rightElbowAngle'] != null, 'rightElbowAngle has limb 
 assert(METRIC_LIMB_CHECKS['leftKneeAngle'] != null, 'leftKneeAngle has limb check');
 assert(METRIC_LIMB_CHECKS['rightKneeAngle'] != null, 'rightKneeAngle has limb check');
 assert(METRIC_LIMB_CHECKS['spineAngle'] == null, 'spineAngle has no limb check');
-assert(METRIC_LIMB_CHECKS['hipRotation'] == null, 'hipRotation has no limb check');
+assert(METRIC_LIMB_CHECKS['hipSpreadDelta'] == null, 'hipSpreadDelta has no limb check');
 assert(METRIC_LIMB_CHECKS['shoulderTilt'] == null, 'shoulderTilt has no limb check');
 
 // Elbow checks use forearm/upperArm reference

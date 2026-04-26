@@ -105,7 +105,7 @@ const METRIC_FRIENDLY_NAMES: Record<string, string> = {
   tempo: 'tempo',
   spineAngle: 'posture',
   shoulderTilt: 'shoulder tilt',
-  hipRotation: 'hip rotation',
+  hipSpreadDelta: 'hip rotation',
   elbow: 'arm extension',
   kneeFlex: 'knee bend',
   armExtension: 'arm extension',

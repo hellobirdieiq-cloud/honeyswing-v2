@@ -70,7 +70,7 @@ const METRIC_KEYS = [
   'rightElbowAngle',
   'leftKneeAngle',
   'rightKneeAngle',
-  'hipRotation',
+  'hipSpreadDelta',
   'shoulderTilt',
   'tempo',
 ] as const;
@@ -84,7 +84,7 @@ const METRIC_DISPLAY_NAMES: Record<AccumulatorMetricKey, string> = {
   rightElbowAngle: 'trail arm',
   leftKneeAngle: 'lead knee',
   rightKneeAngle: 'trail knee',
-  hipRotation: 'hip rotation',
+  hipSpreadDelta: 'hip rotation',
   shoulderTilt: 'shoulder tilt',
   tempo: 'tempo',
 };
@@ -191,7 +191,7 @@ class SessionAccumulatorImpl {
       this._addMetricValue('rightElbowAngle', angles.rightElbowAngle);
       this._addMetricValue('leftKneeAngle', angles.leftKneeAngle);
       this._addMetricValue('rightKneeAngle', angles.rightKneeAngle);
-      this._addMetricValue('hipRotation', angles.hipRotation);
+      this._addMetricValue('hipSpreadDelta', angles.hipSpreadDelta);
       this._addMetricValue('shoulderTilt', angles.shoulderTilt);
     }
 

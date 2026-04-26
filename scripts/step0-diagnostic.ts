@@ -120,7 +120,7 @@ type SwingResult = {
   impactFlaggedCount: number;
 };
 
-const METRIC_KEYS = ['spineAngle', 'leftElbowAngle', 'leftKneeAngle', 'hipRotation'] as const;
+const METRIC_KEYS = ['spineAngle', 'leftElbowAngle', 'leftKneeAngle', 'hipSpreadDelta'] as const;
 type MetricKey = typeof METRIC_KEYS[number];
 
 // ---------------------------------------------------------------------------
@@ -247,7 +247,7 @@ function extractAngles(frame: PoseFrame): Record<MetricKey, number | null> {
     spineAngle: a.spineAngle,
     leftElbowAngle: a.leftElbowAngle,
     leftKneeAngle: a.leftKneeAngle,
-    hipRotation: a.hipRotation,
+    hipSpreadDelta: a.hipSpreadDelta,
   };
 }
 
@@ -276,7 +276,7 @@ function computeWindowDeltas(
 
   if (windowFrames.length === 0) {
     return {
-      deltas: { spineAngle: null, leftElbowAngle: null, leftKneeAngle: null, hipRotation: null },
+      deltas: { spineAngle: null, leftElbowAngle: null, leftKneeAngle: null, hipSpreadDelta: null },
       flaggedInWindow,
     };
   }
@@ -288,7 +288,7 @@ function computeWindowDeltas(
   // Insufficient data guard
   if (filteredFrames.length < MIN_FILTERED_FRAMES) {
     return {
-      deltas: { spineAngle: null, leftElbowAngle: null, leftKneeAngle: null, hipRotation: null },
+      deltas: { spineAngle: null, leftElbowAngle: null, leftKneeAngle: null, hipSpreadDelta: null },
       flaggedInWindow,
     };
   }
@@ -302,7 +302,7 @@ function computeWindowDeltas(
     spineAngle: null,
     leftElbowAngle: null,
     leftKneeAngle: null,
-    hipRotation: null,
+    hipSpreadDelta: null,
   };
 
   for (const key of METRIC_KEYS) {
@@ -402,11 +402,11 @@ function generateReport(results: SwingResult[]): void {
       'addr:spine': fmt(r.addressDeltas.spineAngle as number | null),
       'addr:elbow': fmt(r.addressDeltas.leftElbowAngle as number | null),
       'addr:knee': fmt(r.addressDeltas.leftKneeAngle as number | null),
-      'addr:hip': fmt(r.addressDeltas.hipRotation as number | null),
+      'addr:hip': fmt(r.addressDeltas.hipSpreadDelta as number | null),
       'imp:spine': fmt(r.impactDeltas.spineAngle as number | null),
       'imp:elbow': fmt(r.impactDeltas.leftElbowAngle as number | null),
       'imp:knee': fmt(r.impactDeltas.leftKneeAngle as number | null),
-      'imp:hip': fmt(r.impactDeltas.hipRotation as number | null),
+      'imp:hip': fmt(r.impactDeltas.hipSpreadDelta as number | null),
       maxDelta: r.maxAbsDelta !== null ? r.maxAbsDelta.toFixed(1) : 'n/a',
     })),
   );
@@ -419,7 +419,7 @@ function generateReport(results: SwingResult[]): void {
     spineAngle: [],
     leftElbowAngle: [],
     leftKneeAngle: [],
-    hipRotation: [],
+    hipSpreadDelta: [],
   };
 
   for (const r of results) {

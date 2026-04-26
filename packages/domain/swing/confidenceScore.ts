@@ -96,7 +96,7 @@ const CAMERA_WEIGHT_THRESHOLD = 0.3;
 /**
  * Metrics allowed at medium confidence tier.
  * Stable enough to show even when overall confidence isn't high.
- * Excludes hipRotation (camera-angle dependent) and elbows (noisy).
+ * Excludes hipSpreadDelta (camera-angle dependent) and elbows (noisy).
  */
 const MEDIUM_TIER_METRICS: ReadonlySet<string> = new Set([
   'tempo',

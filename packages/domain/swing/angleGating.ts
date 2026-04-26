@@ -40,7 +40,7 @@ export type AngleBucket = 'face_on' | 'oblique' | 'dtl';
 export type GatedMetric =
   | 'spineAngle'
   | 'shoulderTilt'
-  | 'hipRotation'
+  | 'hipSpreadDelta'
   | 'leftElbowAngle'
   | 'rightElbowAngle'
   | 'leftKneeAngle'
@@ -95,7 +95,7 @@ export function isGatedMetric(key: string): key is GatedMetric {
 export const ACCURACY_TABLE: Readonly<Record<GatedMetric, Readonly<Record<AngleBucket, number>>>> = Object.freeze({
   spineAngle:      Object.freeze({ face_on: 0.95, oblique: 0.85, dtl: 0.70 }),
   shoulderTilt:    Object.freeze({ face_on: 0.90, oblique: 0.75, dtl: 0.58 }),
-  hipRotation:     Object.freeze({ face_on: 0.85, oblique: 0.80, dtl: 0.65 }),
+  hipSpreadDelta:     Object.freeze({ face_on: 0.85, oblique: 0.80, dtl: 0.65 }),
   leftElbowAngle:  Object.freeze({ face_on: 0.90, oblique: 0.85, dtl: 0.80 }),
   rightElbowAngle: Object.freeze({ face_on: 0.90, oblique: 0.85, dtl: 0.80 }),
   leftKneeAngle:   Object.freeze({ face_on: 0.85, oblique: 0.80, dtl: 0.75 }),
@@ -116,7 +116,7 @@ export const ACCURACY_TABLE: Readonly<Record<GatedMetric, Readonly<Record<AngleB
 export const THRESHOLDS: Readonly<Record<GatedMetric, number>> = Object.freeze({
   spineAngle:      0.60,
   shoulderTilt:    0.85,
-  hipRotation:     0.60,
+  hipSpreadDelta:     0.60,
   leftElbowAngle:  0.70,
   rightElbowAngle: 0.70,
   leftKneeAngle:   0.70,

@@ -685,7 +685,7 @@ assertEq(CONFIDENCE_THRESHOLD, 75, 'confidence threshold = 75 (roadmap spec)');
 assertEq(GOOD_SCORE_THRESHOLD, 80, 'good score threshold = 80 (matches TIP_SCORE_THRESHOLD)');
 
 {
-  const required = ['tempo', 'spineAngle', 'shoulderTilt', 'hipRotation', 'elbow', 'kneeFlex'];
+  const required = ['tempo', 'spineAngle', 'shoulderTilt', 'hipSpreadDelta', 'elbow', 'kneeFlex'];
   let allPresent = true;
   for (const key of required) {
     if (!METRIC_FRIENDLY_NAMES[key]) allPresent = false;

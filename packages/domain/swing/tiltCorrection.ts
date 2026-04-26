@@ -21,7 +21,7 @@
  * ├───────────────────────────────────────────────────────────────────────┤
  * │ elbowAngles    3-joint angle via angleBetween(), camera-invariant    │
  * │ kneeAngles     3-joint angle via angleBetween(), camera-invariant    │
- * │ hipRotation    horizontal delta between phases, pitch doesn't shift  │
+ * │ hipSpreadDelta    horizontal delta between phases, pitch doesn't shift  │
  * │ tempo          timing-based, no spatial reference                    │
  * └───────────────────────────────────────────────────────────────────────┘
  *
@@ -102,7 +102,7 @@ export interface TiltCorrectionInput {
   rightElbowAngle?: number | null;
   leftKneeAngle?: number | null;
   rightKneeAngle?: number | null;
-  hipRotation?: number | null;
+  hipSpreadDelta?: number | null;
   tempo?: number | null;
 }
 

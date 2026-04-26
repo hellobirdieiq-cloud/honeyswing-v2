@@ -8,7 +8,7 @@ export type MetricConfidenceWeights = {
   rightElbowAngle: number;
   leftKneeAngle: number;
   rightKneeAngle: number;
-  hipRotation: number;
+  hipSpreadDelta: number;
   shoulderTilt: number;
   tempo: number;
 };
@@ -31,7 +31,7 @@ const FRONT_WEIGHTS: MetricConfidenceWeights = {
   rightElbowAngle: 0.9,
   leftKneeAngle: 0.6,
   rightKneeAngle: 0.6,
-  hipRotation: 1.0,
+  hipSpreadDelta: 1.0,
   shoulderTilt: 0.7,
   tempo: 1.0,
 };
@@ -42,7 +42,7 @@ const SIDE_WEIGHTS: MetricConfidenceWeights = {
   rightElbowAngle: 0.6,
   leftKneeAngle: 1.0,
   rightKneeAngle: 1.0,
-  hipRotation: 0.2,
+  hipSpreadDelta: 0.2,
   shoulderTilt: 1.0,
   tempo: 1.0,
 };
@@ -53,7 +53,7 @@ const UNKNOWN_WEIGHTS: MetricConfidenceWeights = {
   rightElbowAngle: Math.min(FRONT_WEIGHTS.rightElbowAngle, SIDE_WEIGHTS.rightElbowAngle),
   leftKneeAngle: Math.min(FRONT_WEIGHTS.leftKneeAngle, SIDE_WEIGHTS.leftKneeAngle),
   rightKneeAngle: Math.min(FRONT_WEIGHTS.rightKneeAngle, SIDE_WEIGHTS.rightKneeAngle),
-  hipRotation: Math.min(FRONT_WEIGHTS.hipRotation, SIDE_WEIGHTS.hipRotation),
+  hipSpreadDelta: Math.min(FRONT_WEIGHTS.hipSpreadDelta, SIDE_WEIGHTS.hipSpreadDelta),
   shoulderTilt: Math.min(FRONT_WEIGHTS.shoulderTilt, SIDE_WEIGHTS.shoulderTilt),
   tempo: 1.0,
 };

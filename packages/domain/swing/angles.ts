@@ -6,7 +6,7 @@ export interface GolfAngles {
   rightElbowAngle: number | null;
   leftKneeAngle: number | null;
   rightKneeAngle: number | null;
-  hipRotation: number | null;
+  hipSpreadDelta: number | null;
   shoulderTilt: number | null;
 }
 
@@ -103,9 +103,9 @@ export function calculateGolfAngles(frame: PoseFrame): GolfAngles {
     rightKneeAngle = angleBetween(rh!, rk!, ra!);
   }
 
-  let hipRotation: number | null = null;
+  let hipSpreadDelta: number | null = null;
   if (isGood(lh) && isGood(rh)) {
-    hipRotation = Math.round(Math.abs(rh!.x - lh!.x) * 100);
+    hipSpreadDelta = Math.round(Math.abs(rh!.x - lh!.x) * 100);
   }
 
   let shoulderTilt: number | null = null;
@@ -122,7 +122,7 @@ export function calculateGolfAngles(frame: PoseFrame): GolfAngles {
     rightElbowAngle,
     leftKneeAngle,
     rightKneeAngle,
-    hipRotation,
+    hipSpreadDelta,
     shoulderTilt,
   };
 }

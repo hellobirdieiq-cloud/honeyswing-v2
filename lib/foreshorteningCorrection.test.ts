@@ -100,7 +100,7 @@ function makeAngles(overrides?: Partial<GolfAngles>): GolfAngles {
     rightElbowAngle: 160,
     leftKneeAngle: 155,
     rightKneeAngle: 155,
-    hipRotation: 25,
+    hipSpreadDelta: 25,
     shoulderTilt: 8,
     ...overrides,
   };
@@ -114,7 +114,7 @@ function makeCameraResult(avgSpread: number, angle?: 'front' | 'side' | 'unknown
     avgSpread,
     weights: {
       spineAngle: 1, leftElbowAngle: 1, rightElbowAngle: 1,
-      leftKneeAngle: 1, rightKneeAngle: 1, hipRotation: 1,
+      leftKneeAngle: 1, rightKneeAngle: 1, hipSpreadDelta: 1,
       shoulderTilt: 1, tempo: 1,
     },
   };
@@ -334,7 +334,7 @@ group('correctHipRotation');
 }
 
 {
-  assertEq(correctHipRotation(0, 45 * Math.PI / 180), 0, '0 hipRotation stays 0');
+  assertEq(correctHipRotation(0, 45 * Math.PI / 180), 0, '0 hipSpreadDelta stays 0');
 }
 
 {
@@ -346,7 +346,7 @@ group('correctHipRotation');
 }
 
 {
-  assertNaN(correctHipRotation(NaN, 45 * Math.PI / 180), 'NaN hipRotation → NaN');
+  assertNaN(correctHipRotation(NaN, 45 * Math.PI / 180), 'NaN hipSpreadDelta → NaN');
 }
 
 // =========================================================================
@@ -369,7 +369,7 @@ group('correctForeshortening — applied');
   assert(result.angles.rightElbowAngle! <= angles.rightElbowAngle!, 'right elbow corrected (more bent)');
   assert(result.angles.leftKneeAngle! <= angles.leftKneeAngle!, 'left knee corrected (more bent)');
   assert(result.angles.rightKneeAngle! <= angles.rightKneeAngle!, 'right knee corrected (more bent)');
-  assert(result.angles.hipRotation! > angles.hipRotation!, 'hip rotation corrected upward');
+  assert(result.angles.hipSpreadDelta! > angles.hipSpreadDelta!, 'hip rotation corrected upward');
   assertEq(result.angles.shoulderTilt, angles.shoulderTilt, 'shoulderTilt NOT corrected');
 }
 
@@ -467,14 +467,14 @@ group('correctForeshortening — boundary thresholds');
 group('Null metric handling');
 
 {
-  const angles = makeAngles({ spineAngle: null, leftElbowAngle: null, hipRotation: null });
+  const angles = makeAngles({ spineAngle: null, leftElbowAngle: null, hipSpreadDelta: null });
   const camera = makeCameraResult(spreadForAngle(45));
   const result = correctForeshortening(angles, camera);
 
   assertEq(result.debug.applied, true, 'still applies with some null metrics');
   assertNull(result.angles.spineAngle, 'null spineAngle stays null');
   assertNull(result.angles.leftElbowAngle, 'null leftElbowAngle stays null');
-  assertNull(result.angles.hipRotation, 'null hipRotation stays null');
+  assertNull(result.angles.hipSpreadDelta, 'null hipSpreadDelta stays null');
   assertNotNull(result.angles.rightElbowAngle, 'non-null metric still corrected');
   assert(!('spineAngle' in result.debug.corrections!), 'no correction entry for null metric');
 }
@@ -482,7 +482,7 @@ group('Null metric handling');
 {
   const angles: GolfAngles = {
     spineAngle: null, leftElbowAngle: null, rightElbowAngle: null,
-    leftKneeAngle: null, rightKneeAngle: null, hipRotation: null, shoulderTilt: null,
+    leftKneeAngle: null, rightKneeAngle: null, hipSpreadDelta: null, shoulderTilt: null,
   };
   const camera = makeCameraResult(spreadForAngle(45));
   const result = correctForeshortening(angles, camera);
@@ -494,14 +494,14 @@ group('Null metric handling');
 group('NaN metric handling');
 
 {
-  const angles = makeAngles({ spineAngle: NaN, hipRotation: NaN });
+  const angles = makeAngles({ spineAngle: NaN, hipSpreadDelta: NaN });
   const camera = makeCameraResult(spreadForAngle(45));
   const result = correctForeshortening(angles, camera);
 
   assertEq(result.debug.applied, true, 'NaN metrics: correction still runs');
   // NaN metrics should be skipped (not produce NaN in corrections)
   assert(!('spineAngle' in (result.debug.corrections ?? {})), 'NaN spineAngle skipped in corrections');
-  assert(!('hipRotation' in (result.debug.corrections ?? {})), 'NaN hipRotation skipped in corrections');
+  assert(!('hipSpreadDelta' in (result.debug.corrections ?? {})), 'NaN hipSpreadDelta skipped in corrections');
 }
 
 // =========================================================================
@@ -513,12 +513,12 @@ group('Immutability');
 {
   const angles = makeAngles();
   const originalSpine = angles.spineAngle;
-  const originalHip = angles.hipRotation;
+  const originalHip = angles.hipSpreadDelta;
   const camera = makeCameraResult(spreadForAngle(45));
   correctForeshortening(angles, camera);
 
   assertEq(angles.spineAngle, originalSpine, 'original spineAngle not mutated');
-  assertEq(angles.hipRotation, originalHip, 'original hipRotation not mutated');
+  assertEq(angles.hipSpreadDelta, originalHip, 'original hipSpreadDelta not mutated');
 }
 
 // =========================================================================
@@ -544,7 +544,7 @@ group('Debug output shape — when applied');
   assert('rightElbowAngle' in c, 'corrections has rightElbowAngle');
   assert('leftKneeAngle' in c, 'corrections has leftKneeAngle');
   assert('rightKneeAngle' in c, 'corrections has rightKneeAngle');
-  assert('hipRotation' in c, 'corrections has hipRotation');
+  assert('hipSpreadDelta' in c, 'corrections has hipSpreadDelta');
   assert(!('shoulderTilt' in c), 'corrections does NOT have shoulderTilt');
   assert(!('tempo' in c), 'corrections does NOT have tempo');
 
@@ -554,7 +554,7 @@ group('Debug output shape — when applied');
   assertEq(c.rightElbowAngle!.before, 160, 'corrections.rightElbowAngle.before matches input');
   assertEq(c.leftKneeAngle!.before, 155, 'corrections.leftKneeAngle.before matches input');
   assertEq(c.rightKneeAngle!.before, 155, 'corrections.rightKneeAngle.before matches input');
-  assertEq(c.hipRotation!.before, 25, 'corrections.hipRotation.before matches input');
+  assertEq(c.hipSpreadDelta!.before, 25, 'corrections.hipSpreadDelta.before matches input');
 }
 
 group('Debug output shape — when not applied');
@@ -681,7 +681,7 @@ group('Monotonicity: full pipeline — spine');
 group('Monotonicity: full pipeline — hip rotation');
 
 {
-  const angles = makeAngles({ hipRotation: 25 });
+  const angles = makeAngles({ hipSpreadDelta: 25 });
   const spreads = [0.25, 0.20, 0.15, 0.12, 0.09];
   const results: { spread: number; hip: number }[] = [];
 
@@ -689,7 +689,7 @@ group('Monotonicity: full pipeline — hip rotation');
     const camera = makeCameraResult(spread);
     const result = correctForeshortening(angles, camera);
     if (result.debug.applied) {
-      results.push({ spread, hip: result.angles.hipRotation! });
+      results.push({ spread, hip: result.angles.hipSpreadDelta! });
     }
   }
 

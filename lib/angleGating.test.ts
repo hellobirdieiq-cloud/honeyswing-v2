@@ -85,7 +85,7 @@ group('isGatedMetric type guard');
 
 assertEq(isGatedMetric('spineAngle'), true, 'spineAngle is gated');
 assertEq(isGatedMetric('shoulderTilt'), true, 'shoulderTilt is gated');
-assertEq(isGatedMetric('hipRotation'), true, 'hipRotation is gated');
+assertEq(isGatedMetric('hipSpreadDelta'), true, 'hipSpreadDelta is gated');
 assertEq(isGatedMetric('leftElbowAngle'), true, 'leftElbowAngle is gated');
 assertEq(isGatedMetric('rightElbowAngle'), true, 'rightElbowAngle is gated');
 assertEq(isGatedMetric('leftKneeAngle'), true, 'leftKneeAngle is gated');
@@ -231,7 +231,7 @@ group('getThreshold — known metrics');
 
 assertEq(getThreshold('spineAngle'), 0.60, 'spineAngle threshold = 0.60');
 assertEq(getThreshold('shoulderTilt'), 0.85, 'shoulderTilt threshold = 0.85');
-assertEq(getThreshold('hipRotation'), 0.60, 'hipRotation threshold = 0.60');
+assertEq(getThreshold('hipSpreadDelta'), 0.60, 'hipSpreadDelta threshold = 0.60');
 assertEq(getThreshold('leftElbowAngle'), 0.70, 'leftElbow threshold = 0.70');
 assertEq(getThreshold('rightElbowAngle'), 0.70, 'rightElbow threshold = 0.70');
 assertEq(getThreshold('leftKneeAngle'), 0.70, 'leftKnee threshold = 0.70');
@@ -275,9 +275,9 @@ const spDTL = checkMetric('spineAngle', 75)!;
 assertEq(spDTL.suppressed, false, 'spineAngle@75° NOT suppressed');
 assert(spDTL.accuracy >= 0.60, 'spineAngle@75° accuracy above threshold');
 
-// hipRotation from deep DTL: clamped accuracy = 0.65 >= 0.60 → NOT suppressed
-const hipDTL = checkMetric('hipRotation', 80)!;
-assertEq(hipDTL.suppressed, false, 'hipRotation@80° NOT suppressed');
+// hipSpreadDelta from deep DTL: clamped accuracy = 0.65 >= 0.60 → NOT suppressed
+const hipDTL = checkMetric('hipSpreadDelta', 80)!;
+assertEq(hipDTL.suppressed, false, 'hipSpreadDelta@80° NOT suppressed');
 
 // leftElbowAngle from DTL: clamped accuracy = 0.80 >= 0.70 → NOT suppressed
 const leDTL = checkMetric('leftElbowAngle', 80)!;
@@ -335,7 +335,7 @@ assert(dtlResult.suppressed.includes('shoulderTilt'), 'DTL: shoulderTilt suppres
 assertEq(dtlResult.suppressed.length, 1, 'DTL: only shoulderTilt suppressed');
 assertEq(dtlResult.passed.length, 6, 'DTL: 6 metrics passed');
 assert(dtlResult.passed.includes('spineAngle'), 'DTL: spineAngle passed');
-assert(dtlResult.passed.includes('hipRotation'), 'DTL: hipRotation passed');
+assert(dtlResult.passed.includes('hipSpreadDelta'), 'DTL: hipSpreadDelta passed');
 assert(dtlResult.passed.includes('leftElbowAngle'), 'DTL: leftElbow passed');
 assert(dtlResult.passed.includes('rightElbowAngle'), 'DTL: rightElbow passed');
 assert(dtlResult.passed.includes('leftKneeAngle'), 'DTL: leftKnee passed');
@@ -399,13 +399,13 @@ assertEq(Object.keys(emptyResult.details).length, 0, 'empty input: 0 details');
 
 group('filterMetricsByAngle');
 
-const allMetrics = ['spineAngle', 'shoulderTilt', 'hipRotation', 'tempo', 'leftElbowAngle'];
+const allMetrics = ['spineAngle', 'shoulderTilt', 'hipSpreadDelta', 'tempo', 'leftElbowAngle'];
 
 const filteredDTL = filterMetricsByAngle(allMetrics, 75);
 assert(!filteredDTL.includes('shoulderTilt'), 'DTL filter: shoulderTilt removed');
 assert(filteredDTL.includes('spineAngle'), 'DTL filter: spineAngle kept');
 assert(filteredDTL.includes('tempo'), 'DTL filter: tempo kept (exempt)');
-assert(filteredDTL.includes('hipRotation'), 'DTL filter: hipRotation kept');
+assert(filteredDTL.includes('hipSpreadDelta'), 'DTL filter: hipSpreadDelta kept');
 assertEq(filteredDTL.length, 4, 'DTL filter: 4 metrics remain');
 
 const filteredFace = filterMetricsByAngle(allMetrics, 5);
@@ -416,13 +416,13 @@ assertEq(filteredEmpty.length, 0, 'empty input → empty output');
 
 group('filterMetricsByAngle — order preservation');
 
-const orderedInput = ['leftKneeAngle', 'tempo', 'spineAngle', 'shoulderTilt', 'hipRotation'];
+const orderedInput = ['leftKneeAngle', 'tempo', 'spineAngle', 'shoulderTilt', 'hipSpreadDelta'];
 const orderedOutput = filterMetricsByAngle(orderedInput, 75);
 // shoulderTilt removed, rest should preserve order
 assertEq(orderedOutput[0], 'leftKneeAngle', 'order preserved: index 0');
 assertEq(orderedOutput[1], 'tempo', 'order preserved: index 1');
 assertEq(orderedOutput[2], 'spineAngle', 'order preserved: index 2');
-assertEq(orderedOutput[3], 'hipRotation', 'order preserved: index 3');
+assertEq(orderedOutput[3], 'hipSpreadDelta', 'order preserved: index 3');
 assertEq(orderedOutput.length, 4, 'order preserved: length correct');
 
 group('filterMetricsByAngle — does not mutate input');

@@ -567,7 +567,7 @@ group('computeVisibilityWeighting — full swing');
   const metricFrames: Record<string, FrameAngleData[]> = {
     spineAngle: makeUniformFrames([34, 35, 36], 0.9, 4),
     shoulderTilt: makeUniformFrames([10, 11, 12], 0.95, 2),
-    hipRotation: [
+    hipSpreadDelta: [
       makeFrame(40, [0.9, 0.05]),  // excluded
       makeFrame(42, [0.9, 0.9]),   // included
       makeFrame(41, [0.9, 0.9]),   // included
@@ -579,9 +579,9 @@ group('computeVisibilityWeighting — full swing');
   assertEq(r.version, TABLE_VERSION, 'version matches');
   assert('spineAngle' in r.metrics, 'spineAngle present');
   assert('shoulderTilt' in r.metrics, 'shoulderTilt present');
-  assert('hipRotation' in r.metrics, 'hipRotation present');
-  assertEq(r.metrics.hipRotation.framesExcluded, 1, 'hipRotation: 1 excluded');
-  assertEq(r.metrics.hipRotation.framesUsed, 2, 'hipRotation: 2 used');
+  assert('hipSpreadDelta' in r.metrics, 'hipSpreadDelta present');
+  assertEq(r.metrics.hipSpreadDelta.framesExcluded, 1, 'hipSpreadDelta: 1 excluded');
+  assertEq(r.metrics.hipSpreadDelta.framesUsed, 2, 'hipSpreadDelta: 2 used');
 }
 
 // All metrics fallback → applied = false
@@ -666,7 +666,7 @@ group('isGatedMetricKey');
 
 assertEq(isGatedMetricKey('spineAngle'), true, 'spineAngle is gated');
 assertEq(isGatedMetricKey('shoulderTilt'), true, 'shoulderTilt is gated');
-assertEq(isGatedMetricKey('hipRotation'), true, 'hipRotation is gated');
+assertEq(isGatedMetricKey('hipSpreadDelta'), true, 'hipSpreadDelta is gated');
 assertEq(isGatedMetricKey('leftElbowAngle'), true, 'leftElbowAngle is gated');
 assertEq(isGatedMetricKey('rightElbowAngle'), true, 'rightElbowAngle is gated');
 assertEq(isGatedMetricKey('leftKneeAngle'), true, 'leftKneeAngle is gated');
@@ -690,7 +690,7 @@ assert(EPSILON < 0.001, 'EPSILON is tiny');
 assertEq(ALL_METRIC_KEYS.length, 7, '7 metric keys');
 assert(ALL_METRIC_KEYS.includes('spineAngle'), 'includes spineAngle');
 assert(ALL_METRIC_KEYS.includes('shoulderTilt'), 'includes shoulderTilt');
-assert(ALL_METRIC_KEYS.includes('hipRotation'), 'includes hipRotation');
+assert(ALL_METRIC_KEYS.includes('hipSpreadDelta'), 'includes hipSpreadDelta');
 assert(ALL_METRIC_KEYS.includes('leftElbowAngle'), 'includes leftElbowAngle');
 assert(ALL_METRIC_KEYS.includes('rightElbowAngle'), 'includes rightElbowAngle');
 assert(ALL_METRIC_KEYS.includes('leftKneeAngle'), 'includes leftKneeAngle');
@@ -722,7 +722,7 @@ for (const key of ALL_METRIC_KEYS) {
 // Specific landmark counts per metric
 assertEq(METRIC_LANDMARKS.spineAngle.length, 4, 'spineAngle uses 4 landmarks');
 assertEq(METRIC_LANDMARKS.shoulderTilt.length, 2, 'shoulderTilt uses 2 landmarks');
-assertEq(METRIC_LANDMARKS.hipRotation.length, 2, 'hipRotation uses 2 landmarks');
+assertEq(METRIC_LANDMARKS.hipSpreadDelta.length, 2, 'hipSpreadDelta uses 2 landmarks');
 assertEq(METRIC_LANDMARKS.leftElbowAngle.length, 3, 'leftElbowAngle uses 3 landmarks');
 assertEq(METRIC_LANDMARKS.rightElbowAngle.length, 3, 'rightElbowAngle uses 3 landmarks');
 assertEq(METRIC_LANDMARKS.leftKneeAngle.length, 3, 'leftKneeAngle uses 3 landmarks');

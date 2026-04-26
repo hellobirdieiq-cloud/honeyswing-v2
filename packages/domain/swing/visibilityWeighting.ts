@@ -67,7 +67,7 @@ export const LANDMARK = Object.freeze({
 export type GatedMetricKey =
   | 'spineAngle'
   | 'shoulderTilt'
-  | 'hipRotation'
+  | 'hipSpreadDelta'
   | 'leftElbowAngle'
   | 'rightElbowAngle'
   | 'leftKneeAngle'
@@ -80,7 +80,7 @@ export type GatedMetricKey =
 export const METRIC_LANDMARKS: Readonly<Record<GatedMetricKey, readonly number[]>> = Object.freeze({
   spineAngle:      Object.freeze([LANDMARK.LEFT_SHOULDER, LANDMARK.RIGHT_SHOULDER, LANDMARK.LEFT_HIP, LANDMARK.RIGHT_HIP]),
   shoulderTilt:    Object.freeze([LANDMARK.LEFT_SHOULDER, LANDMARK.RIGHT_SHOULDER]),
-  hipRotation:     Object.freeze([LANDMARK.LEFT_HIP, LANDMARK.RIGHT_HIP]),
+  hipSpreadDelta:     Object.freeze([LANDMARK.LEFT_HIP, LANDMARK.RIGHT_HIP]),
   leftElbowAngle:  Object.freeze([LANDMARK.LEFT_SHOULDER, LANDMARK.LEFT_ELBOW, LANDMARK.LEFT_WRIST]),
   rightElbowAngle: Object.freeze([LANDMARK.RIGHT_SHOULDER, LANDMARK.RIGHT_ELBOW, LANDMARK.RIGHT_WRIST]),
   leftKneeAngle:   Object.freeze([LANDMARK.LEFT_HIP, LANDMARK.LEFT_KNEE, LANDMARK.LEFT_ANKLE]),

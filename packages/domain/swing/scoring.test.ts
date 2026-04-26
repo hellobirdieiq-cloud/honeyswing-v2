@@ -50,7 +50,7 @@ function makeAngles(overrides: Partial<GolfAngles> = {}): GolfAngles {
     rightElbowAngle: 165,
     leftKneeAngle: 155,
     rightKneeAngle: 155,
-    hipRotation: null,
+    hipSpreadDelta: null,
     shoulderTilt: 0,
     ...overrides,
   };
@@ -143,7 +143,7 @@ group('B2. All null angles + null tempo → 50, honeyBoom=false');
     rightElbowAngle: null,
     leftKneeAngle: null,
     rightKneeAngle: null,
-    hipRotation: null,
+    hipSpreadDelta: null,
     shoulderTilt: null,
   };
   const result = scoreSwing({ angles: allNull, tempo: null });
@@ -206,7 +206,7 @@ group('B7. Camera weights applied');
     rightElbowAngle: 1,
     leftKneeAngle: 1,
     rightKneeAngle: 1,
-    hipRotation: 1,
+    hipSpreadDelta: 1,
     shoulderTilt: 1,
     tempo: 1,
   };
@@ -237,7 +237,7 @@ group('B9. All terrible angles → score 0');
     rightElbowAngle: 125, // diff=40, score=0
     leftKneeAngle: 120,   // diff=35, score=0
     rightKneeAngle: 120,  // diff=35, score=0
-    hipRotation: null,
+    hipSpreadDelta: null,
     shoulderTilt: 25,      // diff=25, score=0
   };
   const result = scoreSwing({ angles: terrible, tempo: makeTempo(0) }); // ratio 0: diff=3, score=0

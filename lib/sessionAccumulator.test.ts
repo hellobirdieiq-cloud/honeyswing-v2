@@ -60,7 +60,7 @@ function makeAnalysis(overrides: {
   spineAngle?: number | null;
   leftElbowAngle?: number | null;
   shoulderTilt?: number | null;
-  hipRotation?: number | null;
+  hipSpreadDelta?: number | null;
   tempoRatio?: number | null;
   swingConfidenceOverall?: number;
 }): AnalysisResult {
@@ -73,7 +73,7 @@ function makeAnalysis(overrides: {
       rightElbowAngle: 160,
       leftKneeAngle: 155,
       rightKneeAngle: 155,
-      hipRotation: 'hipRotation' in overrides ? overrides.hipRotation! : 40,
+      hipSpreadDelta: 'hipSpreadDelta' in overrides ? overrides.hipSpreadDelta! : 40,
       shoulderTilt: 'shoulderTilt' in overrides ? overrides.shoulderTilt! : 10,
     },
     tempo: overrides.tempoRatio != null ? {
@@ -96,7 +96,7 @@ function makeAnalysis(overrides: {
       avgSpread: 0.225,
       weights: {
         spineAngle: 0.4, leftElbowAngle: 0.9, rightElbowAngle: 0.9,
-        leftKneeAngle: 0.6, rightKneeAngle: 0.6, hipRotation: 1.0,
+        leftKneeAngle: 0.6, rightKneeAngle: 0.6, hipSpreadDelta: 1.0,
         shoulderTilt: 0.7, tempo: 1.0,
       },
     },
@@ -192,10 +192,10 @@ group('Improvement insight');
   sessionAccumulator.reset();
   // 3 swings with flagged hip rotation (below focus threshold), then 9 swings with improving values
   for (let i = 0; i < 3; i++) {
-    sessionAccumulator.addSwing(makeAnalysis({ hipRotation: 20 }), ['hipRotation']);
+    sessionAccumulator.addSwing(makeAnalysis({ hipSpreadDelta: 20 }), ['hipSpreadDelta']);
   }
   for (let i = 0; i < 9; i++) {
-    sessionAccumulator.addSwing(makeAnalysis({ hipRotation: 25 + i * 3 }), []);
+    sessionAccumulator.addSwing(makeAnalysis({ hipSpreadDelta: 25 + i * 3 }), []);
   }
   const insight = sessionAccumulator.getInsight();
   assert(insight !== null, 'improvement insight fires');

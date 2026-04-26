@@ -222,7 +222,7 @@ group('C5. Left/right knee dedup → single "kneeFlex" entry');
 
 group('C6. Unmapped metric → skipped');
 {
-  const tips = buildRawTips([makeEntry('hipRotation', 30)]);
+  const tips = buildRawTips([makeEntry('hipSpreadDelta', 30)]);
   assertEq(tips.length, 0, 'unmapped metric skipped');
 }
 

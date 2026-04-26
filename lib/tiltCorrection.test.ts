@@ -579,14 +579,14 @@ group('correctForPhoneTilt — pass-through metrics');
     spineAngle: 20, shoulderTilt: 8,
     leftElbowAngle: 155, rightElbowAngle: 160,
     leftKneeAngle: 170, rightKneeAngle: 168,
-    hipRotation: 45, tempo: 3.2,
+    hipSpreadDelta: 45, tempo: 3.2,
   };
   const result = correctForPhoneTilt(metrics, tilt(15));
   assertEq(result.corrected.leftElbowAngle, 155, 'leftElbow');
   assertEq(result.corrected.rightElbowAngle, 160, 'rightElbow');
   assertEq(result.corrected.leftKneeAngle, 170, 'leftKnee');
   assertEq(result.corrected.rightKneeAngle, 168, 'rightKnee');
-  assertEq(result.corrected.hipRotation, 45, 'hipRotation');
+  assertEq(result.corrected.hipSpreadDelta, 45, 'hipSpreadDelta');
   assertEq(result.corrected.tempo, 3.2, 'tempo');
   assert(result.corrected.spineAngle !== 20, 'spine IS changed');
   assert(result.corrected.shoulderTilt !== 8, 'shoulder IS changed');
