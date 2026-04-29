@@ -64,24 +64,33 @@ import { isMetricEligible } from './tipFrequency';
 
 
 export function computeFocus(angles: GolfAngles): FocusData | null {
-  const scored: { key: MetricKey; score: number; value: number | null }[] = [];
   const ageTier = getCachedAgeTier();
+  const scored: { key: MetricKey; score: number | null; value: number | null }[] = [];
   for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
     if (!isMetricEligible(labelKey, ageTier)) continue;
     const def = METRIC_DEFINITIONS[labelKey];
     const value = angles[labelKey];
-    scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
+    scored.push({
+      key: labelKey,
+      score: scoreAngle(value, def.ideal, def.underTolerance, def.overTolerance),
+      value,
+    });
   }
 
-  const withValues = scored.filter((s) => s.value != null);
-  if (withValues.length === 0) return null;
+  // Type-narrowing flatMap: keep only entries with both value and score non-null
+  const measured = scored.flatMap((s) =>
+    s.value != null && s.score != null
+      ? [{ key: s.key, score: s.score, value: s.value }]
+      : []
+  );
+  if (measured.length === 0) return null;
 
-  const worst = withValues.reduce((min, s) => (s.score < min.score ? s : min), withValues[0]);
+  const worst = measured.reduce((min, s) => (s.score < min.score ? s : min), measured[0]);
   const def = METRIC_DEFINITIONS[worst.key];
 
   return {
     label: def.label,
-    cue: def.cue(worst.value!, def.ideal, getCachedAgeTier()),
+    cue: def.cue(worst.value, def.ideal, ageTier),
     score: worst.score,
     savedAt: Date.now(),
   };

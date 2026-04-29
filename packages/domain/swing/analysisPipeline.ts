@@ -52,7 +52,7 @@ export type FrameSelectionDebug = {
 };
 
 export type AnalysisResult = {
-  score: number;
+  score: number | null;
   honeyBoom: boolean;
   angles?: GolfAngles;
   tempo?: SwingTempo | null;

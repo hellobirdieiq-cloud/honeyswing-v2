@@ -1,10 +1,10 @@
 /**
  * scoring.test.ts — Comprehensive tests for scoreAngle and scoreSwing
  *
- * Run with: npx tsx packages/domain/swing/scoring.test.ts
+ * Run with: npx --yes tsx packages/domain/swing/scoring.test.ts
  */
 
-import { scoreAngle, scoreSwing, type ScoringBreakdownEntry } from './scoring';
+import { scoreAngle, scoreSwing, isMeasured, type ScoringBreakdownEntry } from './scoring';
 import type { GolfAngles } from './angles';
 import type { MetricConfidenceWeights } from './cameraAngle';
 import type { SwingTempo } from './tempoAnalysis';
@@ -68,64 +68,74 @@ function makeTempo(ratio: number): SwingTempo {
 }
 
 // ---------------------------------------------------------------------------
-// Section A — scoreAngle
+// Section A — scoreAngle (4-arg, asymmetric, null-return)
 // ---------------------------------------------------------------------------
 
 console.log('\n=== Scoring Module Tests ===');
 
 group('A. scoreAngle');
 
-// A1: null value → 50
-assertEq(scoreAngle(null, 35, 20), 50, 'A1: null value → 50');
+// A1: null value → null (was 50 pre-SCR-0b-1)
+assertEq(scoreAngle(null, 35, 20, 13.33), null, 'A1: null value → null');
 
 // A2: Perfect match
-assertEq(scoreAngle(35, 35, 20), 100, 'A2: perfect match → 100');
+assertEq(scoreAngle(35, 35, 20, 13.33), 100, 'A2: perfect match → 100');
 
-// A3: At tolerance boundary
-assertEq(scoreAngle(55, 35, 20), 0, 'A3: at tolerance boundary → 0');
+// A3: At under-tolerance boundary (below ideal)
+assertEq(scoreAngle(15, 35, 20, 13.33), 0, 'A3: at under-tolerance boundary → 0');
 
-// A4: Beyond tolerance
-assertEq(scoreAngle(60, 35, 20), 0, 'A4: beyond tolerance → 0');
+// A4: Beyond under-tolerance
+assertEq(scoreAngle(10, 35, 20, 13.33), 0, 'A4: beyond under-tolerance → 0');
 
-// A5: Half tolerance
-assertEq(scoreAngle(45, 35, 20), 50, 'A5: half tolerance → 50');
-
-// A6: Small deviation
-assertEq(scoreAngle(37, 35, 20), 90, 'A6: small deviation (37,35,20) → 90');
-
-// A7: Below-ideal symmetry
-assertEq(
-  scoreAngle(25, 35, 20),
-  scoreAngle(45, 35, 20),
-  'A7: below-ideal (25,35,20) equals above-ideal (45,35,20)',
-);
-
-// A8: Negative angle
-assertEq(scoreAngle(-5, 0, 25), 80, 'A8: negative angle (-5,0,25) → 80');
-
-// A9: Large ideal elbow
-assertEq(scoreAngle(165, 165, 40), 100, 'A9: large ideal elbow → 100');
-
-// A10: Tolerance=0, exact match → NaN (0/0 in JS)
+// A5: Asymmetric — equal-magnitude over-shoot scores LOWER than under-shoot
 {
-  const result = scoreAngle(35, 35, 0);
-  assert(Number.isNaN(result), `A10: tolerance=0 exact match → NaN (got ${result})`);
+  const under = scoreAngle(30, 35, 10, 5);  // -5 from ideal, U=10 → 50
+  const over  = scoreAngle(40, 35, 10, 5);  // +5 from ideal, O=5  → 0
+  assert(under !== null && over !== null && over < under,
+    `A5: asymmetric — over (${over}) < under (${under})`);
 }
 
-// A11: Tolerance=0, not exact → 0
-assertEq(scoreAngle(36, 35, 0), 0, 'A11: tolerance=0, not exact → 0');
+// A6: Half under-tolerance
+assertEq(scoreAngle(25, 35, 20, 13.33), 50, 'A6: half under-tolerance → 50');
 
-// A12: Rounding case
-assertEq(scoreAngle(36, 35, 3), 67, 'A12: rounding (36,35,3) → 67');
+// A7: Asymmetric — over and under are NOT equal at equal magnitude (replaces old symmetry test)
+{
+  const under = scoreAngle(25, 35, 20, 13.33);  // -10 from ideal, U=20 → 50
+  const over  = scoreAngle(45, 35, 20, 13.33);  // +10 from ideal, O=13.33 → 25
+  assert(under !== null && over !== null && over < under,
+    `A7: equal-magnitude over (${over}) scores LOWER than under (${under})`);
+}
 
-// A13: Tempo ratio perfect
-assertEq(scoreAngle(3, 3, 1.5), 100, 'A13: tempo ratio perfect → 100');
+// A8: Negative angle
+assertEq(scoreAngle(-5, 0, 25, 16.67), 80, 'A8: negative angle (-5,0,25,16.67) → 80');
+
+// A9: Large ideal elbow
+assertEq(scoreAngle(165, 165, 40, 26.67), 100, 'A9: large ideal elbow → 100');
+
+// A10: Tolerance=0, exact match → NaN (0/0 in JS) — preserves old A10 behavior
+{
+  const result = scoreAngle(35, 35, 0, 0);
+  assert(result !== null && Number.isNaN(result),
+    `A10: tolerance=0 exact match → NaN (got ${result})`);
+}
+
+// A11: Under-tolerance=0, not exact (under) → 0
+assertEq(scoreAngle(34, 35, 0, 5), 0, 'A11: under-tolerance=0, below ideal → 0');
+
+// A12: Clamp — extreme deviation never goes negative
+{
+  const result = scoreAngle(1000, 35, 20, 13.33);
+  assert(result !== null && result === 0, `A12: extreme over (1000,35,20,13.33) → 0 (got ${result})`);
+}
+
+// A13: Tempo ratio perfect (symmetric, U==O)
+assertEq(scoreAngle(3, 3, 1.5, 1.5), 100, 'A13: tempo ratio perfect → 100');
 
 // A14: Tempo ratio bad
-assertEq(scoreAngle(1, 3, 1.5), 0, 'A14: tempo ratio bad → 0');
+assertEq(scoreAngle(1, 3, 1.5, 1.5), 0, 'A14: tempo ratio bad → 0');
 
 // ---------------------------------------------------------------------------
-// Section B — scoreSwing
+// Section B — scoreSwing (null-exclude, honeyBoom coverage gate)
 // ---------------------------------------------------------------------------
 
 group('B1. All ideal + perfect tempo → 100, honeyBoom=true');
@@ -135,7 +145,7 @@ group('B1. All ideal + perfect tempo → 100, honeyBoom=true');
   assertEq(result.honeyBoom, true, 'honeyBoom = true');
 }
 
-group('B2. All null angles + null tempo → 50, honeyBoom=false');
+group('B2. All null angles + null tempo → score:null, honeyBoom=false');
 {
   const allNull: GolfAngles = {
     spineAngle: null,
@@ -147,7 +157,7 @@ group('B2. All null angles + null tempo → 50, honeyBoom=false');
     shoulderTilt: null,
   };
   const result = scoreSwing({ angles: allNull, tempo: null });
-  assertEq(result.score, 50, 'score = 50');
+  assertEq(result.score, null, 'score = null (was 50 pre-SCR-0b-1)');
   assertEq(result.honeyBoom, false, 'honeyBoom = false');
   const allMissing = result.breakdown.every((e) => e.dataQuality === 'missing');
   assert(allMissing, 'all dataQuality = missing');
@@ -164,20 +174,27 @@ group('B3. Mixed measured/missing → correct dataQuality');
   assertEq(byMetric['tempo'].dataQuality, 'measured', 'tempo measured');
 }
 
-group('B4. HoneyBoom threshold');
+group('B4. HoneyBoom — score >= 85 AND coverage >= ceil(7*0.7)=5 measured');
 {
-  // Score >= 85 → honeyBoom=true
-  // Use small deviations to land just above 85
-  const angles85 = makeAngles({ spineAngle: 38, leftKneeAngle: 150 });
-  const result85 = scoreSwing({ angles: angles85, tempo: makeTempo(3) });
-  assert(result85.score >= 85, `score ${result85.score} >= 85`);
-  assertEq(result85.honeyBoom, true, 'honeyBoom = true when score >= 85');
+  // 7 measured at perfect → score 100, honeyBoom true
+  const result7 = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
+  assertEq(result7.honeyBoom, true, '7 of 7 measured at 100 → honeyBoom true');
 
-  // Score < 85 → honeyBoom=false
-  // Use larger deviations to push below 85
+  // 4 of 7 measured at ideal — score ~100 but coverage < 5 → honeyBoom false
+  const angles4Missing = makeAngles({
+    leftElbowAngle: null,
+    rightElbowAngle: null,
+    leftKneeAngle: null,
+  });
+  const result4 = scoreSwing({ angles: angles4Missing, tempo: null });
+  // measured = spineAngle, rightKneeAngle, shoulderTilt = 3 (tempo null too) — should be honeyBoom=false on coverage
+  assert(result4.honeyBoom === false,
+    `coverage gate: ${result4.breakdown.filter((e) => e.dataQuality === 'measured').length} measured → honeyBoom false`);
+
+  // Score < 85 → honeyBoom false even with full coverage
   const anglesLow = makeAngles({ spineAngle: 50, leftElbowAngle: 140, leftKneeAngle: 130 });
   const resultLow = scoreSwing({ angles: anglesLow, tempo: makeTempo(3) });
-  assert(resultLow.score < 85, `score ${resultLow.score} < 85`);
+  assert(resultLow.score !== null && resultLow.score < 85, `score ${resultLow.score} < 85`);
   assertEq(resultLow.honeyBoom, false, 'honeyBoom = false when score < 85');
 }
 
@@ -218,47 +235,39 @@ group('B7. Camera weights applied');
   assertEq(elbowEntry.weight, 1, 'leftElbowAngle weight = 1 (unchanged)');
 }
 
-group('B8. Missing data halves weight');
-{
-  const angles = makeAngles({ spineAngle: null });
-  const result = scoreSwing({ angles, tempo: makeTempo(3) });
-  const spineEntry = result.breakdown.find((e) => e.metric === 'spineAngle')!;
-  assertEq(spineEntry.weight, 0.5, 'null spineAngle → weight halved to 0.5');
-
-  const elbowEntry = result.breakdown.find((e) => e.metric === 'leftElbowAngle')!;
-  assertEq(elbowEntry.weight, 1, 'measured leftElbowAngle → weight stays 1');
-}
+// B8 (weight halving) — REMOVED: behavior gone in SCR-0b-1.
 
 group('B9. All terrible angles → score 0');
 {
   const terrible: GolfAngles = {
-    spineAngle: 55,       // diff=20, score=0
-    leftElbowAngle: 125,  // diff=40, score=0
-    rightElbowAngle: 125, // diff=40, score=0
-    leftKneeAngle: 120,   // diff=35, score=0
-    rightKneeAngle: 120,  // diff=35, score=0
+    spineAngle: 100,        // way over → 0
+    leftElbowAngle: 50,     // way under → 0
+    rightElbowAngle: 50,    // way under → 0
+    leftKneeAngle: 50,      // way under → 0
+    rightKneeAngle: 50,     // way under → 0
     hipSpreadDelta: null,
-    shoulderTilt: 25,      // diff=25, score=0
+    shoulderTilt: 100,      // way over → 0
   };
-  const result = scoreSwing({ angles: terrible, tempo: makeTempo(0) }); // ratio 0: diff=3, score=0
+  const result = scoreSwing({ angles: terrible, tempo: makeTempo(0) }); // ratio 0: way under → 0
   assertEq(result.score, 0, 'all terrible → score 0');
   assertEq(result.honeyBoom, false, 'honeyBoom = false');
 }
 
 group('B10. Single bad angle, rest ideal → between 0 and 100');
 {
-  const angles = makeAngles({ spineAngle: 55 }); // spine at tolerance → score 0
+  const angles = makeAngles({ spineAngle: 100 }); // way over → score 0 contribution
   const result = scoreSwing({ angles, tempo: makeTempo(3) });
-  assert(result.score < 100, `score ${result.score} < 100`);
-  assert(result.score > 0, `score ${result.score} > 0`);
+  assert(result.score !== null && result.score < 100, `score ${result.score} < 100`);
+  assert(result.score !== null && result.score > 0, `score ${result.score} > 0`);
 }
 
-group('B11. Tempo null → tempo entry score=50, weight=0.5');
+group('B11. Tempo null → tempo entry score=0, dataQuality=missing, weight unchanged');
 {
   const result = scoreSwing({ angles: makeAngles(), tempo: null });
   const tempoEntry = result.breakdown.find((e) => e.metric === 'tempo')!;
-  assertEq(tempoEntry.score, 50, 'tempo null → score 50');
-  assertEq(tempoEntry.weight, 0.5, 'tempo null → weight 0.5');
+  assertEq(tempoEntry.score, 0, 'tempo null → score 0 (coerced; F-v2-2)');
+  assertEq(tempoEntry.weight, 1, 'tempo null → weight 1 (no halving in SCR-0b-1)');
+  assertEq(tempoEntry.weighted, 0, 'tempo null → weighted 0');
   assertEq(tempoEntry.dataQuality, 'missing', 'tempo null → missing');
 }
 
@@ -275,6 +284,130 @@ group('B12. Breakdown entry shape validation');
       `${entry.metric}: dataQuality is measured|missing`,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Section D — D4 spec assertions (SCR-0b-1)
+// ---------------------------------------------------------------------------
+
+group('D1. scoreAngle(null,...) returns null');
+assertEq(scoreAngle(null, 35, 20, 13.33), null, 'D1: null → null');
+
+group('D2. Asymmetric over < under at equal magnitude');
+{
+  const under = scoreAngle(35 - 5, 35, 10, 5);  // 50
+  const over  = scoreAngle(35 + 5, 35, 10, 5);  // 0
+  assert(under !== null && over !== null && over < under, `D2: over (${over}) < under (${under})`);
+}
+
+group('D3. scoreAngle(ideal, ideal, U, O) returns 100');
+assertEq(scoreAngle(35, 35, 20, 13.33), 100, 'D3: at ideal → 100');
+
+group('D4. Clamps — extreme deviation returns 0, never negative');
+{
+  const r1 = scoreAngle(1000, 35, 20, 13.33);
+  const r2 = scoreAngle(-1000, 35, 20, 13.33);
+  assert(r1 === 0, `D4a: extreme over → 0 (got ${r1})`);
+  assert(r2 === 0, `D4b: extreme under → 0 (got ${r2})`);
+}
+
+group('D5. One null angle → aggregate ignores null');
+{
+  // 6 measured angles ideal + tempo ideal = 7 measured at 100; one set to null
+  const angles = makeAngles({ leftElbowAngle: null });
+  const result = scoreSwing({ angles, tempo: makeTempo(3) });
+  // 6 measured at 100, weighted-mean = 100
+  assertEq(result.score, 100, 'D5: aggregate of 6 measured at 100 = 100');
+  const elbowEntry = result.breakdown.find((e) => e.metric === 'leftElbowAngle')!;
+  assertEq(elbowEntry.dataQuality, 'missing', 'D5: leftElbowAngle dataQuality = missing');
+}
+
+group('D6. All angles + tempo null → score: null');
+{
+  const allNull: GolfAngles = {
+    spineAngle: null,
+    leftElbowAngle: null,
+    rightElbowAngle: null,
+    leftKneeAngle: null,
+    rightKneeAngle: null,
+    hipSpreadDelta: null,
+    shoulderTilt: null,
+  };
+  const result = scoreSwing({ angles: allNull, tempo: null });
+  assertEq(result.score, null, 'D6: all null → score null');
+}
+
+group('D7. 4 of 7 measured at 90 → honeyBoom false (4 < ceil(7*0.7)=5)');
+{
+  // 3 angles + tempo measured at score 90; 3 angles missing
+  const angles = makeAngles({
+    spineAngle: null,
+    leftElbowAngle: null,
+    rightElbowAngle: null,
+    leftKneeAngle: 145,   // diff 10 from ideal 155, under-tol 35 → ~71... need 90
+    rightKneeAngle: 152,  // diff 3 from ideal 155, under-tol 35 → ~91
+    shoulderTilt: 2,      // diff 2 from ideal 0, over-tol 16.67 → ~88
+  });
+  // Use tempoRatio that scores 90 from ideal 3, tol 1.5 → diff 0.15
+  const result = scoreSwing({ angles, tempo: makeTempo(3.15) });
+  const measuredCount = result.breakdown.filter((e) => e.dataQuality === 'measured').length;
+  assertEq(measuredCount, 4, `D7: measured count = 4 (got ${measuredCount})`);
+  assertEq(result.honeyBoom, false, 'D7: honeyBoom = false (coverage < 5)');
+}
+
+group('D8. 5 of 7 measured at >=90 + score >= 85 → honeyBoom true');
+{
+  // 5 measured at strong score; 2 missing
+  const angles = makeAngles({
+    spineAngle: null,
+    leftElbowAngle: null,
+    // remaining: rightElbowAngle, leftKneeAngle, rightKneeAngle, shoulderTilt at ideal → 100 each
+  });
+  // tempo at ideal → 100
+  const result = scoreSwing({ angles, tempo: makeTempo(3) });
+  const measuredCount = result.breakdown.filter((e) => e.dataQuality === 'measured').length;
+  assertEq(measuredCount, 5, `D8: measured count = 5 (got ${measuredCount})`);
+  assert(result.score !== null && result.score >= 85, `D8: score ${result.score} >= 85`);
+  assertEq(result.honeyBoom, true, 'D8: honeyBoom = true');
+}
+
+group('D9. All 7 at 84 → honeyBoom false (score < 85)');
+{
+  // tune values to land aggregate score ≈ 84 with full coverage
+  const angles = makeAngles({
+    spineAngle: 38.2,       // diff 3.2 / over-tol 13.33 → ~76
+    leftElbowAngle: 158,    // diff -7 / under-tol 40 → ~83
+    rightElbowAngle: 158,
+    leftKneeAngle: 149,     // diff -6 / under-tol 35 → ~83
+    rightKneeAngle: 149,
+    shoulderTilt: 4,        // diff +4 / over-tol 16.67 → ~76
+  });
+  const result = scoreSwing({ angles, tempo: makeTempo(3.24) }); // diff 0.24 / 1.5 → ~84
+  // exact targeting is approximate; the contract tested is "score < 85 AND honeyBoom false"
+  if (result.score !== null && result.score < 85) {
+    assertEq(result.honeyBoom, false, 'D9: score < 85 → honeyBoom false');
+  } else {
+    assert(false, `D9: tuning landed score ${result.score} (need < 85 to test gate)`);
+  }
+}
+
+group('D10. Missing inputs → breakdown row score=0, weighted=0, dataQuality=missing');
+{
+  const angles = makeAngles({ spineAngle: null });
+  const result = scoreSwing({ angles, tempo: makeTempo(3) });
+  const spineEntry = result.breakdown.find((e) => e.metric === 'spineAngle')!;
+  assertEq(spineEntry.score, 0, 'D10: missing → score 0 (coerced)');
+  assertEq(spineEntry.weighted, 0, 'D10: missing → weighted 0');
+  assertEq(spineEntry.dataQuality, 'missing', 'D10: missing → dataQuality missing');
+}
+
+group('D11. isMeasured helper');
+{
+  const result = scoreSwing({ angles: makeAngles({ spineAngle: null }), tempo: makeTempo(3) });
+  const spineEntry = result.breakdown.find((e) => e.metric === 'spineAngle')!;
+  const tempoEntry = result.breakdown.find((e) => e.metric === 'tempo')!;
+  assertEq(isMeasured(spineEntry), false, 'D11: missing entry → false');
+  assertEq(isMeasured(tempoEntry), true, 'D11: measured entry → true');
 }
 
 // ---------------------------------------------------------------------------

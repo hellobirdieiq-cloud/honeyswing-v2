@@ -34,6 +34,7 @@ import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
+import { isMeasured } from '../../packages/domain/swing/scoring';
 import type { GripClassification } from '../../lib/classifyGrip';
 
 const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
@@ -116,6 +117,11 @@ export default function ResultScreen() {
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
 
+  const breakdownEntries = analysis?.swing_debug?.scoring_breakdown ?? [];
+  const measuredCount = breakdownEntries.filter(isMeasured).length;
+  const totalCount = breakdownEntries.length;
+  const showAspectsSubtitle = analysis != null && totalCount > 0 && measuredCount < totalCount;
+
   const isLowConfidence = classification?.validity === 'partial';
 
   // Task 7: frequency-limited coaching tips + Task 8: positive reinforcement
@@ -139,6 +145,7 @@ export default function ResultScreen() {
     // Build deduped metric scores (same metricKey mapping as buildRawTips, keep worst score)
     const worstByKey = new Map<string, number>();
     for (const entry of breakdown) {
+      if (entry.dataQuality === 'missing') continue;  // SCR-0b-1: don't pull "0" worst from missing
       const mappedKey = METRIC_KEY_MAP[entry.metric];
       if (!mappedKey) continue;
       const existing = worstByKey.get(mappedKey);
@@ -293,9 +300,14 @@ export default function ResultScreen() {
               {isLowConfidence && (
                 <Text style={styles.lowConfBadge}>Quick look — try a longer swing next time</Text>
               )}
-              <Text style={styles.score}>{analysis?.score ?? 0}</Text>
+              <Text style={styles.score}>{analysis?.score ?? '—'}</Text>
               {analysis?.honeyBoom && (
                 <Text style={styles.honeyBoom}>Honey Boom!</Text>
+              )}
+              {showAspectsSubtitle && (
+                <Text style={styles.tempoSubLabel}>
+                  {measuredCount} of {totalCount} aspects measured
+                </Text>
               )}
               {tempoLabel && (
                 <Text style={styles.tempoSubLabel}>{tempoLabel}</Text>

@@ -19,7 +19,9 @@ export type MetricKey =
 export interface MetricDefinition {
   segments: [string, string][];
   ideal: number;
-  tolerance: number;
+  // EXTERNAL ASSUMPTION (SCR-0b-1): asymmetric ratio 1.5; calibrate at SCR-CAL post-clinic
+  underTolerance: number;
+  overTolerance: number;
   label: string;
   cue: (value: number, ideal: number, ageTier: AgeTier) => string;
 }
@@ -27,7 +29,7 @@ export interface MetricDefinition {
 export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   spineAngle: {
     segments: [['leftShoulder', 'leftHip'], ['rightShoulder', 'rightHip']],
-    ideal: 35, tolerance: 20,
+    ideal: 35, underTolerance: 20, overTolerance: 13.33,
     label: 'Spine tilt',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
@@ -37,7 +39,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   leftElbowAngle: {
     segments: [['leftShoulder', 'leftElbow'], ['leftElbow', 'leftWrist']],
-    ideal: 165, tolerance: 40,
+    ideal: 165, underTolerance: 40, overTolerance: 26.67,
     label: 'Lead arm',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
@@ -47,7 +49,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   rightElbowAngle: {
     segments: [['rightShoulder', 'rightElbow'], ['rightElbow', 'rightWrist']],
-    ideal: 165, tolerance: 40,
+    ideal: 165, underTolerance: 40, overTolerance: 26.67,
     label: 'Trail arm',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
@@ -57,7 +59,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   leftKneeAngle: {
     segments: [['leftHip', 'leftKnee'], ['leftKnee', 'leftAnkle']],
-    ideal: 155, tolerance: 35,
+    ideal: 155, underTolerance: 35, overTolerance: 23.33,
     label: 'Lead knee',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
@@ -67,7 +69,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   rightKneeAngle: {
     segments: [['rightHip', 'rightKnee'], ['rightKnee', 'rightAnkle']],
-    ideal: 155, tolerance: 35,
+    ideal: 155, underTolerance: 35, overTolerance: 23.33,
     label: 'Trail knee',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
@@ -77,7 +79,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   shoulderTilt: {
     segments: [['leftShoulder', 'rightShoulder']],
-    ideal: 0, tolerance: 25,
+    ideal: 0, underTolerance: 25, overTolerance: 16.67,
     label: 'Shoulders',
     cue: (v, _i, ageTier) => {
       const junior = ageTier === 'junior';

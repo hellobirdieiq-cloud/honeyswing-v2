@@ -27,7 +27,7 @@ declare function require(id: string): unknown;
 export type SwingRecordedPayload = {
   swingId: string;
   userId: string;
-  score: number;
+  score: number | null;
   honeyBoom: boolean;
   tempoRatio: number | null;
   confidenceTier: 'low' | 'medium' | 'high';

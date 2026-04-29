@@ -61,26 +61,33 @@ group('A2. Each entry has required fields with correct types');
   for (const [key, def] of Object.entries(METRIC_DEFINITIONS)) {
     assert(Array.isArray(def.segments), `${key}: segments is array`);
     assert(typeof def.ideal === 'number', `${key}: ideal is number`);
-    assert(typeof def.tolerance === 'number' && def.tolerance > 0, `${key}: tolerance > 0`);
+    assert(typeof def.underTolerance === 'number' && def.underTolerance > 0, `${key}: underTolerance > 0`);
+    assert(typeof def.overTolerance === 'number' && def.overTolerance > 0, `${key}: overTolerance > 0`);
     assert(typeof def.label === 'string' && def.label.length > 0, `${key}: label is non-empty string`);
     assert(typeof def.cue === 'function', `${key}: cue is function`);
   }
 }
 
-group('A3. Ideal and tolerance values match repo code');
+group('A3. Ideal and tolerance values match repo code (SCR-0b-1: asymmetric)');
 {
   assertEq(METRIC_DEFINITIONS.spineAngle.ideal, 35, 'spineAngle ideal = 35');
-  assertEq(METRIC_DEFINITIONS.spineAngle.tolerance, 20, 'spineAngle tolerance = 20');
+  assertEq(METRIC_DEFINITIONS.spineAngle.underTolerance, 20, 'spineAngle underTolerance = 20');
+  assertEq(METRIC_DEFINITIONS.spineAngle.overTolerance, 13.33, 'spineAngle overTolerance = 13.33');
   assertEq(METRIC_DEFINITIONS.leftElbowAngle.ideal, 165, 'leftElbowAngle ideal = 165');
-  assertEq(METRIC_DEFINITIONS.leftElbowAngle.tolerance, 40, 'leftElbowAngle tolerance = 40');
+  assertEq(METRIC_DEFINITIONS.leftElbowAngle.underTolerance, 40, 'leftElbowAngle underTolerance = 40');
+  assertEq(METRIC_DEFINITIONS.leftElbowAngle.overTolerance, 26.67, 'leftElbowAngle overTolerance = 26.67');
   assertEq(METRIC_DEFINITIONS.rightElbowAngle.ideal, 165, 'rightElbowAngle ideal = 165');
-  assertEq(METRIC_DEFINITIONS.rightElbowAngle.tolerance, 40, 'rightElbowAngle tolerance = 40');
+  assertEq(METRIC_DEFINITIONS.rightElbowAngle.underTolerance, 40, 'rightElbowAngle underTolerance = 40');
+  assertEq(METRIC_DEFINITIONS.rightElbowAngle.overTolerance, 26.67, 'rightElbowAngle overTolerance = 26.67');
   assertEq(METRIC_DEFINITIONS.leftKneeAngle.ideal, 155, 'leftKneeAngle ideal = 155');
-  assertEq(METRIC_DEFINITIONS.leftKneeAngle.tolerance, 35, 'leftKneeAngle tolerance = 35');
+  assertEq(METRIC_DEFINITIONS.leftKneeAngle.underTolerance, 35, 'leftKneeAngle underTolerance = 35');
+  assertEq(METRIC_DEFINITIONS.leftKneeAngle.overTolerance, 23.33, 'leftKneeAngle overTolerance = 23.33');
   assertEq(METRIC_DEFINITIONS.rightKneeAngle.ideal, 155, 'rightKneeAngle ideal = 155');
-  assertEq(METRIC_DEFINITIONS.rightKneeAngle.tolerance, 35, 'rightKneeAngle tolerance = 35');
+  assertEq(METRIC_DEFINITIONS.rightKneeAngle.underTolerance, 35, 'rightKneeAngle underTolerance = 35');
+  assertEq(METRIC_DEFINITIONS.rightKneeAngle.overTolerance, 23.33, 'rightKneeAngle overTolerance = 23.33');
   assertEq(METRIC_DEFINITIONS.shoulderTilt.ideal, 0, 'shoulderTilt ideal = 0');
-  assertEq(METRIC_DEFINITIONS.shoulderTilt.tolerance, 25, 'shoulderTilt tolerance = 25');
+  assertEq(METRIC_DEFINITIONS.shoulderTilt.underTolerance, 25, 'shoulderTilt underTolerance = 25');
+  assertEq(METRIC_DEFINITIONS.shoulderTilt.overTolerance, 16.67, 'shoulderTilt overTolerance = 16.67');
 }
 
 group('A4. Label values');

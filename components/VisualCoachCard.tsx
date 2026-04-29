@@ -106,21 +106,29 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
   // Score each metric — skip those suppressed by angle gating or ineligible for age tier
   const suppressedSet = new Set(suppressedMetrics);
   const ageTier = getCachedAgeTier();
-  const scored: { key: MetricKey; score: number; value: number | null }[] = [];
+  const scored: { key: MetricKey; score: number | null; value: number | null }[] = [];
   if (angles) {
     for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
       if (suppressedSet.has(labelKey)) continue;
       if (!isMetricEligible(labelKey, ageTier)) continue;
       const def = METRIC_DEFINITIONS[labelKey];
       const value = angles[labelKey];
-      scored.push({ key: labelKey, score: scoreAngle(value, def.ideal, def.tolerance), value });
+      scored.push({
+        key: labelKey,
+        score: scoreAngle(value, def.ideal, def.underTolerance, def.overTolerance),
+        value,
+      });
     }
   }
 
-  // Find the single worst metric (lowest score, but only if it has a real value)
-  const withValues = scored.filter((s) => s.value != null);
-  const worst = withValues.length > 0
-    ? withValues.reduce((min, s) => (s.score < min.score ? s : min), withValues[0])
+  // Find the single worst metric (lowest score, but only if it has a real value AND a non-null score)
+  const measured = scored.flatMap((s) =>
+    s.value != null && s.score != null
+      ? [{ key: s.key, score: s.score, value: s.value }]
+      : []
+  );
+  const worst = measured.length > 0
+    ? measured.reduce((min, s) => (s.score < min.score ? s : min), measured[0])
     : null;
 
   // Build set of highlighted segments — remap joint names for lefty display
