@@ -170,8 +170,6 @@ export default function RecordTab() {
       if (phase === 'complete' || phase === 'weak' || phase === 'error') {
         updateCapturePhase('idle');
       }
-      tipSessionsSeen += 1;
-      setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
 
       checkSwingLimit().then((status) => {
         if (!status.allowed) {
@@ -179,7 +177,13 @@ export default function RecordTab() {
         }
       }).catch((err) => console.error('[HoneySwing]', err));
 
-      loadFocus().then(setFocus).catch((err) => console.error('[HoneySwing]', err));
+      loadFocus().then((nextFocus) => {
+        setFocus(nextFocus);
+        if (!nextFocus) {
+          tipSessionsSeen += 1;
+          setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
+        }
+      }).catch((err) => console.error('[HoneySwing]', err));
     }, [])
   );
 

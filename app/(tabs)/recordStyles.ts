@@ -48,11 +48,13 @@ export const styles = StyleSheet.create({
     marginTop: 4,
   },
   focusCard: {
+    position: 'absolute',
+    top: 80,
+    left: 24,
+    right: 24,
     backgroundColor: '#1A1A1C',
     borderRadius: 14,
     padding: 16,
-    width: '100%',
-    marginBottom: 24,
   },
   focusTitle: {
     color: GOLD,
