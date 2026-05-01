@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getGripHistory, type GripHistoryRecord } from '../lib/swingStore';
 
-// Duplicate of the const at app/analysis/result.tsx:38-42.
+// Related const at app/analysis/result.tsx:41-45 (different shape).
 // Extraction to a shared lib is deferred — see plan FUTURE ONLY.
 const GRIP_CHIP_COLORS: Record<string, string> = {
   solid: '#00FF66',
@@ -16,16 +16,9 @@ const MIN_ROWS = 3;
 
 export default function GripHistoryRow() {
   const [rows, setRows] = useState<GripHistoryRecord[] | null>(null);
-  const loggedOnceRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
-      if (!loggedOnceRef.current) {
-        loggedOnceRef.current = true;
-        setTimeout(() => {
-        }, 500);
-      }
-
       let cancelled = false;
       (async () => {
         const fetched = await getGripHistory({ windowMs: WINDOW_MS });
