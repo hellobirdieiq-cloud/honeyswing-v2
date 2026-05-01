@@ -168,7 +168,7 @@ export default function SettingsScreen() {
                 STORAGE_KEYS.subscriptionStatus,
                 STORAGE_KEYS.ageTier,
               ]);
-              router.replace('/(tabs)' as Href);
+              router.replace('/(tabs)/record' as Href);
             } catch (err: unknown) {
               const message =
                 err instanceof Error ? err.message : 'Something went wrong';

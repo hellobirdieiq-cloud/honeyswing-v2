@@ -133,7 +133,7 @@ export default function PaywallScreen() {
 
       <TouchableOpacity
         style={styles.dismissButton}
-        onPress={() => router.replace('/(tabs)' as Href)}
+        onPress={() => router.replace('/(tabs)/record' as Href)}
         activeOpacity={0.7}
       >
         <Text style={styles.dismissText}>Not now</Text>

@@ -94,7 +94,7 @@ export default function SignInScreen() {
           return;
         }
 
-        router.replace('/(tabs)' as Href);
+        router.replace('/(tabs)/record' as Href);
         setLoading(false);
         return;
       }
@@ -119,7 +119,7 @@ export default function SignInScreen() {
       return;
     }
 
-    router.replace('/(tabs)' as Href);
+    router.replace('/(tabs)/record' as Href);
     setLoading(false);
   }
 

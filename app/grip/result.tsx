@@ -162,7 +162,7 @@ export default function GripResultScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
-          onPress={() => router.push('/(tabs)' as Href)}
+          onPress={() => router.push('/(tabs)/record' as Href)}
           disabled={isLoading}
           activeOpacity={0.7}
         >

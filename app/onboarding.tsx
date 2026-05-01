@@ -75,7 +75,7 @@ export default function OnboardingScreen() {
       if (data?.id) {
         await AsyncStorage.setItem(STORAGE_KEYS.profileId, data.id);
       }
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/record');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Something went wrong';
       Alert.alert('Error', message);
