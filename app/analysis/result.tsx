@@ -18,6 +18,7 @@ import {
   analyzePoseSequence,
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
+import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import type { PoseSequence } from '../../packages/pose/PoseTypes';
 import {
   TEMPO_LABELS,
@@ -42,6 +43,15 @@ const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
   playable:         { label: 'Playable',         color: '#FFB020' },
   needs_adjustment: { label: 'Needs Adjustment', color: '#FF4444' },
 };
+
+const PHASE_CHIPS: { phase: SwingPhase; label: string }[] = [
+  { phase: 'address',        label: 'Address' },
+  { phase: 'takeaway',       label: 'Takeaway' },
+  { phase: 'top',            label: 'Top' },
+  { phase: 'downswing',      label: 'Downswing' },
+  { phase: 'impact',         label: 'Impact' },
+  { phase: 'follow_through', label: 'Follow-through' },
+];
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -116,6 +126,7 @@ export default function ResultScreen() {
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
+  const firstFrameTimestamp = motion?.frames?.[0]?.timestampMs;
 
   const breakdownEntries = analysis?.swing_debug?.scoring_breakdown ?? [];
   const measuredCount = breakdownEntries.filter(isMeasured).length;
@@ -294,6 +305,43 @@ export default function ResultScreen() {
                 </View>
               </View>
             )}
+
+            {/* 2b. Phase chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.phaseChipsRow}
+            >
+              {PHASE_CHIPS.map((entry) => {
+                const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
+                const enabled = !!phaseEntry && !!player && !!videoUri && firstFrameTimestamp != null;
+                return (
+                  <TouchableOpacity
+                    key={entry.phase}
+                    style={enabled ? styles.phaseChip : styles.phaseChipDisabled}
+                    disabled={!enabled}
+                    onPress={
+                      enabled
+                        ? () => {
+                            const offsetMs = phaseEntry.timestamp - firstFrameTimestamp;
+                            const seekSeconds = Math.max(0, offsetMs / 1000);
+                            player.pause();
+                            player.currentTime = seekSeconds;
+                            setTimeout(() => {
+                              player.play();
+                            }, 100);
+                          }
+                        : undefined
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Text style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}>
+                      {entry.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             {/* 3. Score */}
             <View style={styles.scoreCard}>

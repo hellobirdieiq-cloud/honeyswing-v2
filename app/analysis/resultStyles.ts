@@ -168,6 +168,36 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // Phase chips (horizontal row below video)
+  phaseChipsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+    marginBottom: 16,
+  },
+  phaseChip: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  phaseChipDisabled: {
+    backgroundColor: '#0E0E10',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  phaseChipLabel: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  phaseChipLabelDisabled: {
+    color: '#555',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
   // CTA
   primaryButton: {
     backgroundColor: GOLD,
