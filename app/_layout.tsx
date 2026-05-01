@@ -56,7 +56,7 @@ export default function RootLayout() {
 
       // Redirect after splash hides so the navigator is fully mounted
       if (initialUrl) {
-        if (tryNavigate()) router.replace(onboarded ? '/(tabs)' as Href : '/onboarding' as Href);
+        if (tryNavigate()) router.replace(onboarded ? '/(tabs)/record' as Href : '/onboarding' as Href);
       } else if (session && !onboarded) {
         router.replace('/onboarding' as Href);
       }
@@ -71,7 +71,7 @@ export default function RootLayout() {
     const subscription = Linking.addEventListener('url', async ({ url }) => {
       resetNavigationLock();
       await handleReferralUrl(url);
-      router.replace('/(tabs)' as Href);
+      router.replace('/(tabs)/record' as Href);
     });
 
     return () => subscription.remove();
