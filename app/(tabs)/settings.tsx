@@ -10,15 +10,15 @@ import {
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { useUser, useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../lib/storageKeys';
-import { deleteAccount } from '../lib/supabase';
-import { getCoachCode } from '../lib/coachCode';
-import { linkCoach, unlinkCoach } from '../lib/referralAttribution';
-import { getIsLeftHanded, setIsLeftHanded } from '../lib/handedness';
-import { restorePurchases, ENTITLEMENT_ID } from '../lib/purchases';
-import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
-import { tipFrequencyLimiter } from '../lib/tipFrequency';
-import { GOLD } from '../lib/colors';
+import { STORAGE_KEYS } from '../../lib/storageKeys';
+import { deleteAccount } from '../../lib/supabase';
+import { getCoachCode } from '../../lib/coachCode';
+import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
+import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
+import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
+import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
+import { tipFrequencyLimiter } from '../../lib/tipFrequency';
+import { GOLD } from '../../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {
   junior: 'Little Kid (6-8)',
@@ -185,14 +185,6 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Settings</Text>
-
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.backText}>Back</Text>
-      </TouchableOpacity>
 
       <View style={styles.accountSection}>
         <Text style={styles.coachLabel}>Account</Text>
@@ -412,14 +404,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     marginBottom: 8,
-  },
-  backButton: {
-    marginBottom: 40,
-  },
-  backText: {
-    color: '#999',
-    fontSize: 15,
-    fontWeight: '500',
   },
   coachSection: {
     marginTop: 32,

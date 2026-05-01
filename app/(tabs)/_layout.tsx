@@ -4,18 +4,26 @@ import { GOLD } from '../../lib/colors';
 
 export default function TabLayout() {
   return (
-    <Tabs screenOptions={{
-      tabBarActiveTintColor: GOLD,
-      tabBarStyle: { backgroundColor: '#111' },
-      headerShown: false,
-    }}>
-      <Tabs.Screen name="index" options={{
-        title: 'Home',
-        tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
-      }} />
+    <Tabs
+      initialRouteName="record"
+      screenOptions={{
+        tabBarActiveTintColor: GOLD,
+        tabBarStyle: { backgroundColor: '#111' },
+        headerShown: false,
+      }}
+    >
+      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="record" options={{
         title: 'Record',
         tabBarIcon: ({ color, size }) => <Ionicons name="videocam-outline" size={size} color={color} />,
+      }} />
+      <Tabs.Screen name="history" options={{
+        title: 'History',
+        tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />,
+      }} />
+      <Tabs.Screen name="settings" options={{
+        title: 'Settings',
+        tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
       }} />
     </Tabs>
   );

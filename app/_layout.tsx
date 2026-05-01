@@ -105,7 +105,6 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="signin" />
-        <Stack.Screen name="settings" />
         <Stack.Screen name="paywall" />
         <Stack.Screen name="analysis/result" />
         <Stack.Screen name="grip/capture" />
