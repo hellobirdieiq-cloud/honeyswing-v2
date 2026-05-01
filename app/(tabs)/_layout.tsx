@@ -12,7 +12,6 @@ export default function TabLayout() {
         headerShown: false,
       }}
     >
-      <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="record" options={{
         title: 'Record',
         tabBarIcon: ({ color, size }) => <Ionicons name="videocam-outline" size={size} color={color} />,

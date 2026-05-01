@@ -47,6 +47,32 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
+  focusCard: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    padding: 16,
+    width: '100%',
+    marginBottom: 24,
+  },
+  focusTitle: {
+    color: GOLD,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  focusLabel: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  focusCue: {
+    color: '#999999',
+    fontSize: 14,
+    lineHeight: 20,
+  },
   overlay: {
     position: 'absolute',
     bottom: 100,

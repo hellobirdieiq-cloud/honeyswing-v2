@@ -10,6 +10,8 @@ import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
+  loadFocus,
+  type FocusData,
 } from '../../lib/swingMotionStore';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
@@ -56,6 +58,7 @@ export default function RecordTab() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showCameraHint, setShowCameraHint] = useState(false);
   const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
+  const [focus, setFocus] = useState<FocusData | null>(null);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
   const frameAspectRef = useRef(0);
   const [frameAspectState, setFrameAspectState] = useState(0);
@@ -175,6 +178,8 @@ export default function RecordTab() {
           router.replace('/paywall' as Href);
         }
       }).catch((err) => console.error('[HoneySwing]', err));
+
+      loadFocus().then(setFocus).catch((err) => console.error('[HoneySwing]', err));
     }, [])
   );
 
@@ -294,17 +299,25 @@ export default function RecordTab() {
         </View>
       )}
 
-      {/* Framing tips — first 3 sessions only */}
-      {showTips && capturePhase === 'idle' && cameraReady && (
-        <TouchableOpacity
-          style={styles.tipsOverlay}
-          onPress={() => setShowTips(false)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.tipText}>Step back so your full body is visible</Text>
-          <Text style={styles.tipTextSecondary}>Face the camera</Text>
-          <Text style={styles.tipDismiss}>Tap to dismiss</Text>
-        </TouchableOpacity>
+      {/* Today's Focus card or framing tips — both gated on idle + cameraReady */}
+      {capturePhase === 'idle' && cameraReady && (
+        focus ? (
+          <View style={styles.focusCard}>
+            <Text style={styles.focusTitle}>Today&apos;s Focus</Text>
+            <Text style={styles.focusLabel}>{focus.label}</Text>
+            <Text style={styles.focusCue}>{focus.cue}</Text>
+          </View>
+        ) : (showTips ? (
+          <TouchableOpacity
+            style={styles.tipsOverlay}
+            onPress={() => setShowTips(false)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.tipText}>Step back so your full body is visible</Text>
+            <Text style={styles.tipTextSecondary}>Face the camera</Text>
+            <Text style={styles.tipDismiss}>Tap to dismiss</Text>
+          </TouchableOpacity>
+        ) : null)
       )}
 
       {/* Countdown overlay */}

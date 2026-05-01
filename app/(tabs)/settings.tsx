@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -13,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../lib/storageKeys';
 import { deleteAccount } from '../../lib/supabase';
 import { getCoachCode } from '../../lib/coachCode';
+import { getGrip } from '../../lib/gripStore';
 import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
@@ -39,12 +41,15 @@ export default function SettingsScreen() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
+  const [gripUri, setGripUri] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
+      const grip = getGrip();
+      setGripUri(grip?.photoUri ?? null);
     }, []),
   );
   function handleAddCoach() {
@@ -255,6 +260,22 @@ export default function SettingsScreen() {
             </Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      <View style={styles.handednessSection}>
+        <Text style={styles.coachLabel}>Grip</Text>
+        <TouchableOpacity
+          style={styles.gripBtn}
+          onPress={() => router.push('/grip/capture' as Href)}
+          activeOpacity={0.8}
+        >
+          {gripUri ? (
+            <Image source={{ uri: gripUri }} style={styles.gripThumb} resizeMode="cover" />
+          ) : null}
+          <Text style={styles.gripBtnText}>
+            {gripUri ? 'Update Grip Photo' : 'Capture Grip'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.handednessSection}>
@@ -531,5 +552,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     marginTop: 12,
+  },
+  gripBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 166, 35, 0.2)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 12,
+  },
+  gripBtnText: {
+    color: GOLD,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  gripThumb: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: '#333',
   },
 });
