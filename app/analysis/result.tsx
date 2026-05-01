@@ -50,7 +50,7 @@ const PHASE_CHIPS: { phase: SwingPhase; label: string }[] = [
   { phase: 'top',            label: 'Top' },
   { phase: 'downswing',      label: 'Downswing' },
   { phase: 'impact',         label: 'Impact' },
-  { phase: 'follow_through', label: 'Follow-through' },
+  { phase: 'follow_through', label: 'Finish' },
 ];
 
 export default function ResultScreen() {
@@ -307,11 +307,7 @@ export default function ResultScreen() {
             )}
 
             {/* 2b. Phase chips */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.phaseChipsRow}
-            >
+            <View style={styles.phaseChipsRow}>
               {PHASE_CHIPS.map((entry) => {
                 const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
                 const enabled = !!phaseEntry && !!player && !!videoUri && firstFrameTimestamp != null;
@@ -341,7 +337,7 @@ export default function ResultScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
+            </View>
 
             {/* 3. Score */}
             <View style={styles.scoreCard}>

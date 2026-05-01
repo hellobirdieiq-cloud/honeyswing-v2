@@ -168,9 +168,10 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Phase chips (horizontal row below video)
+  // Phase chips (2×3 grid below video)
   phaseChipsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingVertical: 4,
     marginBottom: 16,
@@ -178,14 +179,18 @@ export const styles = StyleSheet.create({
   phaseChip: {
     backgroundColor: '#1A1A1C',
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
+    flexBasis: '31%',
+    alignItems: 'center',
   },
   phaseChipDisabled: {
     backgroundColor: '#0E0E10',
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
+    flexBasis: '31%',
+    alignItems: 'center',
   },
   phaseChipLabel: {
     color: '#fff',
