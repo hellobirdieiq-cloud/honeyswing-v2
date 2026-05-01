@@ -3,6 +3,7 @@ import {
   View,
   Text,
   Image,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -188,7 +189,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Settings</Text>
 
       <View style={styles.accountSection}>
@@ -360,7 +361,7 @@ export default function SettingsScreen() {
           This will permanently remove your profile and all swing data.
         </Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -415,7 +416,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   container: {
-    flex: 1,
+    flexGrow: 1,
     backgroundColor: '#111',
     padding: 24,
     paddingTop: 80,
