@@ -10,6 +10,7 @@ import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnal
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
   computeSwingConfidence,
+  getMetricConfidence,
   shouldShowMetric,
   type SwingConfidence,
 } from './confidenceScore';
@@ -27,6 +28,7 @@ import {
   type GatedMetricKey,
   type VisibilityWeightingResult,
   METRIC_LANDMARKS,
+  ALL_METRIC_KEYS,
 } from './visibilityWeighting';
 import type { ConfidenceComponents } from './confidenceScore';
 
@@ -60,6 +62,11 @@ export type AnalysisResult = {
   swing_debug?: FrameSelectionDebug;
   swingConfidence: SwingConfidence;
   cameraAngleResult: CameraAngleResult;
+  // SCR-0b-0: per-metric measurement confidence, decomposed. SCR-0b-2 applies weighting.
+  metricConfidences?: Partial<Record<GatedMetricKey | 'tempo', {
+    visibilityConfidence: number;
+    cameraConfidence: number;
+  }>>;
 };
 
 function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
@@ -444,6 +451,27 @@ export function analyzePoseSequence(
 
   const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
 
+  // SCR-0b-0: expose per-metric measurement confidence (decomposed). Heuristic
+  // path reads avgWeight from MetricWeightingResult; mid_frame_fallback path
+  // has no visibility data so the record stays empty. SCR-0b-2 owns aggregation.
+  const metricConfidences: Partial<Record<GatedMetricKey | 'tempo', {
+    visibilityConfidence: number;
+    cameraConfidence: number;
+  }>> = {};
+  if (isHeuristicPhases) {
+    for (const key of ALL_METRIC_KEYS) {
+      metricConfidences[key] = getMetricConfidence(
+        key,
+        cameraAngle.weights,
+        visibilityWeightingDebug ?? null,
+      );
+    }
+    metricConfidences.tempo = {
+      visibilityConfidence: 1,
+      cameraConfidence: cameraAngle.weights.tempo ?? 1,
+    };
+  }
+
   return {
     score: scoring.score,
     honeyBoom: scoring.honeyBoom,
@@ -452,6 +480,7 @@ export function analyzePoseSequence(
     phases,
     swingConfidence,
     cameraAngleResult: cameraAngle,
+    metricConfidences,
     swing_debug: {
       ...frameDebug,
       fallback_gate: fallbackGate,

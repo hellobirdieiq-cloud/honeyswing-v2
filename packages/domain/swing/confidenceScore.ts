@@ -26,6 +26,7 @@
 
 import type { PoseFrame } from '../../pose/PoseTypes';
 import type { CameraAngleResult, MetricConfidenceWeights } from './cameraAngle';
+import type { GatedMetricKey, VisibilityWeightingResult } from './visibilityWeighting';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -294,4 +295,28 @@ export function shouldShowMetric(
   }
 
   return true;
+}
+
+// ─── SCR-0b-0: Per-metric measurement confidence exposure ─────────────────────
+
+/**
+ * Decompose per-metric measurement confidence into its two independent signals
+ * for the scoring layer (SCR-0b-2 will weight scores by these). Pure, additive,
+ * no aggregation — SCR-0b-2 owns aggregation math.
+ *
+ * - visibilityConfidence: from per-metric MetricWeightingResult.avgWeight
+ *   (landmark-derived, per-frame-aggregated). Defaults to 1 when visibility
+ *   data is unavailable (e.g. mid_frame_fallback path).
+ * - cameraConfidence: from camera-angle MetricConfidenceWeights table
+ *   (front/side/unknown). Defaults to 1 if the key is absent.
+ */
+export function getMetricConfidence(
+  metric: GatedMetricKey,
+  cameraWeights: MetricConfidenceWeights,
+  visibility: VisibilityWeightingResult | null,
+): { visibilityConfidence: number; cameraConfidence: number } {
+  return {
+    visibilityConfidence: visibility?.metrics[metric]?.avgWeight ?? 1,
+    cameraConfidence: cameraWeights[metric] ?? 1,
+  };
 }
