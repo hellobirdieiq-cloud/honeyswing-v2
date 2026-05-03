@@ -81,7 +81,7 @@ export default function RecordTab() {
     { fps: 120, videoResolution: { width: 1280, height: 720 } },
   ]);
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
-  const skipInterval = targetFps >= 120 ? 4 : targetFps >= 60 ? 2 : 1;
+  const skipInterval = 1;
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
