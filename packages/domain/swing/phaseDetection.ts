@@ -272,7 +272,7 @@ export function detectImpact(points: SwingTrailPoint[]): ImpactData | null {
   const lastIdx = points.length - 1;
 
   const topSearchStart = Math.floor(lastIdx * 0.2);
-  const topSearchEnd = Math.floor(lastIdx * 0.6);
+  const topSearchEnd = Math.floor(lastIdx * 0.75);
   if (topSearchStart >= topSearchEnd) return null;
   const topIdx = findMinYIndex(points, topSearchStart, topSearchEnd);
 
