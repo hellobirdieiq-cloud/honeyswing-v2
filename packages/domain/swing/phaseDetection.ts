@@ -216,7 +216,7 @@ function tryHeuristicDetection(
   const addressIdx = findSetupEndIndex(smoothed, points);
 
   const topSearchStart = Math.max(addressIdx + 2, Math.floor(lastIdx * 0.2));
-  const topSearchEnd = Math.floor(lastIdx * 0.6);
+  const topSearchEnd = Math.floor(lastIdx * 0.75);
 
   if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
 

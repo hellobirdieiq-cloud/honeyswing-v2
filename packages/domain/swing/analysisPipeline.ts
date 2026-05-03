@@ -60,6 +60,7 @@ export type AnalysisResult = {
   angles?: GolfAngles;
   tempo?: SwingTempo | null;
   phases?: DetectedPhase[];
+  trail?: SwingTrailPoint[];
   swing_debug?: FrameSelectionDebug;
   swingConfidence: SwingConfidence;
   cameraAngleResult: CameraAngleResult;
@@ -483,6 +484,7 @@ export function analyzePoseSequence(
     angles,
     tempo,
     phases,
+    trail,
     swingConfidence,
     cameraAngleResult: cameraAngle,
     metricConfidences,

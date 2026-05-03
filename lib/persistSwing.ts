@@ -14,7 +14,7 @@ import { getAgeTier } from './ageTier';
 import { getGripClassification } from './gripStore';
 import { emit as emitEvent } from './eventBus';
 
-const APP_VERSION = '1.9.4';
+const APP_VERSION = '1.9.6';
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {
@@ -71,6 +71,7 @@ export async function persistSwing(
     angles: analysis.angles ?? null,
     tempo: analysis.tempo ?? null,
     phases: analysis.phases ?? null,
+    trail_points: analysis.trail ?? null,
     metric_confidences: analysis.metricConfidences ?? null,
     backswing_ms: analysis.tempo?.backswingMs ? Math.round(analysis.tempo.backswingMs) : null,
     downswing_ms: analysis.tempo?.downswingMs ? Math.round(analysis.tempo.downswingMs) : null,
