@@ -141,7 +141,8 @@ assertEq(scoreAngle(1, 3, 1.5, 1.5), 0, 'A14: tempo ratio bad → 0');
 group('B1. All ideal + perfect tempo → 100, honeyBoom=true');
 {
   const result = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
-  assertEq(result.score, 100, 'score = 100');
+  // SCR-0b-2 asymmetric tempo: was 100, now 97 per OD-2G (ideal=3.475, underTol=2.5, overTol=1.525). makeTempo(3) is no longer ideal; tempo→81; aggregate=(600+81)/7=97.
+  assertEq(result.score, 97, 'score = 97');
   assertEq(result.honeyBoom, true, 'honeyBoom = true');
 }
 
@@ -317,7 +318,8 @@ group('D5. One null angle → aggregate ignores null');
   const angles = makeAngles({ leftElbowAngle: null });
   const result = scoreSwing({ angles, tempo: makeTempo(3) });
   // 6 measured at 100, weighted-mean = 100
-  assertEq(result.score, 100, 'D5: aggregate of 6 measured at 100 = 100');
+  // SCR-0b-2 asymmetric tempo: was 100, now 97 per OD-2G (ideal=3.475, underTol=2.5, overTol=1.525). 5 ideal angles + tempo(3)→81; aggregate=(500+81)/6=97.
+  assertEq(result.score, 97, 'D5: aggregate ≈ 97 (5 ideal + tempo at ratio 3)');
   const elbowEntry = result.breakdown.find((e) => e.metric === 'leftElbowAngle')!;
   assertEq(elbowEntry.dataQuality, 'missing', 'D5: leftElbowAngle dataQuality = missing');
 }

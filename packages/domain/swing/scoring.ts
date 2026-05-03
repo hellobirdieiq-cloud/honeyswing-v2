@@ -70,8 +70,8 @@ export function scoreSwing(params: {
     };
   });
 
-  // Tempo: symmetric tolerances preserved (under == over); asymmetric tempo deferred to SCR-0b-2 per spec §3 carve-out.
-  const tempoRaw = tempo ? scoreAngle(tempo.tempoRatio, 3, 1.5, 1.5) : null;
+  // Tempo: asymmetric (OD-2G; Q-OP-3b' operator lock; Gryc 2019/2020 elite F junior anchor 3.56-3.67). ideal=3.475 (junior elite F midpoint); underTol=2.5 (ratio=1.0 → 0); overTol=1.525 (ratio=5.0 → 0). Numbers post-clinic-recalibration candidates → SCR-CAL-tempo.
+  const tempoRaw = tempo ? scoreAngle(tempo.tempoRatio, 3.475, 2.5, 1.525) : null;
   const tempoWeight = weights?.tempo ?? 1;
   const tempoScore = tempoRaw ?? 0;
   breakdown.push({

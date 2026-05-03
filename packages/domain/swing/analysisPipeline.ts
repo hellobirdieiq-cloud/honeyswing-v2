@@ -31,6 +31,7 @@ import {
   ALL_METRIC_KEYS,
 } from './visibilityWeighting';
 import type { ConfidenceComponents } from './confidenceScore';
+import { aggregateSwing, type AggregateResult } from './categoryAggregation';
 
 export type FrameSelectionDebug = {
   frame_selection_method: 'phase_windowed' | 'mid_frame_fallback';
@@ -67,6 +68,8 @@ export type AnalysisResult = {
     visibilityConfidence: number;
     cameraConfidence: number;
   }>>;
+  // SCR-0b-2: in-memory category aggregation (NOT persisted; HC12).
+  aggregate?: AggregateResult;
 };
 
 function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
@@ -472,6 +475,8 @@ export function analyzePoseSequence(
     };
   }
 
+  const aggregate = aggregateSwing(scoring, metricConfidences);
+
   return {
     score: scoring.score,
     honeyBoom: scoring.honeyBoom,
@@ -481,6 +486,7 @@ export function analyzePoseSequence(
     swingConfidence,
     cameraAngleResult: cameraAngle,
     metricConfidences,
+    aggregate,
     swing_debug: {
       ...frameDebug,
       fallback_gate: fallbackGate,

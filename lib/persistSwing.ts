@@ -71,6 +71,7 @@ export async function persistSwing(
     angles: analysis.angles ?? null,
     tempo: analysis.tempo ?? null,
     phases: analysis.phases ?? null,
+    metric_confidences: analysis.metricConfidences ?? null,
     backswing_ms: analysis.tempo?.backswingMs ? Math.round(analysis.tempo.backswingMs) : null,
     downswing_ms: analysis.tempo?.downswingMs ? Math.round(analysis.tempo.downswingMs) : null,
     tempo_ratio: analysis.tempo?.tempoRatio ?? null,
