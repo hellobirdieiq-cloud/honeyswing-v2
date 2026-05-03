@@ -17,7 +17,7 @@ export interface PhaseTimestamps {
   top: number;
   downswing: number;
   impact: number;
-  finish: number;
+  follow_through: number;
 }
 
 const TEMPO_THRESHOLDS: { max: number; rating: TempoRating }[] = [
@@ -84,7 +84,7 @@ export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
     top: topPhase.timestamp,
     downswing: downswingPhase.timestamp,
     impact: impactPhase.timestamp,
-    finish: finishPhase.timestamp,
+    follow_through: finishPhase.timestamp,
   };
 
   return {
@@ -136,6 +136,6 @@ function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, n
     top: Math.round(timestamps.top),
     downswing: Math.round(timestamps.downswing),
     impact: Math.round(timestamps.impact),
-    finish: Math.round(timestamps.finish),
+    follow_through: Math.round(timestamps.follow_through),
   };
 }

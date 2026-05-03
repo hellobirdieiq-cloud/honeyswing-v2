@@ -82,7 +82,7 @@ function makeAnalysis(overrides: {
       tempoRatio: overrides.tempoRatio,
       totalSwingMs: 1070,
       tempoRating: 'good',
-      phaseTimestamps: { address: 0, takeaway: 200, top: 800, downswing: 800, impact: 1070, finish: 1200 },
+      phaseTimestamps: { address: 0, takeaway: 200, top: 800, downswing: 800, impact: 1070, follow_through: 1200 },
     } : null,
     swingConfidence: {
       overall: overrides.swingConfidenceOverall ?? 0.85,

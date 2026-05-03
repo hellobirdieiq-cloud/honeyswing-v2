@@ -18,7 +18,7 @@ declare function require(id: string): unknown;
 // ---------------------------------------------------------------------------
 // Record types — mirror the live public.swings default projection (R5).
 // Columns excluded from v1: motion_frames, trail_points, angles, tempo,
-// phases, phase_timestamps, feedback, analysis_tier, video_url. Add opt-in
+// phases, feedback, analysis_tier, video_url. Add opt-in
 // accessors only when a consumer needs them.
 // ---------------------------------------------------------------------------
 
