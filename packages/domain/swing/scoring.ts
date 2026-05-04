@@ -5,7 +5,7 @@ import { SwingTempo } from "./tempoAnalysis";
 
 const ANGLE_METRIC_KEYS: MetricKey[] = [
   'spineAngle', 'leftElbowAngle', 'rightElbowAngle',
-  'leftKneeAngle', 'rightKneeAngle', 'shoulderTilt',
+  'leftKneeAngle', 'rightKneeAngle',
 ];
 
 // EXTERNAL ASSUMPTION (SCR-0b-1): re-evaluate at SCR-CAL post-clinic

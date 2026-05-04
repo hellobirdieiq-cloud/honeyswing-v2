@@ -141,7 +141,7 @@ assertEq(scoreAngle(1, 3, 1.5, 1.5), 0, 'A14: tempo ratio bad → 0');
 group('B1. All ideal + perfect tempo → 100, honeyBoom=true');
 {
   const result = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
-  // SCR-0b-2 asymmetric tempo: was 100, now 97 per OD-2G (ideal=3.475, underTol=2.5, overTol=1.525). makeTempo(3) is no longer ideal; tempo→81; aggregate=(600+81)/7=97.
+  // SCR-0b-2 asymmetric tempo + shoulderTilt removed from scoring aggregate (V85 PART 9 diagnostic-only). 5 ideal angles + tempo(3)=81; aggregate=(500+81)/6=round(96.83)=97.
   assertEq(result.score, 97, 'score = 97');
   assertEq(result.honeyBoom, true, 'honeyBoom = true');
 }
@@ -175,20 +175,20 @@ group('B3. Mixed measured/missing → correct dataQuality');
   assertEq(byMetric['tempo'].dataQuality, 'measured', 'tempo measured');
 }
 
-group('B4. HoneyBoom — score >= 85 AND coverage >= ceil(7*0.7)=5 measured');
+group('B4. HoneyBoom — score >= 85 AND coverage >= ceil(6*0.7)=5 measured');
 {
-  // 7 measured at perfect → score 100, honeyBoom true
+  // 6 measured at perfect → score 100, honeyBoom true
   const result7 = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
-  assertEq(result7.honeyBoom, true, '7 of 7 measured at 100 → honeyBoom true');
+  assertEq(result7.honeyBoom, true, '6 of 6 measured at 100 → honeyBoom true');
 
-  // 4 of 7 measured at ideal — score ~100 but coverage < 5 → honeyBoom false
+  // 2 of 6 measured at ideal — score ~100 but coverage < 5 → honeyBoom false
   const angles4Missing = makeAngles({
     leftElbowAngle: null,
     rightElbowAngle: null,
     leftKneeAngle: null,
   });
   const result4 = scoreSwing({ angles: angles4Missing, tempo: null });
-  // measured = spineAngle, rightKneeAngle, shoulderTilt = 3 (tempo null too) — should be honeyBoom=false on coverage
+  // measured = spineAngle, rightKneeAngle = 2 (tempo null too) — should be honeyBoom=false on coverage
   assert(result4.honeyBoom === false,
     `coverage gate: ${result4.breakdown.filter((e) => e.dataQuality === 'measured').length} measured → honeyBoom false`);
 
@@ -199,10 +199,10 @@ group('B4. HoneyBoom — score >= 85 AND coverage >= ceil(7*0.7)=5 measured');
   assertEq(resultLow.honeyBoom, false, 'honeyBoom = false when score < 85');
 }
 
-group('B5. Breakdown has exactly 7 entries');
+group('B5. Breakdown has exactly 6 entries');
 {
   const result = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
-  assertEq(result.breakdown.length, 7, 'breakdown.length = 7');
+  assertEq(result.breakdown.length, 6, 'breakdown.length = 6');
 }
 
 group('B6. Breakdown metric names');
@@ -211,7 +211,7 @@ group('B6. Breakdown metric names');
   const names = result.breakdown.map((e) => e.metric);
   const expected = [
     'spineAngle', 'leftElbowAngle', 'rightElbowAngle',
-    'leftKneeAngle', 'rightKneeAngle', 'shoulderTilt', 'tempo',
+    'leftKneeAngle', 'rightKneeAngle', 'tempo',
   ];
   assertEq(JSON.stringify(names), JSON.stringify(expected), 'metric names match exactly');
 }
@@ -314,12 +314,11 @@ group('D4. Clamps — extreme deviation returns 0, never negative');
 
 group('D5. One null angle → aggregate ignores null');
 {
-  // 6 measured angles ideal + tempo ideal = 7 measured at 100; one set to null
+  // 5 measured angles ideal + tempo measured = 6 entries total; one angle set to null
   const angles = makeAngles({ leftElbowAngle: null });
   const result = scoreSwing({ angles, tempo: makeTempo(3) });
-  // 6 measured at 100, weighted-mean = 100
-  // SCR-0b-2 asymmetric tempo: was 100, now 97 per OD-2G (ideal=3.475, underTol=2.5, overTol=1.525). 5 ideal angles + tempo(3)→81; aggregate=(500+81)/6=97.
-  assertEq(result.score, 97, 'D5: aggregate ≈ 97 (5 ideal + tempo at ratio 3)');
+  // shoulderTilt removed from scoring aggregate (V85 PART 9); leftElbow null → 4 ideal angles + tempo(3)=81; aggregate=(400+81)/5=round(96.2)=96.
+  assertEq(result.score, 96, 'D5: aggregate ≈ 96 (4 ideal + tempo at ratio 3)');
   const elbowEntry = result.breakdown.find((e) => e.metric === 'leftElbowAngle')!;
   assertEq(elbowEntry.dataQuality, 'missing', 'D5: leftElbowAngle dataQuality = missing');
 }
@@ -339,31 +338,29 @@ group('D6. All angles + tempo null → score: null');
   assertEq(result.score, null, 'D6: all null → score null');
 }
 
-group('D7. 4 of 7 measured at 90 → honeyBoom false (4 < ceil(7*0.7)=5)');
+group('D7. 3 of 6 measured → honeyBoom false (3 < ceil(6*0.7)=5)');
 {
-  // 3 angles + tempo measured at score 90; 3 angles missing
+  // 2 angles + tempo measured; 3 angles missing (shoulderTilt removed from scoring aggregate)
   const angles = makeAngles({
     spineAngle: null,
     leftElbowAngle: null,
     rightElbowAngle: null,
-    leftKneeAngle: 145,   // diff 10 from ideal 155, under-tol 35 → ~71... need 90
+    leftKneeAngle: 145,   // diff 10 from ideal 155, under-tol 35 → ~71
     rightKneeAngle: 152,  // diff 3 from ideal 155, under-tol 35 → ~91
-    shoulderTilt: 2,      // diff 2 from ideal 0, over-tol 16.67 → ~88
   });
   // Use tempoRatio that scores 90 from ideal 3, tol 1.5 → diff 0.15
   const result = scoreSwing({ angles, tempo: makeTempo(3.15) });
   const measuredCount = result.breakdown.filter((e) => e.dataQuality === 'measured').length;
-  assertEq(measuredCount, 4, `D7: measured count = 4 (got ${measuredCount})`);
+  assertEq(measuredCount, 3, `D7: measured count = 3 (got ${measuredCount})`);
   assertEq(result.honeyBoom, false, 'D7: honeyBoom = false (coverage < 5)');
 }
 
-group('D8. 5 of 7 measured at >=90 + score >= 85 → honeyBoom true');
+group('D8. 5 of 6 measured at >=90 + score >= 85 → honeyBoom true');
 {
-  // 5 measured at strong score; 2 missing
+  // 5 measured at strong score; 1 missing (shoulderTilt removed from scoring aggregate)
   const angles = makeAngles({
     spineAngle: null,
-    leftElbowAngle: null,
-    // remaining: rightElbowAngle, leftKneeAngle, rightKneeAngle, shoulderTilt at ideal → 100 each
+    // remaining: leftElbowAngle, rightElbowAngle, leftKneeAngle, rightKneeAngle at ideal → 100 each
   });
   // tempo at ideal → 100
   const result = scoreSwing({ angles, tempo: makeTempo(3) });

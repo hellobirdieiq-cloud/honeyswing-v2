@@ -217,17 +217,16 @@ group('B7. All cue functions return strings for all age tiers');
 // Section C — Cross-validation with scoring.ts
 // ---------------------------------------------------------------------------
 
-group('C1. ANGLE_METRIC_KEYS all exist in METRIC_DEFINITIONS');
+group('C1. ANGLE_METRIC_KEYS ⊆ METRIC_DEFINITIONS (subset, not equality — shoulderTilt stays in METRIC_DEFINITIONS as diagnostic surface)');
 {
   // These are the keys used by scoring.ts ANGLE_METRIC_KEYS
   const angleMetricKeys: MetricKey[] = [
     'spineAngle', 'leftElbowAngle', 'rightElbowAngle',
-    'leftKneeAngle', 'rightKneeAngle', 'shoulderTilt',
+    'leftKneeAngle', 'rightKneeAngle',
   ];
   for (const key of angleMetricKeys) {
     assert(key in METRIC_DEFINITIONS, `${key} exists in METRIC_DEFINITIONS`);
   }
-  assertEq(angleMetricKeys.length, Object.keys(METRIC_DEFINITIONS).length, 'ANGLE_METRIC_KEYS covers all definitions');
 }
 
 group('C2. Ideals accessible for scoring match definitions');
