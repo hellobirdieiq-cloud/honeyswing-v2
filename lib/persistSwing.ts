@@ -69,6 +69,7 @@ export async function persistSwing(
     duration_ms: Math.round(durationMs),
     score: analysis.score,
     honey_boom: analysis.honeyBoom,
+    camera_angle_valid: analysis.cameraAngleValid,
     angles: analysis.angles ?? null,
     tempo: analysis.tempo ?? null,
     phases: analysis.phases ?? null,

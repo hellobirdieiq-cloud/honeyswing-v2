@@ -58,6 +58,7 @@ export type FrameSelectionDebug = {
 export type AnalysisResult = {
   score: number | null;
   honeyBoom: boolean;
+  cameraAngleValid: boolean;
   angles?: GolfAngles;
   tempo?: SwingTempo | null;
   phases?: DetectedPhase[];
@@ -406,6 +407,7 @@ export function analyzePoseSequence(
     return {
       score: 0,
       honeyBoom: false,
+      cameraAngleValid: false,
       swingConfidence: {
         overall: 0,
         tier: 'low' as const,
@@ -530,6 +532,7 @@ export function analyzePoseSequence(
   return {
     score: scoring.score,
     honeyBoom: scoring.honeyBoom,
+    cameraAngleValid: cameraAngle.angle !== "unknown",
     angles,
     tempo,
     phases,
