@@ -441,10 +441,13 @@ export function analyzePoseSequence(
   // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
   const tempo = rawTempo && isTempoTrustworthy(rawTempo, phases) ? rawTempo : null;
 
+  const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
+
   const scoring = scoreSwing({
     angles,
     tempo,
     weights: cameraAngle.weights,
+    suppressedMetrics: new Set(angleGating.suppressed),
   });
 
   const swingConfidence = computeSwingConfidence(
@@ -452,8 +455,6 @@ export function analyzePoseSequence(
     cameraAngle,
     isHeuristicPhases,
   );
-
-  const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
 
   // SCR-0b-0: expose per-metric measurement confidence (decomposed). Heuristic
   // path reads avgWeight from MetricWeightingResult; mid_frame_fallback path

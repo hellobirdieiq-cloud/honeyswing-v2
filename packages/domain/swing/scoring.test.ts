@@ -287,6 +287,39 @@ group('B12. Breakdown entry shape validation');
   }
 }
 
+group('B13. suppressedMetrics excludes metric from aggregate');
+{
+  // All 5 angles valid + tempo. Suppress leftElbowAngle.
+  const angles = makeAngles();
+  const suppressed = new Set(['leftElbowAngle']);
+  const result = scoreSwing({ angles, tempo: makeTempo(3), suppressedMetrics: suppressed });
+  const elbowEntry = result.breakdown.find((e) => e.metric === 'leftElbowAngle');
+  assert(!!elbowEntry, 'B13.0: breakdown contains leftElbowAngle entry');
+  assertEq(elbowEntry!.dataQuality, 'missing', 'B13.1: suppressed → dataQuality missing');
+  assertEq(elbowEntry!.weighted, 0, 'B13.2: suppressed → weighted 0');
+  assertEq(elbowEntry!.score, 0, 'B13.3: suppressed → score coerced to 0');
+
+  // Equivalence to the existing null-exclude path: suppressing a metric must
+  // produce the same aggregate as if its angle value were null.
+  const control = scoreSwing({
+    angles: makeAngles({ leftElbowAngle: null }),
+    tempo: makeTempo(3),
+  });
+  assertEq(result.score, control.score, 'B13.4: suppressed metric === null metric in aggregate');
+
+  // Sanity: suppression must NOT mutate the caller's angles object.
+  assertEq(angles.leftElbowAngle, 165, 'B13.5: caller angles object unchanged');
+}
+
+group('B14. suppressedMetrics omitted → identical to today');
+{
+  // Backward-compat: same call without the new param must match prior semantics.
+  const before = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
+  const after = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3), suppressedMetrics: new Set() });
+  assertEq(before.score, after.score, 'B14.1: empty set === omitted');
+  assertEq(before.honeyBoom, after.honeyBoom, 'B14.2: honeyBoom unchanged');
+}
+
 // ---------------------------------------------------------------------------
 // Section D — D4 spec assertions (SCR-0b-1)
 // ---------------------------------------------------------------------------

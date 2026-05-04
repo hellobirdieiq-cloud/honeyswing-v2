@@ -51,10 +51,20 @@ export function scoreSwing(params: {
   angles: GolfAngles;
   tempo: SwingTempo | null;
   weights?: MetricConfidenceWeights;
+  suppressedMetrics?: ReadonlySet<string>;
 }): ScoringResult {
-  const { angles, tempo, weights } = params;
+  const { angles, tempo, weights, suppressedMetrics } = params;
 
   const breakdown: ScoringBreakdownEntry[] = ANGLE_METRIC_KEYS.map((key) => {
+    if (suppressedMetrics?.has(key)) {
+      return {
+        metric: key,
+        score: 0,
+        weight: weights?.[key] ?? 1,
+        weighted: 0,
+        dataQuality: 'missing' as const,
+      };
+    }
     const def = METRIC_DEFINITIONS[key];
     const value = angles[key];
     const rawScore = scoreAngle(value, def.ideal, def.underTolerance, def.overTolerance);
