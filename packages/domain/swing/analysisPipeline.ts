@@ -6,6 +6,7 @@ import { correctForeshortening, type ForeshorteningDebug } from './foreshortenin
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
 import { detectSwingPhasesWithDebug, DetectedPhase, SwingTrailPoint, type FallbackGate } from "./phaseDetection";
+import { detectSwingStart } from "./swingStartDetection";
 import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
@@ -423,10 +424,25 @@ export function analyzePoseSequence(
   const trail = buildTrailPoints(canonical);
   const { phases, fallbackGate } = detectSwingPhasesWithDebug(trail);
 
+  const phaseAddressIdx = phases.find(p => p.phase === 'address')?.index ?? 0;
+  const phaseTopIdx = phases.find(p => p.phase === 'top')?.index ?? canonical.frames.length - 1;
+  const swingStart = detectSwingStart(
+    canonical.frames,
+    { address: phaseAddressIdx, top: phaseTopIdx },
+    isLeftHanded,
+    'side', // DTL only for now
+  );
+  const resolvedAddressIdx =
+    addressFrameIdx ?? (
+      swingStart.reliability === 'HIGH'
+        ? swingStart.trueAddressFrame
+        : phaseAddressIdx
+    );
+
   const addressFrame = averageFrames(
     canonical.frames,
-    addressFrameIdx ?? 0,
-    Math.min((addressFrameIdx ?? 0) + 9, canonical.frames.length - 1),
+    resolvedAddressIdx,
+    Math.min(resolvedAddressIdx + 9, canonical.frames.length - 1),
   );
 
   let angles: GolfAngles;
@@ -438,7 +454,7 @@ export function analyzePoseSequence(
     angles = calculateGolfAngles(midFrame);
     frameDebug = { frame_selection_method: 'mid_frame_fallback' };
   } else {
-    const result = computePhaseWindowedAngles(canonical.frames, phases, addressFrameIdx);
+    const result = computePhaseWindowedAngles(canonical.frames, phases, resolvedAddressIdx);
     angles = result.angles;
     frameDebug = result.debug;
     isHeuristicPhases = true;
