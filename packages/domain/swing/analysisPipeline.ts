@@ -162,13 +162,18 @@ type PhaseWindowResult = {
 function computePhaseWindowedAngles(
   frames: PoseFrame[],
   phases: DetectedPhase[],
+  addressFrameIdx?: number,
 ): PhaseWindowResult {
   const addressPhase = phases.find(p => p.phase === 'address')!;
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
   // Assumes capture starts at address. May need wrist-velocity gate if users start recording mid-backswing.
-  const addressFrame = averageFrames(frames, 0, 9);
+  const addressFrame = averageFrames(
+    frames,
+    addressFrameIdx ?? 0,
+    (addressFrameIdx ?? 0) + 9,
+  );
   const impactFrame = averageFrames(frames, impactPhase.index - 2, impactPhase.index + 2);
   const topFrame = averageFrames(frames, topPhase.index - 2, topPhase.index + 2);
 
@@ -196,7 +201,10 @@ function computePhaseWindowedAngles(
     angles,
     debug: {
       frame_selection_method: 'phase_windowed',
-      address_frame_range: [0, Math.min(9, frames.length - 1)],
+      address_frame_range: [
+        addressFrameIdx ?? 0,
+        Math.min((addressFrameIdx ?? 0) + 9, frames.length - 1),
+      ],
       impact_frame_index: impactPhase.index,
       backswing_peak_frame_index: topPhase.index,
     },
@@ -373,6 +381,7 @@ export function analyzePoseSequence(
   sequence: PoseSequence,
   isLeftHanded = false,
   gravityReadings: GravityReading[] = [],
+  addressFrameIdx?: number,
 ): AnalysisResult {
   const canonical = toCanonicalSequence(sequence, isLeftHanded);
 
@@ -398,7 +407,11 @@ export function analyzePoseSequence(
   const trail = buildTrailPoints(canonical);
   const { phases, fallbackGate } = detectSwingPhasesWithDebug(trail);
 
-  const addressFrame = averageFrames(canonical.frames, 0, Math.min(9, canonical.frames.length - 1));
+  const addressFrame = averageFrames(
+    canonical.frames,
+    addressFrameIdx ?? 0,
+    Math.min((addressFrameIdx ?? 0) + 9, canonical.frames.length - 1),
+  );
 
   let angles: GolfAngles;
   let frameDebug: Omit<FrameSelectionDebug, 'fallback_gate'>;
@@ -409,7 +422,7 @@ export function analyzePoseSequence(
     angles = calculateGolfAngles(midFrame);
     frameDebug = { frame_selection_method: 'mid_frame_fallback' };
   } else {
-    const result = computePhaseWindowedAngles(canonical.frames, phases);
+    const result = computePhaseWindowedAngles(canonical.frames, phases, addressFrameIdx);
     angles = result.angles;
     frameDebug = result.debug;
     isHeuristicPhases = true;
