@@ -38,6 +38,8 @@ export type FallbackGate =
   | 'phases_too_bunched'
   | 'backswing_ratio_check_failed';
 
+const TOP_SMOOTH_WINDOW = 3;
+
 function velocity(a: SwingTrailPoint, b: SwingTrailPoint): number {
   const dt = b.timestamp - a.timestamp;
   if (dt === 0) return 0;
@@ -143,6 +145,33 @@ function findMinYIndex(points: SwingTrailPoint[], startIdx: number, endIdx: numb
   for (let i = startIdx; i <= endIdx; i++) {
     if (points[i].y < minY) {
       minY = points[i].y;
+      minIdx = i;
+    }
+  }
+  return minIdx;
+}
+
+function findSmoothedMinYIndex(
+  points: SwingTrailPoint[],
+  startIdx: number,
+  endIdx: number,
+  window: number,
+): number {
+  const half = Math.floor(window / 2);
+  let minSmoothed = Infinity;
+  let minIdx = startIdx;
+  for (let i = startIdx; i <= endIdx; i++) {
+    const lo = Math.max(startIdx, i - half);
+    const hi = Math.min(endIdx, i + half);
+    let sum = 0;
+    let count = 0;
+    for (let j = lo; j <= hi; j++) {
+      sum += points[j].y;
+      count++;
+    }
+    const avg = sum / count;
+    if (avg < minSmoothed) {
+      minSmoothed = avg;
       minIdx = i;
     }
   }
@@ -258,7 +287,10 @@ function tryHeuristicDetection(
 
   if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
 
-  const topIdx = findMinYIndex(points, topSearchStart, topSearchEnd);
+  // Top detection uses smoothed minimum (TOP_SMOOTH_WINDOW=3) to resist single-frame pose artifacts.
+  // Picks true biomechanical top (first minimum on smoothed path) rather than plateau end (~340ms later on observed swings).
+  // Design locked S89 Chat 2. Do not revert to raw minimum or plateau heuristic without re-opening decision.
+  const topIdx = findSmoothedMinYIndex(points, topSearchStart, topSearchEnd, TOP_SMOOTH_WINDOW);
 
   const impactSearchStart = topIdx + 2;
   const impactSearchEnd = Math.min(lastIdx, Math.floor(lastIdx * 0.85));
