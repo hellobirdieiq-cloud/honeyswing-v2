@@ -1,8 +1,3 @@
-// SCR-0b-2: Supabase typegen output for public schema. Committed to repo (HC10).
-// Regen: `supabase gen types typescript --linked > lib/database.types.ts`
-// CLI version: 2.75.0 (pinned in package.json devDependencies).
-// DO NOT edit by hand; regen after schema migrations.
-
 export type Json =
   | string
   | number
@@ -16,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.1"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -225,6 +195,7 @@ export type Database = {
           app_version: string | null
           backswing_ms: number | null
           capture_validity: string | null
+          category_scores: Json | null
           coach_name: string | null
           created_at: string | null
           downswing_ms: number | null
@@ -238,7 +209,6 @@ export type Database = {
           metric_confidences: Json | null
           motion_frames: Json | null
           phase_source: string | null
-          phase_timestamps: Json | null
           phases: Json | null
           pose_success_rate: number | null
           score: number | null
@@ -258,6 +228,7 @@ export type Database = {
           app_version?: string | null
           backswing_ms?: number | null
           capture_validity?: string | null
+          category_scores?: Json | null
           coach_name?: string | null
           created_at?: string | null
           downswing_ms?: number | null
@@ -271,7 +242,6 @@ export type Database = {
           metric_confidences?: Json | null
           motion_frames?: Json | null
           phase_source?: string | null
-          phase_timestamps?: Json | null
           phases?: Json | null
           pose_success_rate?: number | null
           score?: number | null
@@ -291,6 +261,7 @@ export type Database = {
           app_version?: string | null
           backswing_ms?: number | null
           capture_validity?: string | null
+          category_scores?: Json | null
           coach_name?: string | null
           created_at?: string | null
           downswing_ms?: number | null
@@ -304,7 +275,6 @@ export type Database = {
           metric_confidences?: Json | null
           motion_frames?: Json | null
           phase_source?: string | null
-          phase_timestamps?: Json | null
           phases?: Json | null
           pose_success_rate?: number | null
           score?: number | null
@@ -470,10 +440,8 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },
 } as const
+<claude-code-hint v="1" type="plugin" value="supabase@claude-plugins-official" />

@@ -74,6 +74,8 @@ export async function persistSwing(
     phases: analysis.phases ?? null,
     trail_points: analysis.trail ?? null,
     metric_confidences: analysis.metricConfidences ?? null,
+    category_scores: analysis.aggregate
+      ? Object.fromEntries(Object.entries(analysis.aggregate.categories).map(([k, v]) => [k, v?.score ?? null])) : null,
     backswing_ms: analysis.tempo?.backswingMs ? Math.round(analysis.tempo.backswingMs) : null,
     downswing_ms: analysis.tempo?.downswingMs ? Math.round(analysis.tempo.downswingMs) : null,
     tempo_ratio: analysis.tempo?.tempoRatio ?? null,
