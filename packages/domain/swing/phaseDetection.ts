@@ -66,11 +66,11 @@ function smoothVelocities(velocities: number[], window: number = 5): number[] {
 }
 
 /**
- * Find the end of the setup/address phase — the last frame before motion begins.
- * Scans from the start looking for sustained low velocity (stillness). The last
- * frame before velocity exceeds the threshold is the address position.
+ * Magnitude-based stillness gate (legacy). Direction-blind — kept as a safety
+ * fallback for findSetupEndIndex so the directional gate can never make a
+ * swing strictly worse than today.
  */
-function findSetupEndIndex(
+export function findSetupEndIndexStillness(
   smoothed: number[],
   points: SwingTrailPoint[],
 ): number {
@@ -97,6 +97,44 @@ function findSetupEndIndex(
 
   // If the entire capture is still (unlikely), address is near the start
   return Math.min(2, points.length - 1);
+}
+
+/**
+ * Find the end of the setup/address phase using a sign-aware directional gate
+ * on the canonical wrist-midpoint x. Δx > 0 is the takeaway direction in
+ * canonical space (lefty x is mirrored upstream), so a sustained positive Δx
+ * window indicates committed swing initiation rather than waggle, glove-tug,
+ * or forward-press noise. Falls back to the legacy stillness gate when no
+ * directional onset is found or the onset arrives too late.
+ */
+export function findSetupEndIndex(
+  smoothed: number[],
+  points: SwingTrailPoint[],
+): number {
+  const DIRECTION_FRAMES = 20;        // ~167 ms at 120 fps; below 200 ms waggle window
+  const DIRECTION_THRESHOLD = 0.002;  // min Δx per frame (normalized 0–1) to count
+  const MAX_ADDRESS_FRACTION = 0.6;   // addressIdx safety cap vs lastIdx
+
+  if (points.length < DIRECTION_FRAMES + 1) {
+    return findSetupEndIndexStillness(smoothed, points);
+  }
+
+  const lastIdx = points.length - 1;
+  const minDelta = DIRECTION_FRAMES * DIRECTION_THRESHOLD;
+
+  for (let i = DIRECTION_FRAMES; i < points.length; i++) {
+    const delta = points[i].x - points[i - DIRECTION_FRAMES].x;
+    if (delta > minDelta) {
+      const candidate = i - DIRECTION_FRAMES;
+      if (candidate <= MAX_ADDRESS_FRACTION * lastIdx) {
+        return candidate;
+      }
+      // Onset too late — let stillness fallback try
+      break;
+    }
+  }
+
+  return findSetupEndIndexStillness(smoothed, points);
 }
 
 function findMinYIndex(points: SwingTrailPoint[], startIdx: number, endIdx: number): number {
