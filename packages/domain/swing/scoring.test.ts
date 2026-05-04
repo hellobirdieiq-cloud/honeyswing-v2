@@ -5,9 +5,11 @@
  */
 
 import { scoreAngle, scoreSwing, isMeasured, type ScoringBreakdownEntry } from './scoring';
+import { MIN_USABLE_FRAMES, computeFrameCountSuppression } from './analysisPipeline';
 import type { GolfAngles } from './angles';
 import type { MetricConfidenceWeights } from './cameraAngle';
 import type { SwingTempo } from './tempoAnalysis';
+import type { VisibilityWeightingResult, MetricWeightingResult } from './visibilityWeighting';
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -440,6 +442,82 @@ group('D11. isMeasured helper');
   const tempoEntry = result.breakdown.find((e) => e.metric === 'tempo')!;
   assertEq(isMeasured(spineEntry), false, 'D11: missing entry → false');
   assertEq(isMeasured(tempoEntry), true, 'D11: measured entry → true');
+}
+
+// ---------------------------------------------------------------------------
+// Section B — MIN_USABLE_FRAMES guard (analysisPipeline integration)
+// ---------------------------------------------------------------------------
+
+function makeMetricResult(framesUsed: number): MetricWeightingResult {
+  return {
+    weightedValue: 165,
+    unweightedValue: 165,
+    delta: 0,
+    framesUsed,
+    framesExcluded: 0,
+    avgWeight: 1,
+    minWeight: 1,
+    applied: true,
+  };
+}
+
+function makeVisibility(
+  perMetric: Record<string, number>,
+): VisibilityWeightingResult {
+  const metrics: Record<string, MetricWeightingResult> = {};
+  for (const [k, n] of Object.entries(perMetric)) {
+    metrics[k] = makeMetricResult(n);
+  }
+  return { applied: true, version: 'test', metrics };
+}
+
+group('B15. metric with 1 usable frame → suppressed → missing → excluded');
+{
+  const visibility = makeVisibility({
+    spineAngle:       MIN_USABLE_FRAMES,
+    leftElbowAngle:   MIN_USABLE_FRAMES,
+    rightElbowAngle:  1,
+    leftKneeAngle:    MIN_USABLE_FRAMES,
+    rightKneeAngle:   MIN_USABLE_FRAMES,
+  });
+  const suppressed = computeFrameCountSuppression(visibility);
+  assertEq(suppressed.length, 1, 'B15a: one metric below floor');
+  assertEq(suppressed[0], 'rightElbowAngle', 'B15b: rightElbowAngle suppressed');
+
+  const result = scoreSwing({
+    angles: makeAngles(),
+    tempo: makeTempo(3),
+    suppressedMetrics: new Set(suppressed),
+  });
+  const elbow = result.breakdown.find((e) => e.metric === 'rightElbowAngle')!;
+  assertEq(elbow.dataQuality, 'missing', 'B15c: rightElbowAngle dataQuality = missing');
+  assertEq(elbow.weighted, 0, 'B15d: rightElbowAngle weighted = 0');
+
+  const baseline = scoreSwing({ angles: makeAngles(), tempo: makeTempo(3) });
+  const measuredCount = result.breakdown.filter(isMeasured).length;
+  const baselineMeasured = baseline.breakdown.filter(isMeasured).length;
+  assertEq(measuredCount, baselineMeasured - 1, 'B15e: aggregate excludes one row');
+}
+
+group('B16. metric with exactly MIN_USABLE_FRAMES usable frames → NOT excluded');
+{
+  const visibility = makeVisibility({
+    spineAngle:       MIN_USABLE_FRAMES,
+    leftElbowAngle:   MIN_USABLE_FRAMES,
+    rightElbowAngle:  MIN_USABLE_FRAMES,
+    leftKneeAngle:    MIN_USABLE_FRAMES,
+    rightKneeAngle:   MIN_USABLE_FRAMES,
+  });
+  const suppressed = computeFrameCountSuppression(visibility);
+  assertEq(suppressed.length, 0, 'B16a: nothing at or above floor is suppressed');
+
+  const result = scoreSwing({
+    angles: makeAngles(),
+    tempo: makeTempo(3),
+    suppressedMetrics: new Set(suppressed),
+  });
+  const elbow = result.breakdown.find((e) => e.metric === 'rightElbowAngle')!;
+  assertEq(elbow.dataQuality, 'measured', 'B16b: rightElbowAngle dataQuality = measured');
 }
 
 // ---------------------------------------------------------------------------

@@ -73,6 +73,22 @@ export type AnalysisResult = {
   aggregate?: AggregateResult;
 };
 
+// [EXTERNAL ASSUMPTION] — 3-frame floor confirmed on
+// rightElbowAngle (swing 77b49def, 35.6° 1-frame delta).
+// Not yet validated vs Dave clinic data. Recalibrate at SCR-CAL.
+export const MIN_USABLE_FRAMES = 3;
+
+export function computeFrameCountSuppression(
+  visibility: VisibilityWeightingResult | undefined,
+): string[] {
+  if (!visibility) return [];
+  const out: string[] = [];
+  for (const [key, m] of Object.entries(visibility.metrics)) {
+    if (m.framesUsed < MIN_USABLE_FRAMES) out.push(key);
+  }
+  return out;
+}
+
 function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   const points: SwingTrailPoint[] = [];
 
@@ -460,7 +476,10 @@ export function analyzePoseSequence(
     angles,
     tempo,
     weights: cameraAngle.weights,
-    suppressedMetrics: new Set(angleGating.suppressed),
+    suppressedMetrics: new Set([
+      ...angleGating.suppressed,
+      ...computeFrameCountSuppression(visibilityWeightingDebug),
+    ]),
   });
 
   const swingConfidence = computeSwingConfidence(
