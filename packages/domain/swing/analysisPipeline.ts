@@ -628,9 +628,7 @@ export function analyzePoseSequence(
       angle_gating: angleGating,
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
-      ...(__DEV__
-        ? { z_trace: computeZTrace(canonical.frames, phases) }
-        : {}),
+      z_trace: computeZTrace(canonical.frames, phases),
     },
   };
 }
