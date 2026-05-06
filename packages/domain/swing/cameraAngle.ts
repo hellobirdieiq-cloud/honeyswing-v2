@@ -18,6 +18,7 @@ export type CameraAngleResult = {
   shoulderSpread: number;
   hipSpread: number;
   avgSpread: number;
+  footIndexNorm: number | null;
   weights: MetricConfidenceWeights;
 };
 
@@ -72,6 +73,7 @@ function unknownResult(): CameraAngleResult {
     shoulderSpread: 0,
     hipSpread: 0,
     avgSpread: 0,
+    footIndexNorm: null,
     weights: UNKNOWN_WEIGHTS,
   };
 }
@@ -153,6 +155,7 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
     shoulderSpread,
     hipSpread,
     avgSpread,
+    footIndexNorm,
     weights: WEIGHT_TABLES[angle],
   };
 }

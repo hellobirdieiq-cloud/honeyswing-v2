@@ -418,6 +418,7 @@ export function analyzePoseSequence(
         shoulderSpread: 0,
         hipSpread: 0,
         avgSpread: 0,
+        footIndexNorm: null,
         weights: { spineAngle: 0, leftElbowAngle: 0, rightElbowAngle: 0, leftKneeAngle: 0, rightKneeAngle: 0, hipSpreadDelta: 0, shoulderTilt: 0, tempo: 0 },
       },
     };
