@@ -21,8 +21,10 @@ export type CameraAngleResult = {
   weights: MetricConfidenceWeights;
 };
 
-const FRONT_THRESHOLD = 0.15;
-const SIDE_THRESHOLD = 0.08;
+// [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
+const FRONT_THRESHOLD = 0.40;
+// [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
+const SIDE_THRESHOLD = 0.55;
 const MIN_CONFIDENCE = 0.5;
 
 const FRONT_WEIGHTS: MetricConfidenceWeights = {
@@ -94,13 +96,56 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
   const hipSpread = Math.abs(rh.x - lh.x);
   const avgSpread = (shoulderSpread + hipSpread) / 2;
 
+  const nose = frame.joints.nose;
+  const lAnkle = frame.joints.leftAnkle;
+  const rAnkle = frame.joints.rightAnkle;
+  const bodyHeightValid =
+    nose && lAnkle && rAnkle &&
+    (nose.confidence ?? 0) >= MIN_CONFIDENCE &&
+    (lAnkle.confidence ?? 0) >= MIN_CONFIDENCE &&
+    (rAnkle.confidence ?? 0) >= MIN_CONFIDENCE;
+  const bodyHeight = bodyHeightValid
+    ? Math.abs(((lAnkle!.y + rAnkle!.y) / 2) - nose!.y)
+    : 0;
+
+  const lFoot = frame.joints.leftFootIndex;
+  const rFoot = frame.joints.rightFootIndex;
+  const footValid =
+    lFoot && rFoot &&
+    (lFoot.confidence ?? 0) >= MIN_CONFIDENCE &&
+    (rFoot.confidence ?? 0) >= MIN_CONFIDENCE &&
+    bodyHeight > 0;
+  const footIndexNorm = footValid
+    ? Math.abs(lFoot!.x - rFoot!.x) / bodyHeight
+    : null;
+
+  const ankleSpread =
+    lAnkle && rAnkle &&
+    (lAnkle.confidence ?? 0) >= MIN_CONFIDENCE &&
+    (rAnkle.confidence ?? 0) >= MIN_CONFIDENCE
+      ? Math.abs(lAnkle.x - rAnkle.x)
+      : null;
+
   let angle: CameraAngle;
-  if (avgSpread >= FRONT_THRESHOLD) {
-    angle = "front";
-  } else if (avgSpread <= SIDE_THRESHOLD) {
-    angle = "side";
+  if (footIndexNorm != null) {
+    if (footIndexNorm >= SIDE_THRESHOLD) {
+      angle = "side";
+    } else if (footIndexNorm <= FRONT_THRESHOLD) {
+      angle = "front";
+    } else {
+      angle = "unknown";
+    }
+  } else if (ankleSpread != null) {
+    // [EXTERNAL ASSUMPTION] ankle fallback thresholds — empirically derived from 6 swings (3 DTL, 3 face-on)
+    if (ankleSpread >= 0.07) {
+      angle = "side";
+    } else if (ankleSpread <= 0.02) {
+      angle = "front";
+    } else {
+      angle = "unknown";
+    }
   } else {
-    angle = "unknown";
+    return unknownResult();
   }
 
   return {
