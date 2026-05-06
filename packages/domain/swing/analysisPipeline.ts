@@ -56,7 +56,7 @@ export type FrameSelectionDebug = {
   z_trace?: ZTraceDebug;
 };
 
-/** Dev-only per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
+/** Per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
 export type ZTraceDebug = {
   z_min: number | null;
   z_max: number | null;
