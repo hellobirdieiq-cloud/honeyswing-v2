@@ -23,7 +23,7 @@ import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const MAX_BUFFERED_POSE_FRAMES = 180;
+export const MAX_BUFFERED_POSE_FRAMES = 600;
 const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
 
