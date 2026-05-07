@@ -320,11 +320,12 @@ function applyVisibilityWeighting(
   frames: PoseFrame[],
   phases: DetectedPhase[],
   currentAngles: GolfAngles,
+  addressIdx: number = 0,
 ): { angles: GolfAngles; debug: VisibilityWeightingResult; implausibleDebug: ImplausibleFrameDebug } {
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
-  const addressRange: [number, number] = [0, Math.min(9, frames.length - 1)];
+  const addressRange: [number, number] = [addressIdx, Math.min(addressIdx + 9, frames.length - 1)];
   const impactRange: [number, number] = [impactPhase.index - 2, impactPhase.index + 2];
   const topRange: [number, number] = [topPhase.index - 2, topPhase.index + 2];
 
@@ -538,7 +539,7 @@ export function analyzePoseSequence(
   let visibilityWeightingDebug: VisibilityWeightingResult | undefined;
   let implausibleFrameDebug: ImplausibleFrameDebug | undefined;
   if (isHeuristicPhases) {
-    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles);
+    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles, resolvedAddressIdx);
     angles = visWeighting.angles;
     visibilityWeightingDebug = visWeighting.debug;
     implausibleFrameDebug = visWeighting.implausibleDebug;
