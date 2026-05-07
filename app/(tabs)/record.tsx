@@ -248,8 +248,9 @@ export default function RecordTab() {
   const isCapturing = capturePhase === 'capturing';
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
+  const isComplete = capturePhase === 'complete';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError;
+  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete;
 
   return (
     <GestureHandlerRootView
