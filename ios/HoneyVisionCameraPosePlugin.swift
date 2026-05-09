@@ -5,11 +5,17 @@ import MediaPipeTasksVision
 import CoreML
 import Vision
 import ImageIO
+import os
 
 @objc(HoneyVisionCameraPosePlugin)
-public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
+public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLiveStreamDelegate {
+  private static let kStaleResultThresholdMs: Int = 500
+  // 500ms covers two full inference cycles at worst-case 4fps.
+
   private var poseLandmarker: PoseLandmarker?
   private var initError: String?
+  private let resultLock = OSAllocatedUnfairLock<[Int: PoseLandmarkerResult]>(initialState: [:])
+  private var previousTimestampMs: Int = 0
 
   private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private static var frameCount: Int = 0
@@ -111,7 +117,8 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     do {
       let opts = PoseLandmarkerOptions()
       opts.baseOptions.modelAssetPath = modelPath
-      opts.runningMode = .video
+      opts.runningMode = .liveStream
+      opts.poseLandmarkerLiveStreamDelegate = self
       opts.numPoses = 1
       poseLandmarker = try PoseLandmarker(options: opts)
       print("[HoneySwing] MediaPipe PoseLandmarker ready (\(modelPath))")
@@ -148,12 +155,17 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     do {
       let mpImage = try MPImage(pixelBuffer: bgraBuffer, orientation: .up)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
-      let result = try poseLandmarker.detect(videoFrame: mpImage, timestampInMilliseconds: timestampMs)
+      try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
 
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
 
-      guard let poseLandmarks = result.landmarks.first else { return [] }
+      let previousResult: PoseLandmarkerResult? = resultLock.withLock { dict in
+        dict[previousTimestampMs]
+      }
+      previousTimestampMs = timestampMs
+
+      guard let poseLandmarks = previousResult?.landmarks.first else { return [] }
 
       let landmarks: [[String: Any]] = Self.jointMapping.compactMap { mapping in
         guard mapping.mpIndex < poseLandmarks.count else { return nil }
@@ -175,6 +187,22 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
       return landmarks
     } catch {
       return [["_diagnostic": "detect_error: \(error.localizedDescription)"]]
+    }
+  }
+
+  // MARK: - PoseLandmarkerLiveStreamDelegate
+
+  public func poseLandmarker(
+    _ poseLandmarker: PoseLandmarker,
+    didFinishDetection result: PoseLandmarkerResult?,
+    timestampInMilliseconds: Int,
+    error: (any Error)?
+  ) {
+    guard let result = result, error == nil else { return }
+    resultLock.withLock { dict in
+      dict[timestampInMilliseconds] = result
+      let cutoff = timestampInMilliseconds - Self.kStaleResultThresholdMs
+      dict = dict.filter { $0.key >= cutoff }
     }
   }
 
