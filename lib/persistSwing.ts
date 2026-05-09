@@ -36,6 +36,22 @@ function extractPhaseSource(phases: DetectedPhase[] | undefined): string {
   return 'mixed';
 }
 
+function calcFpsEstimate(frames: PoseFrame[]): number | null {
+  if (frames.length < 2) return null;
+  const sample = frames.slice(0, 20);
+  const dts: number[] = [];
+  for (let i = 1; i < sample.length; i++) {
+    dts.push(sample[i].timestampMs - sample[i - 1].timestampMs);
+  }
+  if (dts.length === 0) return null;
+  dts.sort((a, b) => a - b);
+  const mid = Math.floor(dts.length / 2);
+  const medianDt =
+    dts.length % 2 === 0 ? (dts[mid - 1] + dts[mid]) / 2 : dts[mid];
+  if (medianDt === 0) return null;
+  return Math.round((1000 / medianDt) * 10) / 10;
+}
+
 export async function persistSwing(
   frames: PoseFrame[],
   analysis: AnalysisResult,
@@ -100,6 +116,7 @@ export async function persistSwing(
       age_tier: ageTier,
       grip_native: nativeGrip ?? null,
       grip_cloud: cloudGrip ?? null,
+      fps_estimate: calcFpsEstimate(frames),
     },
   };
 
