@@ -83,6 +83,21 @@ export default function RecordTab() {
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
   const skipInterval = 1;
 
+  const loggedDeviceIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!format || !device || loggedDeviceIdRef.current === device.id) return;
+    loggedDeviceIdRef.current = device.id;
+    console.log('[HoneySwing] resolved format', {
+      deviceId: device.id,
+      deviceName: device.name,
+      maxFps: format.maxFps,
+      minFps: format.minFps,
+      videoWidth: format.videoWidth,
+      videoHeight: format.videoHeight,
+      targetFps,
+    });
+  }, [format, device, targetFps]);
+
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
   const frameSkipCounter = useSharedValue(0);
