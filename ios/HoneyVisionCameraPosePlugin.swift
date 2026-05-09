@@ -14,18 +14,6 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
   private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private static var frameCount: Int = 0
 
-  // MARK: - LiveStream Async Result Buffer
-  // Per-timestamp dictionary populated by the PoseLandmarkerLiveStreamDelegate callback.
-  // Frame processor calls detectAsync, then waits briefly for the matching timestamp.
-  private let resultsQueue = DispatchQueue(label: "honeyswing.posedetect.results")
-  private var pendingResults: [Int: PoseLandmarkerResult] = [:]
-  private var pendingSemaphores: [Int: DispatchSemaphore] = [:]
-  // Wait long enough for full-model inference (~12-20 ms on iPhone) to land before
-  // giving up. Anything shorter than ~25 ms causes most frames to time out.
-  private static let liveStreamWaitMs: Int = 25
-  // Stale-result GC: drop buffered results older than this when a new one arrives.
-  private static let staleResultThresholdMs: Int = 1000
-
   private static func convertToBGRA(_ pixelBuffer: CVPixelBuffer, orientation: UIImage.Orientation) -> CVPixelBuffer? {
     let exif: Int32 = {
       switch orientation {
@@ -123,11 +111,10 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     do {
       let opts = PoseLandmarkerOptions()
       opts.baseOptions.modelAssetPath = modelPath
-      opts.runningMode = .liveStream
-      opts.poseLandmarkerLiveStreamDelegate = self
+      opts.runningMode = .video
       opts.numPoses = 1
       poseLandmarker = try PoseLandmarker(options: opts)
-      print("[HoneySwing] MediaPipe PoseLandmarker ready in liveStream mode (\(modelPath))")
+      print("[HoneySwing] MediaPipe PoseLandmarker ready (\(modelPath))")
     } catch {
       initError = "init_failed: \(error.localizedDescription)"
       print("[HoneySwing] PoseLandmarker init failed: \(error)")
@@ -161,16 +148,10 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     do {
       let mpImage = try MPImage(pixelBuffer: bgraBuffer, orientation: .up)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
+      let result = try poseLandmarker.detect(videoFrame: mpImage, timestampInMilliseconds: timestampMs)
 
-      // Stash for grip ring buffer regardless of pose result outcome.
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
-
-      try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
-
-      guard let result = waitForResult(timestampMs: timestampMs, timeoutMs: Self.liveStreamWaitMs) else {
-        return [["_diagnostic": "result_not_ready"]]
-      }
 
       guard let poseLandmarks = result.landmarks.first else { return [] }
 
@@ -195,35 +176,6 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     } catch {
       return [["_diagnostic": "detect_error: \(error.localizedDescription)"]]
     }
-  }
-
-  // MARK: - LiveStream Wait Helper
-
-  /// Blocks the calling thread up to `timeoutMs` waiting for the delegate to deliver
-  /// the result for `timestampMs`. Returns nil on timeout or if the delegate reported nil.
-  ///
-  /// Race-free pattern: we hold `resultsQueue` while checking-or-registering, so either
-  /// the delegate's enqueued write has already landed (and we return immediately) or our
-  /// semaphore is registered before the delegate runs (and `signal()` is guaranteed).
-  private func waitForResult(timestampMs: Int, timeoutMs: Int) -> PoseLandmarkerResult? {
-    let semaphore = DispatchSemaphore(value: 0)
-    var alreadyAvailable = false
-    resultsQueue.sync {
-      if pendingResults[timestampMs] != nil {
-        alreadyAvailable = true
-      } else {
-        pendingSemaphores[timestampMs] = semaphore
-      }
-    }
-    if !alreadyAvailable {
-      _ = semaphore.wait(timeout: .now() + .milliseconds(timeoutMs))
-    }
-    var result: PoseLandmarkerResult?
-    resultsQueue.sync {
-      result = pendingResults.removeValue(forKey: timestampMs)
-      pendingSemaphores.removeValue(forKey: timestampMs)
-    }
-    return result
   }
 
   // MARK: - Grip Ring Buffer Methods (Step 1)
@@ -395,35 +347,5 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin {
     }
     gripBufferWriteIndex = 0
     print("[GripBuffer] Released all buffers")
-  }
-}
-
-// MARK: - PoseLandmarkerLiveStreamDelegate
-
-extension HoneyVisionCameraPosePlugin: PoseLandmarkerLiveStreamDelegate {
-  public func poseLandmarker(
-    _ poseLandmarker: PoseLandmarker,
-    didFinishDetection result: PoseLandmarkerResult?,
-    timestampInMilliseconds: Int,
-    error: Error?
-  ) {
-    if let error = error {
-      print("[HoneySwing] liveStream error at ts=\(timestampInMilliseconds): \(error.localizedDescription)")
-    }
-    resultsQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      // Drop entries older than the stale threshold so the dictionary cannot grow
-      // unbounded if a waiter ever times out without consuming its result.
-      let cutoff = timestampInMilliseconds - Self.staleResultThresholdMs
-      self.pendingResults = self.pendingResults.filter { $0.key >= cutoff }
-
-      if let result = result {
-        self.pendingResults[timestampInMilliseconds] = result
-      }
-      if let semaphore = self.pendingSemaphores[timestampInMilliseconds] {
-        semaphore.signal()
-      }
-    }
   }
 }
