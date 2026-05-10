@@ -11,7 +11,7 @@ import os
 public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLiveStreamDelegate {
   private var poseLandmarker: PoseLandmarker?
   private var initError: String?
-  private let resultLock = OSAllocatedUnfairLock<PoseLandmarkerResult?>(initialState: nil)
+  private static let resultLock = OSAllocatedUnfairLock<PoseLandmarkerResult?>(initialState: nil)
 
   private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private static var frameCount: Int = 0
@@ -156,7 +156,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
 
-      let consumed = resultLock.withLock { (r: inout PoseLandmarkerResult?) -> PoseLandmarkerResult? in
+      let consumed = Self.resultLock.withLock { (r: inout PoseLandmarkerResult?) -> PoseLandmarkerResult? in
         let out = r; r = nil; return out
       }
       guard let poseLandmarks = consumed?.landmarks.first else { return [] }
@@ -193,7 +193,11 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     error: (any Error)?
   ) {
     guard let result = result, error == nil else { return }
-    resultLock.withLock { $0 = result }
+    Self.resultLock.withLock { $0 = result }
+  }
+
+  @objc public class func resetPoseState() {
+    resultLock.withLock { $0 = nil }
   }
 
   // MARK: - Grip Ring Buffer Methods (Step 1)

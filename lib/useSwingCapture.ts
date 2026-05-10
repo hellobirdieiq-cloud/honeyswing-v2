@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
@@ -265,6 +266,7 @@ export function useSwingCapture({
   }
 
   function beginRecording() {
+    NativeModules.HoneyGripBridge?.resetPoseState?.();
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
     motionFramesRef.current = [];

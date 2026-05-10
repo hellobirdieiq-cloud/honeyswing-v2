@@ -37,4 +37,8 @@ RCT_EXPORT_METHOD(releaseGripBuffer:(RCTPromiseResolveBlock)resolve
   resolve(@YES);
 }
 
+RCT_EXPORT_METHOD(resetPoseState) {
+  [HoneyVisionCameraPosePlugin resetPoseState];
+}
+
 @end
