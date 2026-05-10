@@ -9,8 +9,8 @@ import os
 
 @objc(HoneyVisionCameraPosePlugin)
 public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLiveStreamDelegate {
-  private static let kStaleResultThresholdMs: Int = 500
-  // 500ms covers two full inference cycles at worst-case 4fps.
+  private static let kStaleResultThresholdMs: Int = 1000
+  // 1000ms covers warmup latency and steady-state inference gaps.
 
   private var poseLandmarker: PoseLandmarker?
   private var initError: String?
@@ -159,6 +159,13 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
 
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
+
+      if previousTimestampMs > 0 && (timestampMs - previousTimestampMs) > 2000 {
+        previousTimestampMs = 0
+        resultLock.withLock { dict in
+          dict.removeAll()
+        }
+      }
 
       let previousResult: PoseLandmarkerResult? = resultLock.withLock { dict in
         dict[previousTimestampMs]
