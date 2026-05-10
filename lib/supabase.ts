@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { getClerkInstance } from '@clerk/expo';
+import type { Database } from './database.types';
 
 export const SUPABASE_URL = 'https://xutbbirehugrrbkauhnl.supabase.co';
 export const SUPABASE_ANON_KEY =
@@ -24,7 +25,7 @@ const clerkFetch: typeof fetch = async (input, init) => {
   return fetch(input, { ...init, headers });
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: false,
     autoRefreshToken: false,

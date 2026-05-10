@@ -1,5 +1,6 @@
 import { supabase, getUserId } from './supabase';
 import { incrementLocalSwingCount } from './swingLimit';
+import type { Database } from './database.types';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
@@ -78,7 +79,7 @@ export async function persistSwing(
   const isLeftHanded = await getIsLeftHanded();
   const ageTier = await getAgeTier();
 
-  const row: Record<string, unknown> = {
+  const row: Database['public']['Tables']['swings']['Insert'] = {
     ...(profileId ? { user_id: profileId } : {}),
     motion_frames: frames,
     frame_count: frames.length,
@@ -86,9 +87,9 @@ export async function persistSwing(
     score: analysis.score,
     honey_boom: analysis.honeyBoom,
     camera_angle_valid: analysis.cameraAngleValid,
-    angles: analysis.angles ?? null,
-    tempo: analysis.tempo ?? null,
-    phases: analysis.phases ?? null,
+    angles: JSON.parse(JSON.stringify(analysis.angles ?? null)),
+    tempo: JSON.parse(JSON.stringify(analysis.tempo ?? null)),
+    phases: JSON.parse(JSON.stringify(analysis.phases ?? null)),
     trail_points: analysis.trail ?? null,
     metric_confidences: analysis.metricConfidences ?? null,
     category_scores: analysis.aggregate
@@ -103,7 +104,7 @@ export async function persistSwing(
     app_version: APP_VERSION,
     coach_name: coachCode ?? null,
     analysis_version: 'v2',  // SCR-0b-1
-    swing_debug: {
+    swing_debug: JSON.parse(JSON.stringify({
       classification_reason: classification?.reason ?? null,
       handedness: isLeftHanded ? 'left' : 'right',
       ...analysis.swing_debug,
@@ -117,7 +118,7 @@ export async function persistSwing(
       grip_native: nativeGrip ?? null,
       grip_cloud: cloudGrip ?? null,
       fps_estimate: calcFpsEstimate(frames),
-    },
+    })),
   };
 
   const { data, error } = await supabase.from('swings').insert(row).select('id').single();
