@@ -9,13 +9,9 @@ import os
 
 @objc(HoneyVisionCameraPosePlugin)
 public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLiveStreamDelegate {
-  private static let kStaleResultThresholdMs: Int = 1000
-  // 1000ms covers warmup latency and steady-state inference gaps.
-
   private var poseLandmarker: PoseLandmarker?
   private var initError: String?
-  private let resultLock = OSAllocatedUnfairLock<[Int: PoseLandmarkerResult]>(initialState: [:])
-  private var previousTimestampMs: Int = 0
+  private let resultLock = OSAllocatedUnfairLock<PoseLandmarkerResult?>(initialState: nil)
 
   private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private static var frameCount: Int = 0
@@ -160,19 +156,8 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
 
-      if previousTimestampMs > 0 && (timestampMs - previousTimestampMs) > 2000 {
-        previousTimestampMs = 0
-        resultLock.withLock { dict in
-          dict.removeAll()
-        }
-      }
-
-      let previousResult: PoseLandmarkerResult? = resultLock.withLock { dict in
-        dict[previousTimestampMs]
-      }
-      previousTimestampMs = timestampMs
-
-      guard let poseLandmarks = previousResult?.landmarks.first else { return [] }
+      let latestResult = resultLock.withLock { $0 }
+      guard let poseLandmarks = latestResult?.landmarks.first else { return [] }
 
       let landmarks: [[String: Any]] = Self.jointMapping.compactMap { mapping in
         guard mapping.mpIndex < poseLandmarks.count else { return nil }
@@ -206,11 +191,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     error: (any Error)?
   ) {
     guard let result = result, error == nil else { return }
-    resultLock.withLock { dict in
-      dict[timestampInMilliseconds] = result
-      let cutoff = timestampInMilliseconds - Self.kStaleResultThresholdMs
-      dict = dict.filter { $0.key >= cutoff }
-    }
+    resultLock.withLock { $0 = result }
   }
 
   // MARK: - Grip Ring Buffer Methods (Step 1)
