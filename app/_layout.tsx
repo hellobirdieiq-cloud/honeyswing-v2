@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { ClerkProvider, useUser } from '@clerk/expo';
+import { ClerkProvider, useUser, getClerkInstance } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
@@ -56,7 +56,15 @@ export default function RootLayout() {
 
       // Redirect after splash hides so the navigator is fully mounted
       if (initialUrl) {
-        if (tryNavigate()) router.replace(onboarded ? '/(tabs)/record' as Href : '/onboarding' as Href);
+        if (tryNavigate()) {
+          const clerk = getClerkInstance();
+          const target: Href = onboarded
+            ? '/(tabs)/record' as Href
+            : clerk.loaded && !clerk.user
+              ? '/signin' as Href
+              : '/onboarding' as Href;
+          router.replace(target);
+        }
       } else if (session && !onboarded) {
         router.replace('/onboarding' as Href);
       }
@@ -116,6 +124,7 @@ export default function RootLayout() {
 
 function AuthListener() {
   const { user, isLoaded, isSignedIn } = useUser();
+  const router = useRouter();
   const prevSignedInRef = useRef<boolean | null>(null);
 
   useEffect(() => {
@@ -149,6 +158,8 @@ function AuthListener() {
           await commitPendingReferral();
           await syncAuthState(user!.id);
           await migrateAnonSwings(user!.id);
+          const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
+          if (!onboarded) router.replace('/onboarding' as Href);
         } catch (err) {
           console.error('[HoneySwing] AuthListener SIGNED_IN error:', err);
         }
