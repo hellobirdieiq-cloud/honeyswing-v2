@@ -422,19 +422,21 @@ export default function RecordTab() {
           </View>
         )}
         {/* TEMP debug button — read AsyncStorage capture-stats slots */}
-        <TouchableOpacity
-          onPress={handleDebugStats}
-          style={{
-            marginTop: 16,
-            paddingVertical: 6,
-            paddingHorizontal: 12,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            borderRadius: 12,
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
-        </TouchableOpacity>
+        {__DEV__ && (
+          <TouchableOpacity
+            onPress={handleDebugStats}
+            style={{
+              marginTop: 16,
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              borderRadius: 12,
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </GestureHandlerRootView>
   );
