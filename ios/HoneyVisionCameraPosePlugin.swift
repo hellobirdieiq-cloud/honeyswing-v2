@@ -156,8 +156,10 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
       Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
 
-      let latestResult = resultLock.withLock { $0 }
-      guard let poseLandmarks = latestResult?.landmarks.first else { return [] }
+      let consumed = resultLock.withLock { (r: inout PoseLandmarkerResult?) -> PoseLandmarkerResult? in
+        let out = r; r = nil; return out
+      }
+      guard let poseLandmarks = consumed?.landmarks.first else { return [] }
 
       let landmarks: [[String: Any]] = Self.jointMapping.compactMap { mapping in
         guard mapping.mpIndex < poseLandmarks.count else { return nil }
