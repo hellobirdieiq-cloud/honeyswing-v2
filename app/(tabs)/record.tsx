@@ -187,7 +187,7 @@ export default function RecordTab() {
       }
       fpsFrameCount.value += 1;
       if (fpsFrameCount.value >= 30) {
-        const elapsedSec = (frame.timestamp - fpsWindowStartTs.value) / 1e9;
+        const elapsedSec = (frame.timestamp - fpsWindowStartTs.value) / 1e3;
         const actualFps = elapsedSec > 0 ? fpsFrameCount.value / elapsedSec : 0;
         console.log('[HoneySwing] actualFps', actualFps.toFixed(1), 'over', fpsFrameCount.value, 'frames');
         updateActualFpsJSRef.current(actualFps);
