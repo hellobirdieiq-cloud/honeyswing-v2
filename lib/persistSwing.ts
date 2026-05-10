@@ -16,7 +16,7 @@ import { getGripClassification } from './gripStore';
 import { emit as emitEvent } from './eventBus';
 import type { CaptureFrameStats } from './usePoseFrameHandler';
 
-const APP_VERSION = '1.9.6';
+const APP_VERSION = '1.9.8';
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {
