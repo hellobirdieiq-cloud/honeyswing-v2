@@ -61,6 +61,8 @@ export async function persistSwing(
   cameraGuidance?: CameraGuidanceSnapshot,
   nativeGrip?: Record<string, unknown>[] | null,
   captureFrameStats?: CaptureFrameStats,
+  actualFps?: number,
+  requestedFps?: number | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -120,6 +122,8 @@ export async function persistSwing(
       grip_native: nativeGrip ?? null,
       grip_cloud: cloudGrip ?? null,
       fps_estimate: calcFpsEstimate(frames),
+      fps_actual: actualFps ?? null,
+      fps_requested: requestedFps ?? null,
       capture_frame_stats: captureFrameStats ?? null,
     }) as unknown as Json,
   };

@@ -49,6 +49,8 @@ interface UseSwingCaptureOptions {
   hasDevice: boolean;
   cameraReady: boolean;
   onBeginRecording: () => void;
+  actualFpsRef?: React.MutableRefObject<number>;
+  targetFps?: number;
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export function useSwingCapture({
   hasDevice,
   cameraReady,
   onBeginRecording,
+  actualFpsRef,
+  targetFps,
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -237,10 +241,11 @@ export function useSwingCapture({
 
     const classification = classifyCapture(frames);
     const captureFrameStats = getCaptureFrameStats();
+    const actualFps = actualFpsRef?.current ?? 0;
     swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
       camera_angle_at_start: guidanceSnapshotRef.current.separation,
       camera_guidance_color: guidanceSnapshotRef.current.color,
-    }, nativeGripResult, captureFrameStats).then((swingId) => {
+    }, nativeGripResult, captureFrameStats, actualFps, targetFps ?? null).then((swingId) => {
       if (swingId) {
         console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
       } else {
