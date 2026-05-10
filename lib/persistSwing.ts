@@ -1,6 +1,6 @@
 import { supabase, getUserId } from './supabase';
 import { incrementLocalSwingCount } from './swingLimit';
-import type { Database } from './database.types';
+import type { Database, Json } from './database.types';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
@@ -89,9 +89,9 @@ export async function persistSwing(
     score: analysis.score,
     honey_boom: analysis.honeyBoom,
     camera_angle_valid: analysis.cameraAngleValid,
-    angles: JSON.parse(JSON.stringify(analysis.angles ?? null)),
-    tempo: JSON.parse(JSON.stringify(analysis.tempo ?? null)),
-    phases: JSON.parse(JSON.stringify(analysis.phases ?? null)),
+    angles: (analysis.angles ?? null) as unknown as Json,
+    tempo: (analysis.tempo ?? null) as unknown as Json,
+    phases: (analysis.phases ?? null) as unknown as Json,
     trail_points: analysis.trail ?? null,
     metric_confidences: analysis.metricConfidences ?? null,
     category_scores: analysis.aggregate
@@ -106,7 +106,7 @@ export async function persistSwing(
     app_version: APP_VERSION,
     coach_name: coachCode ?? null,
     analysis_version: 'v2',  // SCR-0b-1
-    swing_debug: JSON.parse(JSON.stringify({
+    swing_debug: ({
       classification_reason: classification?.reason ?? null,
       handedness: isLeftHanded ? 'left' : 'right',
       ...analysis.swing_debug,
@@ -121,7 +121,7 @@ export async function persistSwing(
       grip_cloud: cloudGrip ?? null,
       fps_estimate: calcFpsEstimate(frames),
       capture_frame_stats: captureFrameStats ?? null,
-    })),
+    }) as unknown as Json,
   };
 
   const { data, error } = await supabase.from('swings').insert(row).select('id').single();

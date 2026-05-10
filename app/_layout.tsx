@@ -128,6 +128,13 @@ function AuthListener() {
     if (isSignedIn && !user) return;
     const prev = prevSignedInRef.current;
 
+    if (isLoaded && isSignedIn && prevSignedInRef.current === null) {
+      (async () => {
+        const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
+        if (!onboarded) router.replace('/onboarding' as Href);
+      })();
+    }
+
     if (prev === null) {
       if (!isSignedIn) {
         invalidateSwingLimitCache();
