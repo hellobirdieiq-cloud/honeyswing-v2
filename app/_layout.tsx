@@ -5,7 +5,6 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ClerkProvider, useUser, getClerkInstance } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
 import { ensureProfile } from '../lib/ensureProfile';
 import { handleReferralUrl, commitPendingReferral } from '../lib/referralAttribution';
 import { tryNavigate, resetNavigationLock } from '../lib/navigationLock';
@@ -48,8 +47,7 @@ export default function RootLayout() {
       }
       await commitPendingReferral();
 
-      // Determine auth + onboarding state
-      const { data: { session } } = await supabase.auth.getSession();
+      // Determine onboarding state
       const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
 
       SplashScreen.hideAsync();
@@ -65,8 +63,6 @@ export default function RootLayout() {
               : '/onboarding' as Href;
           router.replace(target);
         }
-      } else if (session && !onboarded) {
-        router.replace('/onboarding' as Href);
       }
     }
 
