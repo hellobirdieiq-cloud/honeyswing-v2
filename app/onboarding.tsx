@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, getUserId } from '../lib/supabase';
+import type { Database } from '../lib/database.types';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
@@ -47,18 +48,18 @@ export default function OnboardingScreen() {
     setSaving(true);
     try {
       const userId = await getUserId();
+      if (!userId) {
+        Alert.alert('Not signed in', 'Please sign in to continue.');
+        return;
+      }
       const coachName = coach === 'No coach' ? null : coach;
 
-      const row: Record<string, unknown> = {
+      const row: Database['public']['Tables']['profiles']['Insert'] = {
+        id: userId,
         display_name: trimmedName,
         coach_name: coachName,
         is_left_handed: isLeftHanded,
       };
-
-      // If authenticated, set profile id = auth uid so it's linked
-      if (userId) {
-        row.id = userId;
-      }
 
       const { data, error } = await supabase
         .from('profiles')
