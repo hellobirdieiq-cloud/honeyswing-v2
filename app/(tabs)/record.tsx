@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -258,6 +259,22 @@ export default function RecordTab() {
 
   // ─── Derived state ──────────────────────────────────────────────────────────
 
+  // TEMP debug: read AsyncStorage capture-stats slots populated by useSwingCapture.
+  async function handleDebugStats() {
+    try {
+      const [failed, weak] = await Promise.all([
+        AsyncStorage.getItem('lastFailedCaptureStats'),
+        AsyncStorage.getItem('lastWeakCaptureStats'),
+      ]);
+      Alert.alert(
+        'Capture Stats',
+        `lastFailedCaptureStats:\n${failed ?? '(none)'}\n\nlastWeakCaptureStats:\n${weak ?? '(none)'}`
+      );
+    } catch (err) {
+      Alert.alert('Capture Stats', 'Read error: ' + String(err));
+    }
+  }
+
   const showCamera = hasPermission === true && device != null;
   const isCountdown = capturePhase === 'countdown';
   const isCapturing = capturePhase === 'capturing';
@@ -404,6 +421,20 @@ export default function RecordTab() {
             </TouchableOpacity>
           </View>
         )}
+        {/* TEMP debug button — read AsyncStorage capture-stats slots */}
+        <TouchableOpacity
+          onPress={handleDebugStats}
+          style={{
+            marginTop: 16,
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            borderRadius: 12,
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
+        </TouchableOpacity>
       </View>
     </GestureHandlerRootView>
   );

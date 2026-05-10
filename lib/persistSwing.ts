@@ -14,6 +14,7 @@ import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
 import { getGripClassification } from './gripStore';
 import { emit as emitEvent } from './eventBus';
+import type { CaptureFrameStats } from './usePoseFrameHandler';
 
 const APP_VERSION = '1.9.6';
 
@@ -59,6 +60,7 @@ export async function persistSwing(
   classification: CaptureClassification | null,
   cameraGuidance?: CameraGuidanceSnapshot,
   nativeGrip?: Record<string, unknown>[] | null,
+  captureFrameStats?: CaptureFrameStats,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -118,6 +120,7 @@ export async function persistSwing(
       grip_native: nativeGrip ?? null,
       grip_cloud: cloudGrip ?? null,
       fps_estimate: calcFpsEstimate(frames),
+      capture_frame_stats: captureFrameStats ?? null,
     })),
   };
 

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
@@ -20,6 +21,7 @@ import { getIsLeftHanded } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
+import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -153,6 +155,15 @@ export function useSwingCapture({
     const frames = [...motionFramesRef.current];
 
     if (frames.length < MIN_FRAMES_FOR_ANALYSIS) {
+      const stats = getCaptureFrameStats();
+      AsyncStorage.setItem(
+        'lastFailedCaptureStats',
+        JSON.stringify({
+          totalCallbacks: stats.total_callbacks,
+          nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
+          timestamp: Date.now(),
+        })
+      ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
       clearCurrentSwingMotion();
       clearCurrentSwingAnalysis();
       updateCapturePhase('error');
@@ -162,6 +173,15 @@ export function useSwingCapture({
 
     const goodFrameCount = frames.filter(isGoodFrame).length;
     if (goodFrameCount < MIN_GOOD_FRAMES) {
+      const stats = getCaptureFrameStats();
+      AsyncStorage.setItem(
+        'lastWeakCaptureStats',
+        JSON.stringify({
+          totalCallbacks: stats.total_callbacks,
+          nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
+          timestamp: Date.now(),
+        })
+      ).catch((err) => console.error('[HoneySwing] lastWeakCaptureStats write:', err));
       clearCurrentSwingMotion();
       clearCurrentSwingAnalysis();
       updateCapturePhase('weak');
@@ -215,10 +235,11 @@ export function useSwingCapture({
     updateCapturePhase('complete');
 
     const classification = classifyCapture(frames);
+    const captureFrameStats = getCaptureFrameStats();
     swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
       camera_angle_at_start: guidanceSnapshotRef.current.separation,
       camera_guidance_color: guidanceSnapshotRef.current.color,
-    }, nativeGripResult).then((swingId) => {
+    }, nativeGripResult, captureFrameStats).then((swingId) => {
       if (swingId) {
         console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
       } else {
@@ -251,6 +272,7 @@ export function useSwingCapture({
     videoUriRef.current = 'pending';
     navigatedRef.current = false;
     isFinalizingRef.current = false;
+    resetCaptureFrameStats();
     onBeginRecording();
 
     guidanceSnapshotRef.current = {

@@ -15,6 +15,28 @@ import {
 
 const STALE_LANDMARK_MS = 400;
 
+// ─── Capture Frame Stats ────────────────────────────────────────────────────
+
+export interface CaptureFrameStats {
+  total_callbacks: number;
+  nonzero_landmark_frames: number;
+}
+
+let totalCallbacks = 0;
+let nonzeroLandmarkFrames = 0;
+
+export function resetCaptureFrameStats(): void {
+  totalCallbacks = 0;
+  nonzeroLandmarkFrames = 0;
+}
+
+export function getCaptureFrameStats(): CaptureFrameStats {
+  return {
+    total_callbacks: totalCallbacks,
+    nonzero_landmark_frames: nonzeroLandmarkFrames,
+  };
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface UsePoseFrameHandlerOptions {
@@ -64,6 +86,7 @@ export function usePoseFrameHandler({
         aspect: number
       ) => {
         frameCountRef.current += 1;
+        totalCallbacks += 1;
 
         // Surface native-side diagnostics
         const firstLandmark = Array.isArray(landmarks) && landmarks.length === 1 ? landmarks[0] as Record<string, unknown> : null;
@@ -86,6 +109,7 @@ export function usePoseFrameHandler({
 
         // Skeleton update + dropout fallback
         if (Array.isArray(landmarks) && landmarks.length > 0) {
+          nonzeroLandmarkFrames += 1;
           lastGoodLandmarksRef.current = landmarks as Landmark[];
           lastGoodTimestampRef.current = Date.now();
           updateLandmarks(landmarks as Landmark[]);
