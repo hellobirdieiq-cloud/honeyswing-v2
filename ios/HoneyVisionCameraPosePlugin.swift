@@ -177,7 +177,10 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     Self.frameCount += 1
 
     do {
-      let mpImage = try MPImage(pixelBuffer: pixelBuffer, orientation: .right)
+      guard let rotatedBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
+        return [["_diagnostic": "bgra_conversion_failed"]]
+      }
+      let mpImage = try MPImage(pixelBuffer: rotatedBuffer, orientation: .up)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
       try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
 
