@@ -22,12 +22,12 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
       switch orientation {
       case .up:            return 0
       case .down:          return 2
-      case .left:          return 1
-      case .right:         return 3
+      case .left:          return 3
+      case .right:         return 1
       case .upMirrored:    return 0
       case .downMirrored:  return 2
-      case .leftMirrored:  return 1
-      case .rightMirrored: return 3
+      case .leftMirrored:  return 3
+      case .rightMirrored: return 1
       @unknown default:    return 0
       }
     }()
