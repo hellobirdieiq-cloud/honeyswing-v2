@@ -146,7 +146,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     Self.frameCount += 1
 
     do {
-      let mpImage = try MPImage(pixelBuffer: pixelBuffer, orientation: .left)
+      let mpImage = try MPImage(pixelBuffer: pixelBuffer, orientation: .right)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
       try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
 
