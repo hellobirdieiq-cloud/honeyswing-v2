@@ -334,6 +334,7 @@ export default function RecordTab() {
             animatedProps={animatedCameraProps}
             format={format}
             fps={targetFps}
+            pixelFormat="rgb"
             photo={false}
             video={true}
             audio={false}

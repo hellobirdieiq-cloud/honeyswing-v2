@@ -144,17 +144,17 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     }
     #endif
     Self.frameCount += 1
-    guard let bgraBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
-      return [["_diagnostic": "bgra_conversion_failed"]]
-    }
 
     do {
-      let mpImage = try MPImage(pixelBuffer: bgraBuffer, orientation: .up)
+      let mpImage = try MPImage(pixelBuffer: pixelBuffer, orientation: frame.orientation)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
       try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
 
+      // Grip path retains the pre-rotated BGRA buffer; cropForGrip is coupled to that orientation.
       let pts = CMSampleBufferGetPresentationTimeStamp(frame.buffer)
-      Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
+      if let bgraBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) {
+        Self.stashGripFrame(pixelBuffer: bgraBuffer, timestamp: CMTimeGetSeconds(pts))
+      }
 
       let consumed = Self.resultLock.withLock { (r: inout PoseLandmarkerResult?) -> PoseLandmarkerResult? in
         let out = r; r = nil; return out
