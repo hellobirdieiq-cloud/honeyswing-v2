@@ -80,50 +80,6 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     return dstPixelBuffer
   }
 
-  private static func scalePixelBuffer(_ pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
-    let inputWidth  = CVPixelBufferGetWidth(pixelBuffer)
-    let inputHeight = CVPixelBufferGetHeight(pixelBuffer)
-    let outWidth    = inputWidth  / 2
-    let outHeight   = inputHeight / 2
-
-    let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary] as CFDictionary
-    var outBuffer: CVPixelBuffer?
-    guard CVPixelBufferCreate(
-      kCFAllocatorDefault,
-      outWidth, outHeight,
-      kCVPixelFormatType_32BGRA,
-      attrs,
-      &outBuffer
-    ) == kCVReturnSuccess, let dstPixelBuffer = outBuffer else { return nil }
-
-    CVPixelBufferLockBaseAddress(pixelBuffer,    .readOnly)
-    CVPixelBufferLockBaseAddress(dstPixelBuffer, [])
-    defer {
-      CVPixelBufferUnlockBaseAddress(pixelBuffer,    .readOnly)
-      CVPixelBufferUnlockBaseAddress(dstPixelBuffer, [])
-    }
-
-    guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer),
-          let dstBase = CVPixelBufferGetBaseAddress(dstPixelBuffer) else { return nil }
-
-    var srcBuf = vImage_Buffer(
-      data:     srcBase,
-      height:   vImagePixelCount(inputHeight),
-      width:    vImagePixelCount(inputWidth),
-      rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer)
-    )
-    var dstBuf = vImage_Buffer(
-      data:     dstBase,
-      height:   vImagePixelCount(outHeight),
-      width:    vImagePixelCount(outWidth),
-      rowBytes: CVPixelBufferGetBytesPerRow(dstPixelBuffer)
-    )
-
-    let err = vImageScale_ARGB8888(&srcBuf, &dstBuf, nil, vImage_Flags(kvImageNoFlags))
-    guard err == kvImageNoError else { return nil }
-    return dstPixelBuffer
-  }
-
   /// MediaPipe BlazePose GHUM — all 33 landmarks mapped to JS joint names.
   private static let jointMapping: [(mpIndex: Int, id: Int, name: String)] = [
     ( 0,  0, "nose"),
@@ -221,8 +177,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     Self.frameCount += 1
 
     do {
-      let scaledBuffer = Self.scalePixelBuffer(pixelBuffer) ?? pixelBuffer
-      guard let rotatedBuffer = Self.convertToBGRA(scaledBuffer, orientation: frame.orientation) else {
+      guard let rotatedBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
         return [["_diagnostic": "bgra_conversion_failed"]]
       }
       let mpImage = try MPImage(pixelBuffer: rotatedBuffer, orientation: .up)
