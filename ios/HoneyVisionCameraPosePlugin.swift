@@ -6,6 +6,7 @@ import CoreML
 import Vision
 import ImageIO
 import os
+import Accelerate
 
 @objc(HoneyVisionCameraPosePlugin)
 public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLiveStreamDelegate {
@@ -13,40 +14,70 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
   private var initError: String?
   private static let resultLock = OSAllocatedUnfairLock<PoseLandmarkerResult?>(initialState: nil)
 
-  private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
   private static var frameCount: Int = 0
 
-  private static func convertToBGRA(_ pixelBuffer: CVPixelBuffer, orientation: UIImage.Orientation) -> CVPixelBuffer? {
-    let exif: Int32 = {
+  private static func convertToBGRA(_ pixelBuffer: CVPixelBuffer,
+                                     orientation: UIImage.Orientation) -> CVPixelBuffer? {
+    let rotationConstant: UInt8 = {
       switch orientation {
-      case .up:            return 1
-      case .down:          return 3
-      case .left:          return 6
-      case .right:         return 8
-      case .upMirrored:    return 2
-      case .downMirrored:  return 4
-      case .leftMirrored:  return 5
-      case .rightMirrored: return 7
-      @unknown default:    return 1
+      case .up:            return 0
+      case .down:          return 2
+      case .left:          return 1
+      case .right:         return 3
+      case .upMirrored:    return 0
+      case .downMirrored:  return 2
+      case .leftMirrored:  return 1
+      case .rightMirrored: return 3
+      @unknown default:    return 0
       }
     }()
 
-    let ciImage = CIImage(cvPixelBuffer: pixelBuffer).oriented(forExifOrientation: exif)
-    let extent = ciImage.extent
+    let inputWidth  = CVPixelBufferGetWidth(pixelBuffer)
+    let inputHeight = CVPixelBufferGetHeight(pixelBuffer)
+    let is90or270   = rotationConstant == 1 || rotationConstant == 3
+    let outWidth    = is90or270 ? inputHeight : inputWidth
+    let outHeight   = is90or270 ? inputWidth  : inputHeight
 
+    let attrs = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary] as CFDictionary
     var outBuffer: CVPixelBuffer?
-    let status = CVPixelBufferCreate(
+    guard CVPixelBufferCreate(
       kCFAllocatorDefault,
-      Int(extent.width),
-      Int(extent.height),
+      outWidth, outHeight,
       kCVPixelFormatType_32BGRA,
-      nil,
+      attrs,
       &outBuffer
-    )
-    guard status == kCVReturnSuccess, let bgraBuffer = outBuffer else { return nil }
+    ) == kCVReturnSuccess, let dstPixelBuffer = outBuffer else { return nil }
 
-    ciContext.render(ciImage, to: bgraBuffer)
-    return bgraBuffer
+    CVPixelBufferLockBaseAddress(pixelBuffer,    .readOnly)
+    CVPixelBufferLockBaseAddress(dstPixelBuffer, [])
+    defer {
+      CVPixelBufferUnlockBaseAddress(pixelBuffer,    .readOnly)
+      CVPixelBufferUnlockBaseAddress(dstPixelBuffer, [])
+    }
+
+    guard let srcBase = CVPixelBufferGetBaseAddress(pixelBuffer),
+          let dstBase = CVPixelBufferGetBaseAddress(dstPixelBuffer) else { return nil }
+
+    var srcBuf = vImage_Buffer(
+      data:     srcBase,
+      height:   vImagePixelCount(inputHeight),
+      width:    vImagePixelCount(inputWidth),
+      rowBytes: CVPixelBufferGetBytesPerRow(pixelBuffer)
+    )
+    var dstBuf = vImage_Buffer(
+      data:     dstBase,
+      height:   vImagePixelCount(outHeight),
+      width:    vImagePixelCount(outWidth),
+      rowBytes: CVPixelBufferGetBytesPerRow(dstPixelBuffer)
+    )
+
+    var backColor: [UInt8] = [0, 0, 0, 255]
+    let err = vImageRotate90_ARGB8888(
+      &srcBuf, &dstBuf, rotationConstant, &backColor,
+      vImage_Flags(kvImageNoFlags)
+    )
+    guard err == kvImageNoError else { return nil }
+    return dstPixelBuffer
   }
 
   /// MediaPipe BlazePose GHUM — all 33 landmarks mapped to JS joint names.
