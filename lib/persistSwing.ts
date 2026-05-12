@@ -6,6 +6,7 @@ import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
+import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
 import type {
   SwingRecord,
   MetricSnapshot,
@@ -218,6 +219,7 @@ export async function persistSwing(
         }
       : baseRecord;
     upsertSwingRecord(clinicRecord);
+    updateBandsForSwing(clinicRecord);
   }
   if (swingId) {
     emitEvent('swing.recorded', {
