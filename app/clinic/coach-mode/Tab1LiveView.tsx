@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Dimensions,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   PanResponder,
   Pressable,
   ScrollView,
@@ -35,19 +37,36 @@ import {
   subscribe as subscribeQueue,
 } from '@/lib/clinic/kidQueueStore';
 import { getKidProfile, listKidProfiles } from '@/lib/clinic/kidProfileStore';
+import {
+  fetchMotionFrames,
+  type FetchMotionFramesResult,
+} from '@/lib/clinic/fetchMotionFrames';
 import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { KidProfile } from '@/packages/domain/clinic/KidProfile';
 import { GOLD } from '@/lib/colors';
 import { styles } from '../clinicStyles';
+import LiveViewCard from './LiveViewCard';
+import PhaseSignalCard from './PhaseSignalCard';
 
 const ACTIVE_METRIC: ClinicMetricKey = 'spineAngle';
+const SCREEN_W = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
 const DRAWER_HEIGHT = SCREEN_H * 0.5;
 const DRAWER_HANDLE_PEEK = 32;
 const DRAWER_CLOSED_OFFSET = DRAWER_HEIGHT - DRAWER_HANDLE_PEEK;
 
+const PHASE_INDICES = [0, 1, 2, 3, 4, 5] as const;
+const PHASE_CHIP_LABELS = ['LIVE', 'Start', 'Address', 'Takeaway', 'Top', 'Impact', 'Finish'];
+const TOTAL_CARDS = 7;
+
 function tap(): void {
   Vibration.vibrate(10);
+}
+
+interface MotionCache {
+  swingId: string;
+  result: FetchMotionFramesResult | null;
+  loading: boolean;
 }
 
 export default function Tab1LiveView(): React.ReactElement {
@@ -97,13 +116,12 @@ export default function Tab1LiveView(): React.ReactElement {
   const next = peekNext();
 
   const hasBandData = !!band && band.sampleCount > 0 && band.standardDeviation > 0;
-  const delta = value !== null && value !== undefined && band ? value - band.average : null;
+  const delta =
+    value !== null && value !== undefined && band ? value - band.average : null;
   const barRatio =
     delta !== null && hasBandData
       ? Math.min(1, Math.abs(delta) / (band as NonNullable<typeof band>).standardDeviation)
       : 0;
-  // For spineDrift, smaller is better → negative delta is improving.
-  // Other metrics have no monotonic improving direction defined here; bar stays neutral past 1 SD.
   let deltaVariant: 'positive' | 'negative' | 'neutral' = 'neutral';
   if (hasBandData && delta !== null) {
     if (ACTIVE_METRIC === 'spineDrift') {
@@ -111,6 +129,49 @@ export default function Tab1LiveView(): React.ReactElement {
     }
   }
 
+  // ── Pager state ──
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [cardIndex, setCardIndex] = useState(0);
+  const [motionCache, setMotionCache] = useState<MotionCache | null>(null);
+
+  // Clear cache when the underlying swing changes.
+  useEffect(() => {
+    setMotionCache(null);
+  }, [lastSwing?.id]);
+
+  // Lazy-fetch motion frames the first time the user swipes to a signal card.
+  useEffect(() => {
+    if (cardIndex < 1) return;
+    if (!lastSwing?.id) return;
+    if (motionCache?.swingId === lastSwing.id) return;
+
+    const mounted = { current: true };
+    setMotionCache({ swingId: lastSwing.id, result: null, loading: true });
+
+    fetchMotionFrames(lastSwing.id).then((result) => {
+      if (!mounted.current) return;
+      setMotionCache({ swingId: lastSwing.id, result, loading: false });
+    });
+
+    return () => {
+      mounted.current = false;
+    };
+  }, [cardIndex, lastSwing?.id, motionCache?.swingId]);
+
+  const onMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+      setCardIndex(idx);
+    },
+    [],
+  );
+
+  const scrollToCard = useCallback((idx: number) => {
+    scrollRef.current?.scrollTo({ x: idx * SCREEN_W, animated: true });
+    setCardIndex(idx);
+  }, []);
+
+  // ── NextKid ──
   const [confirmingNext, setConfirmingNext] = useState(false);
   const onNextKidPress = async (): Promise<void> => {
     tap();
@@ -134,8 +195,6 @@ export default function Tab1LiveView(): React.ReactElement {
   };
 
   // ── Bottom drawer ──
-  // drawerOpenRef drives PanResponder logic (closure reads). drawerOpen drives the visible label
-  // (refs don't trigger re-renders, state does — both must be kept in sync inside animateDrawer).
   const translateY = useRef(new Animated.Value(DRAWER_CLOSED_OFFSET)).current;
   const drawerOpenRef = useRef(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -185,83 +244,65 @@ export default function Tab1LiveView(): React.ReactElement {
     return all.filter((k) => k.id !== activeId && !queuedIds.has(k.id));
   }, [queue, session]);
 
+  // ── Derived motion-frame inputs for signal cards ──
+  const motionFrames = motionCache?.result?.frames ?? null;
+  const motionLoading = motionCache?.loading === true;
+  const fallbackHandedness: 'left' | 'right' = kid?.handedness === 'left' ? 'left' : 'right';
+  const handedness: 'left' | 'right' = motionCache?.result?.handedness ?? fallbackHandedness;
+  const msPerFrame = motionCache?.result?.msPerFrame ?? 8.33;
+  const cameraAngle: 'dtl' | 'front' = motionCache?.result?.angleBucket ?? 'dtl';
+  const phaseTags = lastSwing?.phaseTags ?? [];
+
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={{ paddingTop: 32, paddingBottom: SCREEN_H * 0.4 }}>
-        <View style={{ paddingHorizontal: 20 }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '800' }} numberOfLines={1}>
-            {kid ? kid.id : '—'}
-          </Text>
-          {session ? (
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 4 }}>
-              CLINIC {session.clinicNumber}
-            </Text>
-          ) : (
-            <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 4 }}>
-              NO ACTIVE SESSION
-            </Text>
-          )}
-        </View>
-
-        <View style={[styles.metricBlock, { height: SCREEN_H * 0.42 }]}>
-          <Text style={styles.metricValueLarge} numberOfLines={1}>
-            {value !== null && value !== undefined ? value.toFixed(1) : '—'}
-          </Text>
-          <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 8, letterSpacing: 1 }}>
-            {ACTIVE_METRIC.toUpperCase()}
-          </Text>
-          <View style={{ width: '70%', marginTop: 18 }}>
-            <View
-              style={[
-                styles.deltaBar,
-                deltaVariant === 'positive' && styles.deltaBarPositive,
-                deltaVariant === 'negative' && styles.deltaBarNegative,
-                deltaVariant === 'neutral' && styles.deltaBarNeutral,
-                { width: `${Math.round(barRatio * 100)}%` },
-              ]}
-            />
-            <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginTop: 4 }}>
-              {hasBandData && delta !== null
-                ? `Δ ${delta >= 0 ? '+' : ''}${delta.toFixed(2)} vs band avg ${band!.average.toFixed(2)} (n=${band!.sampleCount})`
-                : 'No band data yet'}
-            </Text>
-          </View>
-        </View>
-
-        {cue && cue.cueText.length > 0 ? (
-          <View style={[styles.cueRow, { marginHorizontal: 20 }]}>
-            <Text style={{ color: GOLD, fontSize: 11, letterSpacing: 0.5, fontWeight: '700' }}>
-              ACTIVE CUE
-            </Text>
-            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '600', marginTop: 4 }}>
-              {cue.cueText}
-            </Text>
-            {cue.attentionActual ? (
-              <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 4 }}>
-                attention: {cue.attentionActual}
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
-
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            paddingHorizontal: 20,
-            marginTop: 12,
-            gap: 8,
+      <View style={{ paddingTop: 32, paddingBottom: 8 }}>
+        <PhaseChipRow
+          labels={PHASE_CHIP_LABELS}
+          activeIndex={cardIndex}
+          onSelect={(i) => {
+            tap();
+            scrollToCard(i);
           }}
-        >
-          {lastSwing?.ballOutcome ? (
-            <>
-              <Chip label={lastSwing.ballOutcome.direction} />
-              <Chip label={lastSwing.ballOutcome.contact} />
-            </>
-          ) : null}
-          {lastSwing?.effortLevel ? <Chip label={`effort: ${lastSwing.effortLevel}`} /> : null}
-        </View>
+        />
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ paddingBottom: SCREEN_H * 0.4 }}
+      >
+        <LiveViewCard
+          kid={kid}
+          session={session}
+          lastSwing={lastSwing}
+          activeMetricKey={ACTIVE_METRIC}
+          value={value ?? null}
+          band={band}
+          hasBandData={hasBandData}
+          delta={delta}
+          deltaVariant={deltaVariant}
+          barRatio={barRatio}
+          cue={cue}
+        />
+        {PHASE_INDICES.map((p) => (
+          <PhaseSignalCard
+            key={p}
+            frames={motionFrames}
+            phaseIndex={p}
+            phaseTags={phaseTags}
+            handedness={handedness}
+            msPerFrame={msPerFrame}
+            cameraAngle={cameraAngle}
+            loading={motionLoading}
+          />
+        ))}
       </ScrollView>
+
+      <PageDots count={TOTAL_CARDS} activeIndex={cardIndex} />
 
       <View
         style={{
@@ -392,17 +433,79 @@ export default function Tab1LiveView(): React.ReactElement {
   );
 }
 
-function Chip({ label }: { label: string }): React.ReactElement {
+interface PhaseChipRowProps {
+  labels: string[];
+  activeIndex: number;
+  onSelect: (i: number) => void;
+}
+
+function PhaseChipRow({ labels, activeIndex, onSelect }: PhaseChipRowProps): React.ReactElement {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+    >
+      {labels.map((label, i) => {
+        const active = i === activeIndex;
+        return (
+          <Pressable
+            key={label}
+            onPress={() => onSelect(i)}
+            style={{
+              backgroundColor: active ? GOLD : '#1A1A1C',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: active ? '#000000' : '#FFFFFF',
+                fontSize: 12,
+                fontWeight: '700',
+                letterSpacing: 0.5,
+              }}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function PageDots({
+  count,
+  activeIndex,
+}: {
+  count: number;
+  activeIndex: number;
+}): React.ReactElement {
   return (
     <View
       style={{
-        backgroundColor: '#1A1A1C',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 6,
+        marginTop: 4,
       }}
     >
-      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>{label}</Text>
+      {Array.from({ length: count }).map((_, i) => {
+        const active = i === activeIndex;
+        return (
+          <View
+            key={i}
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: active ? GOLD : 'rgba(255,255,255,0.3)',
+            }}
+          />
+        );
+      })}
     </View>
   );
 }
