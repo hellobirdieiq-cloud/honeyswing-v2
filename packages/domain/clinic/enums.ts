@@ -25,11 +25,13 @@ export type StanceClassification =
   | 'wide'
   | 'unknown';
 
+// TODO: pipeline emits 'follow_through' (SwingPhase)
+// but clinic uses 'finish' — reconcile before
+// implementing metricComputation stubs.
 export type PhaseTag =
   | 'address'
   | 'takeaway'
   | 'top'
-  | 'transition'
   | 'downswing'
   | 'impact'
   | 'finish';
@@ -121,5 +123,4 @@ export type ClinicMetricKey =
   | 'rightElbowAngle'
   | 'leftKneeAngle'
   | 'rightKneeAngle'
-  | 'hipRotation'
   | 'shoulderTilt';

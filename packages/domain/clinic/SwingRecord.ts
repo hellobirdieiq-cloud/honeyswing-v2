@@ -15,7 +15,6 @@ export interface MetricSnapshot {
   rightElbowAngle: number | null;
   leftKneeAngle: number | null;
   rightKneeAngle: number | null;
-  hipRotation: number | null;
   shoulderTilt: number | null;
 }
 
