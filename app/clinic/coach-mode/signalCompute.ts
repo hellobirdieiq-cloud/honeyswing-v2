@@ -20,7 +20,7 @@ export interface PhaseSignalResult {
 }
 
 export type Handedness = 'left' | 'right';
-export type CameraAngle = 'dtl' | 'front';
+export type CameraAngle = 'dtl' | 'face_on';
 
 const EMPTY_RESULT: PhaseSignalResult = {
   points: [],
@@ -235,7 +235,7 @@ export function computePhase0Signal(
   _msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 4) return EMPTY_RESULT;
 
   const core = _phase0Core(frames);
@@ -257,7 +257,7 @@ export function computePhase1Signal(
   _msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 8) return EMPTY_RESULT;
 
   const n = frames.length;
@@ -318,7 +318,7 @@ export function computePhase2Signal(
   msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 4 || msPerFrame <= 0) return EMPTY_RESULT;
 
   const DIRECTION_FRAMES = Math.max(1, Math.round(167 / msPerFrame));
@@ -361,7 +361,7 @@ export function computePhase3Signal(
   msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 4 || msPerFrame <= 0) return EMPTY_RESULT;
 
   const phase0 = _phase0Core(frames);
@@ -387,7 +387,7 @@ export function computePhase4Signal(
   msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 4 || msPerFrame <= 0) return EMPTY_RESULT;
 
   const phase0 = _phase0Core(frames);
@@ -409,7 +409,7 @@ export function computePhase5Signal(
   msPerFrame: number,
   cameraAngle: CameraAngle,
 ): PhaseSignalResult {
-  if (cameraAngle === 'front') return emptyFaceOn();
+  if (cameraAngle === 'face_on') return emptyFaceOn();
   if (!frames || frames.length < 4 || msPerFrame <= 0) return EMPTY_RESULT;
 
   const VEL_NOISE_FLOOR = 0.008;

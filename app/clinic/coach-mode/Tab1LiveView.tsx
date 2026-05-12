@@ -250,7 +250,7 @@ export default function Tab1LiveView(): React.ReactElement {
   const fallbackHandedness: 'left' | 'right' = kid?.handedness === 'left' ? 'left' : 'right';
   const handedness: 'left' | 'right' = motionCache?.result?.handedness ?? fallbackHandedness;
   const msPerFrame = motionCache?.result?.msPerFrame ?? 8.33;
-  const cameraAngle: 'dtl' | 'front' = motionCache?.result?.angleBucket ?? 'dtl';
+  const cameraAngle: 'dtl' | 'face_on' = motionCache?.result?.angleBucket ?? 'dtl';
   const phaseTags = lastSwing?.phaseTags ?? [];
 
   return (

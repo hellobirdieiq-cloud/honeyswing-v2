@@ -131,18 +131,18 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
   let angle: CameraAngle;
   if (footIndexNorm != null) {
     if (footIndexNorm >= SIDE_THRESHOLD) {
-      angle = "side";
-    } else if (footIndexNorm <= FRONT_THRESHOLD) {
       angle = "front";
+    } else if (footIndexNorm <= FRONT_THRESHOLD) {
+      angle = "side";
     } else {
       angle = "unknown";
     }
   } else if (ankleSpread != null) {
     // [EXTERNAL ASSUMPTION] ankle fallback thresholds — empirically derived from 6 swings (3 DTL, 3 face-on)
     if (ankleSpread >= 0.07) {
-      angle = "side";
-    } else if (ankleSpread <= 0.02) {
       angle = "front";
+    } else if (ankleSpread <= 0.02) {
+      angle = "side";
     } else {
       angle = "unknown";
     }

@@ -22,7 +22,7 @@ export interface FetchMotionFramesResult {
   frames: MotionFrame[] | null;
   handedness: 'left' | 'right' | null;
   msPerFrame: number | null;
-  angleBucket: 'dtl' | 'front' | null;
+  angleBucket: 'dtl' | 'face_on' | null;
 }
 
 const EMPTY: FetchMotionFramesResult = {
@@ -56,8 +56,11 @@ export async function fetchMotionFrames(
 
     const angleGating = debug?.angle_gating as Record<string, unknown> | undefined;
     const rawBucket = angleGating?.bucket;
-    const angleBucket: 'dtl' | 'front' | null =
-      rawBucket === 'dtl' || rawBucket === 'front' ? rawBucket : null;
+    const angleBucket: 'dtl' | 'face_on' | null =
+      rawBucket === 'dtl' ? 'dtl' :
+      rawBucket === 'face_on' ? 'face_on' :
+      rawBucket === 'oblique' ? 'dtl' :
+      null;
 
     const frameCount = data.frame_count ?? 0;
     const durationMs = data.duration_ms ?? 0;
