@@ -32,9 +32,20 @@ const EMPTY: FetchMotionFramesResult = {
   angleBucket: null,
 };
 
+const seedMap = new Map<string, FetchMotionFramesResult>();
+
+export function seedMotionFrames(swingId: string, result: FetchMotionFramesResult): void {
+  if (!__DEV__) return;
+  seedMap.set(swingId, result);
+}
+
 export async function fetchMotionFrames(
   swingId: string,
 ): Promise<FetchMotionFramesResult> {
+  if (__DEV__) {
+    const seeded = seedMap.get(swingId);
+    if (seeded) return seeded;
+  }
   try {
     const { data, error } = await supabase
       .from('swings')

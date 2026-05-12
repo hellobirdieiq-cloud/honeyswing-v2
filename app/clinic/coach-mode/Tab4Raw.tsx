@@ -1,15 +1,84 @@
 import React from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import {
   clinicSessionActive,
   getCurrentClinicSession,
 } from '@/lib/clinic/clinicSessionStore';
-import { getSwingsBySession } from '@/lib/clinic/swingRecordStore';
+import { getSwingsBySession, upsertSwingRecord } from '@/lib/clinic/swingRecordStore';
 import { getPersonalBand } from '@/lib/clinic/personalBandStore';
 import { getCueBlocksBySession } from '@/lib/clinic/cueBlockStore';
 import { getQueue } from '@/lib/clinic/kidQueueStore';
+import {
+  seedMotionFrames,
+  type FetchMotionFramesResult,
+  type MotionFrame,
+} from '@/lib/clinic/fetchMotionFrames';
 import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
+import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
 import { styles } from '../clinicStyles';
+
+const DEV_SEED_SWING_ID = 'dev-seed-swing-0001';
+
+function buildSeedFrames(): MotionFrame[] {
+  return Array.from({ length: 30 }, (_, i) => {
+    const wristArc = 0.6 - 0.3 * Math.sin((i / 29) * Math.PI);
+    return {
+      timestampMs: i * 33.33,
+      joints: {
+        leftHip:       { x: 0.45, y: 0.55, z: 0 },
+        rightHip:      { x: 0.55, y: 0.55, z: 0 },
+        leftShoulder:  { x: 0.40, y: 0.30, z: 0 },
+        rightShoulder: { x: 0.60, y: 0.30, z: 0 },
+        leftElbow:     { x: 0.42, y: 0.45, z: 0 },
+        rightElbow:    { x: 0.58, y: 0.45, z: 0 },
+        leftWrist:     { x: 0.48, y: wristArc, z: 0 },
+        rightWrist:    { x: 0.52, y: wristArc, z: 0 },
+        leftKnee:      { x: 0.46, y: 0.75, z: 0 },
+        rightKnee:     { x: 0.54, y: 0.75, z: 0 },
+        leftAnkle:     { x: 0.46, y: 0.92, z: 0 },
+        rightAnkle:    { x: 0.54, y: 0.92, z: 0 },
+      },
+    };
+  });
+}
+
+function buildSeedResult(): FetchMotionFramesResult {
+  return {
+    frames: buildSeedFrames(),
+    handedness: 'right',
+    msPerFrame: 33.33,
+    angleBucket: 'dtl',
+  };
+}
+
+function buildSeedSwing(sessionId: string, kidId: string, clinicNumber: number): SwingRecord {
+  return {
+    id: DEV_SEED_SWING_ID,
+    kidId,
+    sessionId,
+    clinicNumber,
+    recordedAt: Date.now(),
+    metrics: {
+      spineAngle: 35,
+      spineDrift: 2,
+      tempoRatio: 3,
+      hipSpreadDelta: 0.05,
+      leftElbowAngle: 160,
+      rightElbowAngle: 155,
+      leftKneeAngle: 165,
+      rightKneeAngle: 168,
+      shoulderTilt: 20,
+    },
+    phaseTags: [
+      { phase: 'address',   startFrameIndex: 0,  endFrameIndex: 3  },
+      { phase: 'takeaway',  startFrameIndex: 4,  endFrameIndex: 9  },
+      { phase: 'top',       startFrameIndex: 10, endFrameIndex: 13 },
+      { phase: 'downswing', startFrameIndex: 14, endFrameIndex: 19 },
+      { phase: 'impact',    startFrameIndex: 20, endFrameIndex: 22 },
+      { phase: 'finish',    startFrameIndex: 23, endFrameIndex: 29 },
+    ],
+  };
+}
 
 const METRIC_KEYS: ClinicMetricKey[] = [
   'spineAngle',
@@ -112,6 +181,34 @@ export default function Tab4Raw(): React.ReactElement {
           [{i}] {k.id}
         </Text>
       ))}
+
+      {__DEV__ && (
+        <>
+          <View style={{ height: 12 }} />
+          <Text style={styles.rawDebugMono}>━━ DEV SEED ━━</Text>
+          <Pressable
+            onPress={() => {
+              const s = getCurrentClinicSession();
+              if (!s) {
+                console.warn('Dev seed: no active session');
+                return;
+              }
+              seedMotionFrames(DEV_SEED_SWING_ID, buildSeedResult());
+              upsertSwingRecord(buildSeedSwing(s.id, s.kidId, s.clinicNumber));
+            }}
+            style={{
+              marginTop: 8,
+              padding: 12,
+              backgroundColor: '#3A3A3C',
+              borderRadius: 8,
+              alignSelf: 'flex-start',
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>Seed Signal Cards</Text>
+          </Pressable>
+        </>
+      )}
     </ScrollView>
   );
 }
