@@ -209,6 +209,10 @@ class PositiveReinforcementEngine {
    * Reset session state. Call on app foreground (AppState 'active'),
    * same listener that resets tipFrequencyLimiter.
    */
+  // TODO(clinic): also call reset() on per-kid session boundary — i.e., from the kid-switcher /
+  // "next student" action in the future clinic store. The AppState 'active' listener referenced
+  // above does not exist in the codebase today; current callers are tests only. Wire from the
+  // clinic store when built so per-kid praise/improvement tracking does not leak across kids.
   reset(): void {
     this.recentGeneralIndices = [];
     this.recentImprovementIndices = [];
