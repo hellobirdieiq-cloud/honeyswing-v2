@@ -1,3 +1,4 @@
+import { getUserId } from '@/lib/supabase';
 import type { PhysicalScreenResult } from '@/packages/domain/clinic/KidProfile';
 import type {
   GripClassification,
@@ -62,10 +63,15 @@ export function clinicSessionActive(): boolean {
 }
 
 // Begins a new clinic session for a kid; replaces any current session in memory.
-export function startClinicSession(
+// Refuses to start when no authenticated user is present — clinic swings must be persistable.
+export async function startClinicSession(
   kidId: string,
   clinicNumber: number,
-): ClinicSession {
+): Promise<ClinicSession> {
+  const userId = await getUserId();
+  if (!userId) {
+    throw new Error('startClinicSession requires authenticated user');
+  }
   currentSession = {
     id: generateSessionId(),
     kidId,
