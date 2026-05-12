@@ -7,9 +7,7 @@ import type {
   BallContact,
   BallDirection,
 } from '@/packages/domain/clinic/enums';
-import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
-import { upsertSwingRecord } from '@/lib/clinic/swingRecordStore';
-import { appendBaselineSwing, getCurrentClinicSession } from '@/lib/clinic/clinicSessionStore';
+import { appendBaselineSwing } from '@/lib/clinic/clinicSessionStore';
 import { styles } from './clinicStyles';
 
 interface PerSwingLogState {
@@ -38,8 +36,7 @@ function PerSwingLogForm(props: {
   return null as unknown as React.ReactElement;
 }
 
-// Builds a SwingRecord from the captured pose data + log state and the active clinic session, then persists it.
-function persistBaselineSwing(log: PerSwingLogState): SwingRecord {
-  // stub: pulls active session, generates id, calls upsertSwingRecord + appendBaselineSwing.
-  throw new Error('Not implemented');
+// Attaches a finalized swing to the active baseline set. persistSwing.ts already wrote the SwingRecord.
+function persistBaselineSwing(_log: PerSwingLogState, swingId: string): void {
+  appendBaselineSwing(swingId);
 }

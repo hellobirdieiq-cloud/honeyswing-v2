@@ -31,16 +31,16 @@ export interface BallOutcome {
 
 export interface SwingRecord {
   id: string;
-  kidId: string;
-  sessionId: string;
-  clinicNumber: number;
+  kidId?: string;
+  sessionId?: string;
+  clinicNumber?: number;
   recordedAt: number;
   metrics: MetricSnapshot;
   phaseTags: PhaseTagRange[];
-  setupOk: boolean;
-  effortLevel: EffortLevel;
-  normalSwing: boolean;
-  structuralProblem: StructuralProblem;
-  ballOutcome: BallOutcome;
+  setupOk?: boolean;
+  effortLevel?: EffortLevel;
+  normalSwing?: boolean;
+  structuralProblem?: StructuralProblem;
+  ballOutcome?: BallOutcome;
   notes?: string;
 }

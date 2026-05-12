@@ -2,6 +2,18 @@ import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
 
 const swings = new Map<string, SwingRecord>();
 
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+export function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notifyListeners(): void {
+  listeners.forEach((l) => l());
+}
+
 // Returns a swing record by id, or null if not found.
 export function getSwingRecord(id: string): SwingRecord | null {
   return swings.get(id) ?? null;
@@ -10,6 +22,7 @@ export function getSwingRecord(id: string): SwingRecord | null {
 // Inserts or replaces a swing record in the store.
 export function upsertSwingRecord(swing: SwingRecord): void {
   swings.set(swing.id, swing);
+  notifyListeners();
 }
 
 // Returns all swing records for a given kid.
@@ -34,4 +47,5 @@ export function getSwingsByIds(ids: string[]): SwingRecord[] {
 export function clearSwingRecords(): void {
   console.warn('[swingRecordStore] clearSwingRecords called — test/debug only');
   swings.clear();
+  notifyListeners();
 }

@@ -4,6 +4,14 @@ import type { Database, Json } from './database.types';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
+import { getCurrentClinicSession } from './clinic/clinicSessionStore';
+import { upsertSwingRecord } from './clinic/swingRecordStore';
+import type {
+  SwingRecord,
+  MetricSnapshot,
+  PhaseTagRange,
+} from '../packages/domain/clinic/SwingRecord';
+import type { PhaseTag } from '../packages/domain/clinic/enums';
 import { isGoodFrame, type CaptureClassification } from './captureValidity';
 import { getCoachCode } from './coachCode';
 import { getIsLeftHanded } from './handedness';
@@ -36,6 +44,58 @@ function extractPhaseSource(phases: DetectedPhase[] | undefined): string {
   if (sources.every((s) => s === 'heuristic')) return 'heuristic';
   if (sources.every((s) => s === 'fallback')) return 'fallback';
   return 'mixed';
+}
+
+function buildMetricSnapshotFromAnalysis(analysis: AnalysisResult): MetricSnapshot {
+  return {
+    spineAngle: analysis.angles?.spineAngle ?? null,
+    spineDrift: null,
+    tempoRatio: analysis.tempo?.tempoRatio ?? null,
+    hipSpreadDelta: analysis.angles?.hipSpreadDelta ?? null,
+    leftElbowAngle: analysis.angles?.leftElbowAngle ?? null,
+    rightElbowAngle: analysis.angles?.rightElbowAngle ?? null,
+    leftKneeAngle: analysis.angles?.leftKneeAngle ?? null,
+    rightKneeAngle: analysis.angles?.rightKneeAngle ?? null,
+    shoulderTilt: analysis.angles?.shoulderTilt ?? null,
+  };
+}
+
+function mapSwingPhaseToClinic(p: DetectedPhase['phase']): PhaseTag {
+  return p === 'follow_through' ? 'finish' : p;
+}
+
+function buildPhaseTagsFromAnalysis(
+  analysis: AnalysisResult,
+  frameCount: number,
+): PhaseTagRange[] {
+  const detected = analysis.phases;
+  if (!detected || detected.length === 0) return [];
+
+  const sorted = [...detected].sort((a, b) => a.index - b.index);
+
+  const seen = new Set<PhaseTag>();
+  const deduped: DetectedPhase[] = [];
+  for (const p of sorted) {
+    const tag = mapSwingPhaseToClinic(p.phase);
+    if (seen.has(tag)) continue;
+    seen.add(tag);
+    deduped.push(p);
+  }
+
+  const ranges: PhaseTagRange[] = [];
+  for (let i = 0; i < deduped.length; i++) {
+    const start = deduped[i].index;
+    const end =
+      i + 1 < deduped.length
+        ? deduped[i + 1].index - 1
+        : frameCount - 1;
+    ranges.push({
+      phase: mapSwingPhaseToClinic(deduped[i].phase),
+      startFrameIndex: start,
+      endFrameIndex: end,
+    });
+  }
+  return ranges;
 }
 
 function calcFpsEstimate(frames: PoseFrame[]): number | null {
@@ -141,6 +201,24 @@ export async function persistSwing(
   console.log('[HoneySwing] Swing persisted, frames:', frames.length);
 
   const swingId = data?.id ?? null;
+  if (swingId) {
+    const session = getCurrentClinicSession();
+    const baseRecord: SwingRecord = {
+      id: swingId,
+      recordedAt: Date.now(),
+      metrics: buildMetricSnapshotFromAnalysis(analysis),
+      phaseTags: buildPhaseTagsFromAnalysis(analysis, frames.length),
+    };
+    const clinicRecord: SwingRecord = session
+      ? {
+          ...baseRecord,
+          kidId: session.kidId,
+          sessionId: session.id,
+          clinicNumber: session.clinicNumber,
+        }
+      : baseRecord;
+    upsertSwingRecord(clinicRecord);
+  }
   if (swingId) {
     emitEvent('swing.recorded', {
       swingId,

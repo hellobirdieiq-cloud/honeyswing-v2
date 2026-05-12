@@ -22,6 +22,7 @@ import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
 import { usePoseFrameHandler } from '../../lib/usePoseFrameHandler';
+import { clinicSessionActive } from '@/lib/clinic/clinicSessionStore';
 import { GOLD } from '../../lib/colors';
 import { styles } from './recordStyles';
 
@@ -238,13 +239,10 @@ export default function RecordTab() {
     let mounted = true;
 
     motionFramesRef.current = [];
-    // TODO(clinic): guard these clears with a `clinicSessionActive` flag so an in-progress
-    // clinic session isn't wiped when Record remounts. Flag will live in a future
-    // `lib/clinicSession.ts` (or equivalent clinic store) — read synchronously here:
-    //   if (!getClinicSessionActive()) { clearCurrentSwingMotion(); clearCurrentSwingAnalysis(); }
-    // Not yet wired — keeping current unconditional behavior until the clinic skeleton lands.
-    clearCurrentSwingMotion();
-    clearCurrentSwingAnalysis();
+    if (!clinicSessionActive()) {
+      clearCurrentSwingMotion();
+      clearCurrentSwingAnalysis();
+    }
 
     async function setupScreen() {
       const limitStatus = await checkSwingLimit();
