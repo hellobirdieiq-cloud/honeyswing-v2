@@ -29,10 +29,17 @@ export interface ClinicSession {
 
 let currentSession: ClinicSession | null = null;
 
+function generateSessionId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 // Returns the active clinic session, or null if none is running.
 export function getCurrentClinicSession(): ClinicSession | null {
-  // stub
-  throw new Error('Not implemented');
+  return currentSession;
 }
 
 // Begins a new clinic session for a kid; replaces any current session in memory.
@@ -40,42 +47,56 @@ export function startClinicSession(
   kidId: string,
   clinicNumber: number,
 ): ClinicSession {
-  // stub
-  throw new Error('Not implemented');
+  currentSession = {
+    id: generateSessionId(),
+    kidId,
+    clinicNumber,
+    startedAt: Date.now(),
+    endedAt: null,
+    preflight: null,
+    baselineSwingIds: [],
+    cueBlockIds: [],
+    retentionProbeSwingIds: [],
+    physicalCheckResults: [],
+  };
+  return currentSession;
 }
 
 // Stores the pre-flight snapshot on the active session.
 export function setPreflight(snapshot: PreflightSnapshot): void {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return;
+  currentSession.preflight = snapshot;
 }
 
 // Appends a baseline swing id to the active session.
 export function appendBaselineSwing(swingId: string): void {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return;
+  currentSession.baselineSwingIds.push(swingId);
 }
 
 // Appends a cue block id to the active session.
 export function appendCueBlock(cueBlockId: string): void {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return;
+  currentSession.cueBlockIds.push(cueBlockId);
 }
 
 // Appends a retention probe swing id to the active session.
 export function appendRetentionSwing(swingId: string): void {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return;
+  currentSession.retentionProbeSwingIds.push(swingId);
 }
 
 // Appends a physical check result to the active session.
 export function appendPhysicalCheckResult(result: PhysicalScreenResult): void {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return;
+  currentSession.physicalCheckResults.push(result);
 }
 
 // Marks the active session as ended (sets endedAt) and clears the in-memory pointer.
 export function endClinicSession(): ClinicSession | null {
-  // stub
-  throw new Error('Not implemented');
+  if (!currentSession) return null;
+  currentSession.endedAt = Date.now();
+  const ended = currentSession;
+  currentSession = null;
+  return ended;
 }
