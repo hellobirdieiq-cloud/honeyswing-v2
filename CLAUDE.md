@@ -24,7 +24,7 @@ HoneySwing is a golf swing analysis app. It captures pose data from the camera i
 
 ### Three-Layer Package Structure
 
-**Pose Abstraction** (`packages/pose/`) — Provider-based pose detection with a swappable backend interface (`PoseProvider`). Currently uses MLKitProvider wrapping MediaPipe Pose Landmarker (BlazePose GHUM Full). Key types: `PoseFrame`, `PoseSequence`, `JointName` (17 joints emitted to JS), `NormalizedJoint` (coordinates normalized 0-1).
+**Pose Abstraction** (`packages/pose/`) — Provider-based pose detection with a swappable backend interface (`PoseProvider`). Currently uses MLKitProvider wrapping MediaPipe Pose Landmarker (BlazePose GHUM Full). Key types: `PoseFrame`, `PoseSequence`, `JointName` (33 joints emitted to JS), `NormalizedJoint` (coordinates normalized 0-1).
 
 **Domain Logic** (`packages/domain/swing/`) — Pure TypeScript swing analysis, no UI or native dependencies. The pipeline (`analysisPipeline.ts`) orchestrates: angle calculation → trail extraction → phase detection → tempo analysis (with sanity checks) → scoring. Entry point: `analyzePoseSequence(sequence)` for live pose data.
 
@@ -32,7 +32,7 @@ HoneySwing is a golf swing analysis app. It captures pose data from the camera i
 
 ### Native Module
 
-`ios/HoneyVisionCameraPosePlugin.swift` — Vision Camera frame processor plugin (`honeyPoseDetect`). Uses MediaPipe `PoseLandmarker` with the Full model to detect 33 body landmarks, maps 17 to JS via worklets. Image orientation handled via CIContext render (landscape → portrait).
+`ios/HoneyVisionCameraPosePlugin.swift` — Vision Camera frame processor plugin (`honeyPoseDetect`). Uses MediaPipe `PoseLandmarker` with the Full model to detect 33 body landmarks, maps all 33 to JS via worklets. Image orientation handled via CIContext render (landscape → portrait).
 
 ### State Flow
 
@@ -43,7 +43,7 @@ Record screen → `swingMotionStore` (in-memory store in `lib/`) → `captureVal
 - **Angles** (`angles.ts`): 7 biomechanical angles (spine, elbows, knees, hip rotation, shoulder tilt). Min confidence threshold: 0.5.
 - **Phases** (`phaseDetection.ts`): 6 swing phases (address → takeaway → top → downswing → impact → finish). Uses velocity-based heuristic with setup detection; falls back to percentage-based splits.
 - **Tempo** (`tempoAnalysis.ts`): Backswing/downswing ratio. "Good" = 2.5–3.5 ratio. Sanity checks withhold tempo when phases are fallback-only, durations < 50ms, or ratio is implausible.
-- **Scoring** (`scoring.ts`): 0–100 score averaging 7 component scores against biomechanical targets. Missing data scores 50 (neutral).
+- **Scoring** (`scoring.ts`): 0–100 score averaging 7 component scores against biomechanical targets. Missing data scores 0.
 
 ## Tech Stack
 
