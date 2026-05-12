@@ -11,10 +11,10 @@ import {
   Vibration,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import {
-  endClinicSession,
+  clinicSessionActive,
   getCurrentClinicSession,
-  startClinicSession,
   subscribe as subscribeSession,
 } from '@/lib/clinic/clinicSessionStore';
 import {
@@ -30,7 +30,6 @@ import {
   subscribe as subscribeBands,
 } from '@/lib/clinic/personalBandStore';
 import {
-  dequeueNext,
   enqueueKid,
   getQueue,
   peekNext,
@@ -70,8 +69,19 @@ interface MotionCache {
 }
 
 export default function Tab1LiveView(): React.ReactElement {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  // Auto-route to preflight whenever no active session exists. Guards on clinicSessionActive()
+  // so it cannot fire while a session is live.
+  useEffect(() => {
+    if (!clinicSessionActive()) {
+      router.replace({
+        pathname: '/clinic/preflight',
+        params: { clinicNumber: '1' },
+      });
+    }
+  }, [tick]);
 
   useEffect(() => {
     refresh();
@@ -183,14 +193,15 @@ export default function Tab1LiveView(): React.ReactElement {
       setConfirmingNext(false);
       return;
     }
-    const clinicNumber = session.clinicNumber;
-    endClinicSession();
-    try {
-      await startClinicSession(next.id, clinicNumber);
-      dequeueNext();
-    } catch {
-      // startClinicSession refuses without auth; queue stays intact, session is left ended.
-    }
+    // endClinicSession moved to preflight submit — prior session stays alive until Dave confirms
+    router.push({
+      pathname: '/clinic/preflight',
+      params: {
+        kidId: next.id,
+        clinicNumber: String(session.clinicNumber),
+        fromQueue: 'true',
+      },
+    });
     setConfirmingNext(false);
   };
 
@@ -332,7 +343,7 @@ export default function Tab1LiveView(): React.ReactElement {
                   }}
                 >
                   <Text style={{ color: '#FFFFFF', fontSize: 12 }}>
-                    {i + 1}. {k.id}
+                    {i + 1}. {k.name ?? k.id}
                   </Text>
                 </View>
               ))
@@ -419,10 +430,10 @@ export default function Tab1LiveView(): React.ReactElement {
                 }}
               >
                 <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
-                  {profile.id}
+                  {profile.name ?? profile.id}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 2 }}>
-                  age {profile.ageYears} · {profile.handedness}-handed
+                  {profile.ageTier} · {profile.handedness}-handed
                 </Text>
               </Pressable>
             ))

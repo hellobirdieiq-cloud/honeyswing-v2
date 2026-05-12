@@ -7,6 +7,9 @@ import type {
   PhysicalTestResult,
 } from './enums';
 
+// Local mirror of lib/ageTier.ts AgeTier. Declared here to keep packages/domain free of lib imports.
+export type KidAgeTier = 'junior' | 'youth' | 'teen' | 'adult';
+
 export interface GripSessionEntry {
   sessionId: string;
   clinicNumber: number;
@@ -42,7 +45,8 @@ export interface PhysicalScreenResult {
 
 export interface KidProfile {
   id: string;
-  ageYears: number;
+  name: string;
+  ageTier: KidAgeTier;
   handedness: Handedness;
   gripHistory: GripSessionEntry[];
   faceAngleHistory: FaceAngleSessionEntry[];
