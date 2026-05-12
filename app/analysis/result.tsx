@@ -60,7 +60,7 @@ export default function ResultScreen() {
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
   const videoUri = getCurrentSwingVideoUri();
-  const [isLeftHanded, setIsLeftHanded] = useState(false);
+  const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
@@ -119,6 +119,7 @@ export default function ResultScreen() {
   }, [motion]);
 
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
+    if (isLeftHanded === null) return null;
     if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
     return analyzePoseSequence(sequence, isLeftHanded);
   }, [sequence, classification, storedAnalysis, isLeftHanded]);
@@ -375,7 +376,7 @@ export default function ResultScreen() {
                   width={skeletonW}
                   height={skeletonH}
                   isLowConfidence={isLowConfidence}
-                  isLeftHanded={isLeftHanded}
+                  isLeftHanded={isLeftHanded ?? false}
                   suppressedMetrics={analysis?.swing_debug?.angle_gating?.suppressed}
                 />
               )

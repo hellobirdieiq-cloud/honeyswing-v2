@@ -137,7 +137,12 @@ export default function VisualCoachCard({ landmarks, angles, width, height, isLo
     for (const [a, b] of METRIC_DEFINITIONS[worst.key].segments) {
       const ra = remapSegmentJoint(a, isLeftHanded);
       const rb = remapSegmentJoint(b, isLeftHanded);
+      // Insert both orderings: the LH remap of a bilateral-pair single segment
+      // (e.g. shoulderTilt's [leftShoulder, rightShoulder]) reverses the tuple
+      // order, but SKELETON_CONNECTIONS draws it in the original order. Both
+      // orderings guarantees the highlight lookup matches either direction.
       highlightedSegments.add(`${ra}-${rb}`);
+      highlightedSegments.add(`${rb}-${ra}`);
     }
   }
 
