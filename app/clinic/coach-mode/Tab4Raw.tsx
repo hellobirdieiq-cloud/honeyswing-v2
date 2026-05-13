@@ -228,13 +228,6 @@ export default function Tab4Raw(): React.ReactElement {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
-      <Text style={styles.rawDebugMono}>━━ SESSION ━━</Text>
-      <Text style={styles.rawDebugMono}>clinicSessionActive(): {String(active)}</Text>
-      <Text style={styles.rawDebugMono}>
-        {session ? JSON.stringify(session, null, 2) : 'getCurrentClinicSession(): null'}
-      </Text>
-
-      <View style={{ height: 12 }} />
       <Text style={styles.rawDebugMono}>━━ SWINGS (session) ━━</Text>
       <Text style={styles.rawDebugMono}>count: {swings.length}</Text>
       {lastSwing ? (
@@ -255,24 +248,6 @@ export default function Tab4Raw(): React.ReactElement {
         </>
       ) : (
         <Text style={styles.rawDebugMono}>(no swings)</Text>
-      )}
-
-      <View style={{ height: 12 }} />
-      <Text style={styles.rawDebugMono}>━━ PHASE TRACE (last swing) ━━</Text>
-      {lastSwing && motionCache?.frames ? (
-        <Tab4PhaseTrace
-          frames={motionCache.frames}
-          phaseTags={lastSwing.phaseTags}
-          handedness={resolvedHandedness}
-        />
-      ) : (
-        <Text style={styles.rawDebugMono}>
-          {!lastSwing
-            ? '(no swing)'
-            : motionLoading
-            ? 'loading frames…'
-            : '(no motion frames)'}
-        </Text>
       )}
 
       <View style={{ height: 12 }} />
@@ -330,6 +305,24 @@ export default function Tab4Raw(): React.ReactElement {
       )}
 
       <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ PHASE TRACE (last swing) ━━</Text>
+      {lastSwing && motionCache?.frames ? (
+        <Tab4PhaseTrace
+          frames={motionCache.frames}
+          phaseTags={lastSwing.phaseTags}
+          handedness={resolvedHandedness}
+        />
+      ) : (
+        <Text style={styles.rawDebugMono}>
+          {!lastSwing
+            ? '(no swing)'
+            : motionLoading
+            ? 'loading frames…'
+            : '(no motion frames)'}
+        </Text>
+      )}
+
+      <View style={{ height: 12 }} />
       <Text style={styles.rawDebugMono}>━━ BANDS (active kid + clinic) ━━</Text>
       {session && session.kidId ? (
         METRIC_KEYS.map((key) => {
@@ -350,6 +343,13 @@ export default function Tab4Raw(): React.ReactElement {
       ) : (
         <Text style={styles.rawDebugMono}>(no active session)</Text>
       )}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ SESSION ━━</Text>
+      <Text style={styles.rawDebugMono}>clinicSessionActive(): {String(active)}</Text>
+      <Text style={styles.rawDebugMono}>
+        {session ? JSON.stringify(session, null, 2) : 'getCurrentClinicSession(): null'}
+      </Text>
 
       <View style={{ height: 12 }} />
       <Text style={styles.rawDebugMono}>━━ CUE BLOCKS (session) ━━</Text>
