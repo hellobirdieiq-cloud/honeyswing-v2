@@ -62,6 +62,15 @@ const PHASE_INDICES = [0, 1, 2, 3, 4, 5] as const;
 const PHASE_CHIP_LABELS = ['LIVE', 'Start', 'Address', 'Takeaway', 'Top', 'Impact', 'Finish'];
 const TOTAL_CARDS = 7;
 
+// EXTERNAL_ASSUMPTION: setup issue list locked for Clinic 2; revisit post-clinic with Dave.
+const SETUP_ISSUE_GROUPS: { label: string; issues: string[] }[] = [
+  { label: 'Ball placement', issues: ['Too close', 'Too far', 'Lead foot side', 'Trail foot side'] },
+  { label: 'Grip', issues: ['Too strong', 'Too weak', 'Too tight', 'Wrong hand position'] },
+  { label: 'Feet', issues: ['Too wide', 'Too narrow', 'Open', 'Closed'] },
+  { label: 'Weight', issues: ['Too far back', 'Too far forward'] },
+  { label: 'Posture', issues: ['Too much forward tilt', 'Too upright', 'Hunched / rounded back'] },
+];
+
 function tap(): void {
   Vibration.vibrate(10);
 }
@@ -153,6 +162,12 @@ export default function Tab1LiveView(): React.ReactElement {
   const [capturePhase, setCapturePhase] = useState<'idle' | 'capturing' | 'done'>('idle');
   const [currentSwingId, setCurrentSwingId] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<BallContact | null>(null);
+  const [setupIssuesExpanded, setSetupIssuesExpanded] = useState(false);
+  const [selectedSetupIssues, setSelectedSetupIssues] = useState<string[]>([]);
+  const [stickyIssues, setStickyIssues] = useState<string[]>([]);
+  const [stickyPrompt, setStickyPrompt] = useState<{ swingN: number; issues: string[] } | null>(
+    null,
+  );
 
   // Clear cache when the underlying swing changes.
   useEffect(() => {
@@ -203,6 +218,10 @@ export default function Tab1LiveView(): React.ReactElement {
       setConfirmingNext(false);
       return;
     }
+    setStickyIssues([]);
+    setSelectedSetupIssues([]);
+    setSetupIssuesExpanded(false);
+    setStickyPrompt(null);
     // endClinicSession moved to preflight submit — prior session stays alive until Dave confirms
     router.push({
       pathname: '/clinic/preflight',
@@ -219,6 +238,8 @@ export default function Tab1LiveView(): React.ReactElement {
   // appendBaselineSwing is called AFTER upsertSwingRecord — matches baseline.tsx:105,115 ordering.
   const onLogAndNext = (): void => {
     tap();
+    const swingNumberForPrompt = baselineCount + 1;
+    const hadIssues = selectedSetupIssues.length > 0;
     if (currentSwingId) {
       const existing = getSwingRecord(currentSwingId);
       if (existing) {
@@ -228,12 +249,17 @@ export default function Tab1LiveView(): React.ReactElement {
             direction: 'unknown',
             contact: selectedContact ?? 'unknown',
           },
+          ...(hadIssues && { setupIssues: selectedSetupIssues }),
         });
       }
       appendBaselineSwing(currentSwingId);
     }
+    const loggedIssues = selectedSetupIssues;
     setCurrentSwingId(null);
     setSelectedContact(null);
+    setSelectedSetupIssues([]);
+    setSetupIssuesExpanded(false);
+    setStickyPrompt(hadIssues ? { swingN: swingNumberForPrompt, issues: loggedIssues } : null);
     setCapturePhase('idle');
   };
 
@@ -244,6 +270,8 @@ export default function Tab1LiveView(): React.ReactElement {
     }
     setCurrentSwingId(null);
     setSelectedContact(null);
+    setSelectedSetupIssues([]);
+    setSetupIssuesExpanded(false);
     setCapturePhase('idle');
   };
 
@@ -317,6 +345,9 @@ export default function Tab1LiveView(): React.ReactElement {
           immediateStart={true}
           onSwingPersisted={(id) => {
             setCurrentSwingId(id);
+            setSelectedSetupIssues(stickyIssues);
+            setSetupIssuesExpanded(false);
+            setStickyPrompt(null);
             setCapturePhase('done');
           }}
         />
@@ -467,6 +498,123 @@ export default function Tab1LiveView(): React.ReactElement {
               );
             })}
           </View>
+          <Pressable
+            onPress={() => {
+              tap();
+              setSetupIssuesExpanded((v) => !v);
+            }}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              backgroundColor:
+                setupIssuesExpanded || selectedSetupIssues.length > 0 ? GOLD : '#000',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.15)',
+              alignSelf: 'flex-start',
+            }}
+            accessibilityRole="button"
+          >
+            <Text
+              style={{
+                color:
+                  setupIssuesExpanded || selectedSetupIssues.length > 0 ? '#000' : '#FFF',
+                fontSize: 12,
+                fontWeight: '700',
+                textTransform: 'uppercase',
+              }}
+            >
+              {selectedSetupIssues.length > 0
+                ? `SETUP ISSUE? (${selectedSetupIssues.length})`
+                : 'SETUP ISSUE?'}
+            </Text>
+          </Pressable>
+          {setupIssuesExpanded ? (
+            <View style={{ gap: 10 }}>
+              {SETUP_ISSUE_GROUPS.map((group) => (
+                <View key={group.label} style={{ gap: 6 }}>
+                  <Text
+                    style={{
+                      color: 'rgba(255,255,255,0.7)',
+                      fontSize: 11,
+                      fontWeight: '700',
+                      letterSpacing: 0.5,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {group.label}
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {group.issues.map((issue) => {
+                      const active = selectedSetupIssues.includes(issue);
+                      return (
+                        <Pressable
+                          key={issue}
+                          onPress={() => {
+                            tap();
+                            setSelectedSetupIssues((prev) =>
+                              prev.includes(issue)
+                                ? prev.filter((i) => i !== issue)
+                                : [...prev, issue],
+                            );
+                          }}
+                          style={{
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            backgroundColor: active ? GOLD : '#000',
+                            borderWidth: 1,
+                            borderColor: 'rgba(255,255,255,0.15)',
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: active ? '#000' : '#FFF',
+                              fontSize: 12,
+                              fontWeight: '700',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {issue}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+              {stickyIssues.length > 0 ? (
+                <Pressable
+                  onPress={() => {
+                    tap();
+                    setStickyIssues([]);
+                    setSelectedSetupIssues([]);
+                  }}
+                  style={{
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: '#000',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.15)',
+                  }}
+                  accessibilityRole="button"
+                >
+                  <Text
+                    style={{
+                      color: '#FFF',
+                      fontSize: 12,
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Clear sticky
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Pressable
               style={[styles.secondaryButton, { flex: 1 }]}
@@ -484,6 +632,34 @@ export default function Tab1LiveView(): React.ReactElement {
             </Pressable>
           </View>
         </View>
+      ) : null}
+
+      {stickyPrompt !== null ? (
+        <Pressable
+          onPress={() => {
+            tap();
+            setStickyIssues(stickyPrompt.issues);
+            setStickyPrompt(null);
+          }}
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: SCREEN_H * 0.3,
+            backgroundColor: '#1A1A1C',
+            borderRadius: 10,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderWidth: 1,
+            borderColor: 'rgba(255,255,255,0.1)',
+            alignItems: 'center',
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={{ color: GOLD, fontSize: 12, fontWeight: '700' }}>
+            Logged for swing #{stickyPrompt.swingN}. Apply to all swings until changed →
+          </Text>
+        </Pressable>
       ) : null}
 
       <View

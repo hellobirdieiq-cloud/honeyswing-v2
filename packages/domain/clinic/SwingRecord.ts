@@ -42,5 +42,6 @@ export interface SwingRecord {
   normalSwing?: boolean;
   structuralProblem?: StructuralProblem;
   ballOutcome?: BallOutcome;
+  setupIssues?: string[];
   notes?: string;
 }
