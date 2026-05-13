@@ -6,47 +6,34 @@ import {
   View,
 } from 'react-native';
 import { router, useRouter } from 'expo-router';
-import type { BallContact, BallDirection } from '@/packages/domain/clinic/enums';
+import type {
+  BallContact,
+  BallDirection,
+  EffortLevel,
+} from '@/packages/domain/clinic/enums';
 import {
   appendBaselineSwing,
   getCurrentClinicSession,
   subscribe,
 } from '@/lib/clinic/clinicSessionStore';
 import { getKidProfile } from '@/lib/clinic/kidProfileStore';
+import { getSwingRecord, upsertSwingRecord } from '@/lib/clinic/swingRecordStore';
+import {
+  BALL_CONTACT_OPTIONS,
+  BALL_DIRECTION_OPTIONS,
+  EFFORT_OPTIONS,
+  KID_SIMPLE_OUTCOMES,
+} from './components/swingLogControls';
 import { styles } from './clinicStyles';
 import CaptureSwingPanel from './components/CaptureSwingPanel';
-
-const BALL_CONTACT_OPTIONS: readonly BallContact[] = [
-  'flush',
-  'thin',
-  'fat',
-  'toe',
-  'heel',
-  'topped',
-  'whiff',
-  'unknown',
-];
-
-const BALL_DIRECTION_OPTIONS: readonly BallDirection[] = [
-  'pull',
-  'pull-fade',
-  'pull-hook',
-  'straight',
-  'fade',
-  'slice',
-  'draw',
-  'hook',
-  'push',
-  'push-draw',
-  'push-fade',
-  'unknown',
-];
 
 type Phase = 'capturing' | 'logging' | 'complete';
 
 interface PerSwingLogState {
   ballContact: BallContact;
   ballDirection: BallDirection;
+  setupOk: boolean | null;
+  effortLevel: EffortLevel | null;
 }
 
 export default function BaselineScreen(): React.ReactElement | null {
@@ -78,6 +65,8 @@ export default function BaselineScreen(): React.ReactElement | null {
   const [draftLog, setDraftLog] = useState<PerSwingLogState>({
     ballContact: 'unknown',
     ballDirection: 'unknown',
+    setupOk: null,
+    effortLevel: null,
   });
 
   if (!session) {
@@ -111,6 +100,18 @@ export default function BaselineScreen(): React.ReactElement | null {
         setPhase('capturing');
         return;
       }
+      const existing = getSwingRecord(currentSwingId);
+      if (existing) {
+        upsertSwingRecord({
+          ...existing,
+          ballOutcome: {
+            direction: draftLog.ballDirection,
+            contact: draftLog.ballContact,
+          },
+          setupOk: draftLog.setupOk ?? undefined,
+          effortLevel: draftLog.effortLevel ?? undefined,
+        });
+      }
       appendBaselineSwing(currentSwingId);
       const nextCount = swingsSaved + 1;
       setCurrentSwingId(null);
@@ -123,25 +124,141 @@ export default function BaselineScreen(): React.ReactElement | null {
       setPhase('capturing');
     };
 
+    const isJunior = kid?.ageTier === 'junior';
+    const kidSelectionLabel = (() => {
+      const match = KID_SIMPLE_OUTCOMES.find(
+        (o) => o.direction === draftLog.ballDirection && o.contact === draftLog.ballContact,
+      );
+      return match?.label;
+    })();
+
     return (
       <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 48 }}>
         <Text style={styles.swingCounter}>BASELINE {swingsSaved + 1} OF 5</Text>
         <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 16 }}>
+          {isJunior ? (
+            <View style={styles.formRow}>
+              <Text style={styles.label}>Ball Outcome</Text>
+              <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+                {KID_SIMPLE_OUTCOMES.map((opt) => {
+                  const active = opt.label === kidSelectionLabel;
+                  return (
+                    <Pressable
+                      key={opt.label}
+                      onPress={() =>
+                        setDraftLog((s) => ({
+                          ...s,
+                          ballDirection: opt.direction,
+                          ballContact: opt.contact,
+                        }))
+                      }
+                      style={[
+                        styles.segmentButton,
+                        active ? styles.segmentButtonActive : null,
+                        { flexGrow: 1, flexBasis: '30%' },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: active ? '#000000' : '#FFFFFF',
+                          fontSize: 12,
+                          fontWeight: '700',
+                          letterSpacing: 0.5,
+                          textTransform: 'uppercase',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.formRow}>
+                <Text style={styles.label}>Ball Contact</Text>
+                <SegmentedRow
+                  options={BALL_CONTACT_OPTIONS}
+                  value={draftLog.ballContact}
+                  onChange={(v) => setDraftLog((s) => ({ ...s, ballContact: v }))}
+                />
+              </View>
+              <View style={styles.formRow}>
+                <Text style={styles.label}>Ball Direction</Text>
+                <SegmentedRow
+                  options={BALL_DIRECTION_OPTIONS}
+                  value={draftLog.ballDirection}
+                  onChange={(v) => setDraftLog((s) => ({ ...s, ballDirection: v }))}
+                />
+              </View>
+            </>
+          )}
           <View style={styles.formRow}>
-            <Text style={styles.label}>Ball Contact</Text>
-            <SegmentedRow
-              options={BALL_CONTACT_OPTIONS}
-              value={draftLog.ballContact}
-              onChange={(v) => setDraftLog((s) => ({ ...s, ballContact: v }))}
-            />
+            <Text style={styles.label}>Setup OK?</Text>
+            <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+              {(['yes', 'no'] as const).map((opt) => {
+                const value = opt === 'yes';
+                const active = draftLog.setupOk === value;
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setDraftLog((s) => ({ ...s, setupOk: value }))}
+                    style={[
+                      styles.segmentButton,
+                      active ? styles.segmentButtonActive : null,
+                      { flexGrow: 1, flexBasis: '30%' },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? '#000000' : '#FFFFFF',
+                        fontSize: 12,
+                        fontWeight: '700',
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {opt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           <View style={styles.formRow}>
-            <Text style={styles.label}>Ball Direction</Text>
-            <SegmentedRow
-              options={BALL_DIRECTION_OPTIONS}
-              value={draftLog.ballDirection}
-              onChange={(v) => setDraftLog((s) => ({ ...s, ballDirection: v }))}
-            />
+            <Text style={styles.label}>Effort</Text>
+            <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+              {EFFORT_OPTIONS.map((opt) => {
+                const active = draftLog.effortLevel === opt;
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setDraftLog((s) => ({ ...s, effortLevel: opt }))}
+                    style={[
+                      styles.segmentButton,
+                      active ? styles.segmentButtonActive : null,
+                      { flexGrow: 1, flexBasis: '30%' },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? '#000000' : '#FFFFFF',
+                        fontSize: 12,
+                        fontWeight: '700',
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {opt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           <Pressable style={styles.primaryButton} onPress={onSave}>
             <Text style={styles.primaryButtonText}>Save Swing</Text>
@@ -161,7 +278,12 @@ export default function BaselineScreen(): React.ReactElement | null {
         swingLabel={`BASELINE ${swingsSaved + 1} OF 5`}
         onSwingPersisted={(id) => {
           setCurrentSwingId(id);
-          setDraftLog({ ballContact: 'unknown', ballDirection: 'unknown' });
+          setDraftLog({
+            ballContact: 'unknown',
+            ballDirection: 'unknown',
+            setupOk: null,
+            effortLevel: null,
+          });
           setPhase('logging');
         }}
       />

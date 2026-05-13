@@ -95,7 +95,7 @@ function makeSwing(id: string, spineAngle: number): SwingRecord {
     effortLevel: 'medium',
     normalSwing: true,
     structuralProblem: 'none',
-    ballOutcome: { direction: 'straight', contact: 'flush' },
+    ballOutcome: { direction: 'straight', contact: 'solid' },
   };
 }
 
@@ -108,7 +108,7 @@ function makeCueBlock(id: string): CueBlockRecord {
     recordedAt: 1700000000000,
     cueText: 'Keep your spine angle steady through impact.',
     cueFamily: 'spine-stability',
-    prediction: { direction: 'straight', contact: 'flush', confidence: 0.7 },
+    prediction: { direction: 'straight', contact: 'solid', confidence: 0.7 },
     attentionIntent: 'spine',
     attentionActual: 'spine',
     postCueSwingIds: ['p1', 'p2', 'p3', 'p4', 'p5'],

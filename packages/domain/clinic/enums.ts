@@ -48,13 +48,13 @@ export type StructuralProblem =
   | 'other';
 
 export type BallContact =
-  | 'flush'
+  | 'solid'
   | 'thin'
   | 'fat'
-  | 'toe'
-  | 'heel'
-  | 'topped'
+  | 'sky'
+  | 'shank'
   | 'whiff'
+  | 'topped'
   | 'unknown';
 
 export type BallDirection =
@@ -69,6 +69,9 @@ export type BallDirection =
   | 'push'
   | 'push-draw'
   | 'push-fade'
+  | 'left'
+  | 'right'
+  | 'missed'
   | 'unknown';
 
 export type CueFamily =
@@ -82,21 +85,8 @@ export type CueFamily =
   | 'setup'
   | 'other';
 
-export type AttentionTarget =
-  | 'hands'
-  | 'club'
-  | 'hips'
-  | 'shoulders'
-  | 'head'
-  | 'spine'
-  | 'feet'
-  | 'ball'
-  | 'target'
-  | 'tempo-feel'
-  | 'rhythm'
-  | 'pressure'
-  | 'release'
-  | 'other';
+// Free text in v1.3 — UI soft-caps at 5 words via clampWords helper.
+export type AttentionTarget = string;
 
 export type PhysicalTest =
   | 'thoracic-rotation'
@@ -112,7 +102,7 @@ export type PhysicalTest =
 
 export type PhysicalTestResult = 'pass' | 'fail' | 'partial';
 
-export type EffortLevel = 'easy' | 'medium' | 'hard' | 'max';
+export type EffortLevel = 'low' | 'medium' | 'high';
 
 export type ClinicMetricKey =
   | 'spineAngle'

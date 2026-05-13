@@ -8,10 +8,10 @@ import {
 } from 'react-native';
 import { router, useRouter } from 'expo-router';
 import type {
-  AttentionTarget,
   BallContact,
   BallDirection,
   CueFamily,
+  EffortLevel,
 } from '@/packages/domain/clinic/enums';
 import type { CueBlockRecord } from '@/packages/domain/clinic/CueBlock';
 import { upsertCueBlock } from '@/lib/clinic/cueBlockStore';
@@ -21,6 +21,14 @@ import {
   subscribe,
 } from '@/lib/clinic/clinicSessionStore';
 import { getKidProfile } from '@/lib/clinic/kidProfileStore';
+import { getSwingRecord, upsertSwingRecord } from '@/lib/clinic/swingRecordStore';
+import {
+  BALL_CONTACT_OPTIONS,
+  BALL_DIRECTION_OPTIONS,
+  EFFORT_OPTIONS,
+  KID_SIMPLE_OUTCOMES,
+  clampWords,
+} from './components/swingLogControls';
 import { styles } from './clinicStyles';
 import CaptureSwingPanel from './components/CaptureSwingPanel';
 
@@ -34,49 +42,6 @@ const CUE_FAMILY_OPTIONS: readonly CueFamily[] = [
   'follow-through',
   'setup',
   'other',
-];
-
-const ATTENTION_OPTIONS: readonly AttentionTarget[] = [
-  'hands',
-  'club',
-  'hips',
-  'shoulders',
-  'head',
-  'spine',
-  'feet',
-  'ball',
-  'target',
-  'tempo-feel',
-  'rhythm',
-  'pressure',
-  'release',
-  'other',
-];
-
-const BALL_CONTACT_OPTIONS: readonly BallContact[] = [
-  'flush',
-  'thin',
-  'fat',
-  'toe',
-  'heel',
-  'topped',
-  'whiff',
-  'unknown',
-];
-
-const BALL_DIRECTION_OPTIONS: readonly BallDirection[] = [
-  'pull',
-  'pull-fade',
-  'pull-hook',
-  'straight',
-  'fade',
-  'slice',
-  'draw',
-  'hook',
-  'push',
-  'push-draw',
-  'push-fade',
-  'unknown',
 ];
 
 const CONFIDENCE_OPTIONS = [
@@ -113,6 +78,8 @@ interface PredictionState {
 interface DraftLogState {
   ballContact: BallContact;
   ballDirection: BallDirection;
+  setupOk: boolean | null;
+  effortLevel: EffortLevel | null;
 }
 
 export default function CueBlockScreen(): React.ReactElement | null {
@@ -147,13 +114,15 @@ export default function CueBlockScreen(): React.ReactElement | null {
   });
   const [cueFamily, setCueFamily] = useState<CueFamily>('other');
   const [cueText, setCueText] = useState<string>('');
-  const [attentionIntent, setAttentionIntent] = useState<AttentionTarget>('other');
-  const [attentionActual, setAttentionActual] = useState<AttentionTarget>('other');
+  const [attentionIntent, setAttentionIntent] = useState<string>('');
+  const [attentionActual, setAttentionActual] = useState<string>('');
   const [postCueSwingIds, setPostCueSwingIds] = useState<string[]>([]);
   const [currentSwingId, setCurrentSwingId] = useState<string | null>(null);
   const [draftLog, setDraftLog] = useState<DraftLogState>({
     ballContact: 'unknown',
     ballDirection: 'unknown',
+    setupOk: null,
+    effortLevel: null,
   });
   const [swingPhase, setSwingPhase] = useState<'capturing' | 'logging'>('capturing');
   const [attentionActualPending, setAttentionActualPending] = useState<boolean>(false);
@@ -188,11 +157,16 @@ export default function CueBlockScreen(): React.ReactElement | null {
     setPrediction({ direction: 'unknown', contact: 'unknown', confidence: 0.66 });
     setCueFamily('other');
     setCueText('');
-    setAttentionIntent('other');
-    setAttentionActual('other');
+    setAttentionIntent('');
+    setAttentionActual('');
     setPostCueSwingIds([]);
     setCurrentSwingId(null);
-    setDraftLog({ ballContact: 'unknown', ballDirection: 'unknown' });
+    setDraftLog({
+      ballContact: 'unknown',
+      ballDirection: 'unknown',
+      setupOk: null,
+      effortLevel: null,
+    });
     setSwingPhase('capturing');
     setAttentionActualPending(false);
     setConfirmed(false);
@@ -319,11 +293,25 @@ export default function CueBlockScreen(): React.ReactElement | null {
             What is the kid going to focus on?
           </Text>
           <View style={styles.formRow}>
-            <SegmentedRow
-              options={ATTENTION_OPTIONS}
+            <TextInput
               value={attentionIntent}
-              onChange={setAttentionIntent}
+              onChangeText={(v) => setAttentionIntent(clampWords(v, 5))}
+              placeholder="e.g. 'low and slow'"
+              placeholderTextColor="rgba(255,255,255,0.4)"
+              style={{
+                backgroundColor: '#1A1A1C',
+                color: '#FFFFFF',
+                paddingHorizontal: 12,
+                paddingVertical: 12,
+                borderRadius: 10,
+                fontSize: 15,
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
             />
+            <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 4 }}>
+              ≤ 5 words
+            </Text>
           </View>
           <Pressable style={styles.primaryButton} onPress={() => setStep('capture-post-cue')}>
             <Text style={styles.primaryButtonText}>Start Swings</Text>
@@ -348,11 +336,25 @@ export default function CueBlockScreen(): React.ReactElement | null {
               What was the kid actually thinking?
             </Text>
             <View style={styles.formRow}>
-              <SegmentedRow
-                options={ATTENTION_OPTIONS}
+              <TextInput
                 value={attentionActual}
-                onChange={setAttentionActual}
+                onChangeText={(v) => setAttentionActual(clampWords(v, 5))}
+                placeholder="e.g. 'the ball'"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                style={{
+                  backgroundColor: '#1A1A1C',
+                  color: '#FFFFFF',
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  fontSize: 15,
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
               />
+              <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 4 }}>
+                ≤ 5 words
+              </Text>
             </View>
             <Pressable
               style={styles.primaryButton}
@@ -372,7 +374,12 @@ export default function CueBlockScreen(): React.ReactElement | null {
             swingLabel={`CUE SWING ${postCueSwingIds.length + 1} OF ${POST_CUE_SWING_TARGET}`}
             onSwingPersisted={(id) => {
               setCurrentSwingId(id);
-              setDraftLog({ ballContact: 'unknown', ballDirection: 'unknown' });
+              setDraftLog({
+                ballContact: 'unknown',
+                ballDirection: 'unknown',
+                setupOk: null,
+                effortLevel: null,
+              });
               setSwingPhase('logging');
             }}
           />
@@ -385,6 +392,18 @@ export default function CueBlockScreen(): React.ReactElement | null {
       if (!currentSwingId) {
         setSwingPhase('capturing');
         return;
+      }
+      const existing = getSwingRecord(currentSwingId);
+      if (existing) {
+        upsertSwingRecord({
+          ...existing,
+          ballOutcome: {
+            direction: draftLog.ballDirection,
+            contact: draftLog.ballContact,
+          },
+          setupOk: draftLog.setupOk ?? undefined,
+          effortLevel: draftLog.effortLevel ?? undefined,
+        });
       }
       const newIds = [...postCueSwingIds, currentSwingId];
       setPostCueSwingIds(newIds);
@@ -406,27 +425,143 @@ export default function CueBlockScreen(): React.ReactElement | null {
       setSwingPhase('capturing');
     };
 
+    const isJunior = kid?.ageTier === 'junior';
+    const kidSelectionLabel = (() => {
+      const match = KID_SIMPLE_OUTCOMES.find(
+        (o) => o.direction === draftLog.ballDirection && o.contact === draftLog.ballContact,
+      );
+      return match?.label;
+    })();
+
     return (
       <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 48 }}>
         <Text style={styles.swingCounter}>
           CUE SWING {postCueSwingIds.length + 1} OF {POST_CUE_SWING_TARGET}
         </Text>
         <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 16 }}>
+          {isJunior ? (
+            <View style={styles.formRow}>
+              <Text style={styles.label}>Ball Outcome</Text>
+              <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+                {KID_SIMPLE_OUTCOMES.map((opt) => {
+                  const active = opt.label === kidSelectionLabel;
+                  return (
+                    <Pressable
+                      key={opt.label}
+                      onPress={() =>
+                        setDraftLog((s) => ({
+                          ...s,
+                          ballDirection: opt.direction,
+                          ballContact: opt.contact,
+                        }))
+                      }
+                      style={[
+                        styles.segmentButton,
+                        active ? styles.segmentButtonActive : null,
+                        { flexGrow: 1, flexBasis: '30%' },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: active ? '#000000' : '#FFFFFF',
+                          fontSize: 12,
+                          fontWeight: '700',
+                          letterSpacing: 0.5,
+                          textTransform: 'uppercase',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.formRow}>
+                <Text style={styles.label}>Ball Contact</Text>
+                <SegmentedRow
+                  options={BALL_CONTACT_OPTIONS}
+                  value={draftLog.ballContact}
+                  onChange={(v) => setDraftLog((s) => ({ ...s, ballContact: v }))}
+                />
+              </View>
+              <View style={styles.formRow}>
+                <Text style={styles.label}>Ball Direction</Text>
+                <SegmentedRow
+                  options={BALL_DIRECTION_OPTIONS}
+                  value={draftLog.ballDirection}
+                  onChange={(v) => setDraftLog((s) => ({ ...s, ballDirection: v }))}
+                />
+              </View>
+            </>
+          )}
           <View style={styles.formRow}>
-            <Text style={styles.label}>Ball Contact</Text>
-            <SegmentedRow
-              options={BALL_CONTACT_OPTIONS}
-              value={draftLog.ballContact}
-              onChange={(v) => setDraftLog((s) => ({ ...s, ballContact: v }))}
-            />
+            <Text style={styles.label}>Setup OK?</Text>
+            <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+              {(['yes', 'no'] as const).map((opt) => {
+                const value = opt === 'yes';
+                const active = draftLog.setupOk === value;
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setDraftLog((s) => ({ ...s, setupOk: value }))}
+                    style={[
+                      styles.segmentButton,
+                      active ? styles.segmentButtonActive : null,
+                      { flexGrow: 1, flexBasis: '30%' },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? '#000000' : '#FFFFFF',
+                        fontSize: 12,
+                        fontWeight: '700',
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {opt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           <View style={styles.formRow}>
-            <Text style={styles.label}>Ball Direction</Text>
-            <SegmentedRow
-              options={BALL_DIRECTION_OPTIONS}
-              value={draftLog.ballDirection}
-              onChange={(v) => setDraftLog((s) => ({ ...s, ballDirection: v }))}
-            />
+            <Text style={styles.label}>Effort</Text>
+            <View style={[styles.segmentedControl, { flexWrap: 'wrap' }]}>
+              {EFFORT_OPTIONS.map((opt) => {
+                const active = draftLog.effortLevel === opt;
+                return (
+                  <Pressable
+                    key={opt}
+                    onPress={() => setDraftLog((s) => ({ ...s, effortLevel: opt }))}
+                    style={[
+                      styles.segmentButton,
+                      active ? styles.segmentButtonActive : null,
+                      { flexGrow: 1, flexBasis: '30%' },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color: active ? '#000000' : '#FFFFFF',
+                        fontSize: 12,
+                        fontWeight: '700',
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {opt}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           <Pressable style={styles.primaryButton} onPress={onSave}>
             <Text style={styles.primaryButtonText}>Save Swing</Text>
