@@ -290,18 +290,44 @@ function tryHeuristicDetection(
   // Setup/address: find the last still frame before motion begins
   const addressIdx = findSetupEndIndex(smoothed, points);
 
-  const topSearchStart = Math.max(addressIdx + 2, Math.floor(lastIdx * 0.2));
-  const topSearchEnd = Math.floor(lastIdx * 0.75);
+  const topSearchStart = Math.min(lastIdx, addressIdx + Math.round(200 / msPerFrame));
+  const topSearchEnd   = Math.min(lastIdx, addressIdx + Math.round(2000 / msPerFrame));
 
   if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
 
-  // CANONICAL (locked #141): top-of-backswing = smoothed Y-minimum (S89 Chat 2).
-  // Replaced plateau heuristic ("last stable low"). Do not revert.
-  // #151 PHASE-3-IMPL (lead wrist X minimum) is a future improvement — do not implement until validated on clinic data.
-  // Top detection uses smoothed minimum (TOP_SMOOTH_WINDOW=3) to resist single-frame pose artifacts.
-  // Picks true biomechanical top (first minimum on smoothed path) rather than plateau end (~340ms later on observed swings).
-  // Design locked S89 Chat 2. Do not revert to raw minimum or plateau heuristic without re-opening decision.
-  const topIdx = findSmoothedMinYIndex(points, topSearchStart, topSearchEnd, TOP_SMOOTH_WINDOW);
+  // CANONICAL (locked #141, updated #151): top-of-backswing = lead-wrist X minimum + lookahead guard.
+  // Anchored to addressIdx (Phase 0 dSpreadX swing_start is computed downstream in analysisPipeline.ts
+  // and cannot feed back in). Window [addressIdx+200ms, addressIdx+2000ms] gives slack for the up-to-+21
+  // frame addressIdx offset confirmed in the spec validation table.
+  // MIN_LOOKAHEAD_FRAMES=10 from #164 rule fix (5-frame false-min gap × 2 safety).
+  // Validated N=4 DTL swings (Luca, May 2026); spec doc DTL Phase 3.
+  // Prior canonical: smoothed Y-minimum (S89 Chat 2) — preserved in findSmoothedMinYIndex for reference.
+  // EXTERNAL ASSUMPTION — N=4 DTL swings validated. Re-calibrate Clinic 2.
+  const MIN_TRAVEL = 0.04;
+  // EXTERNAL ASSUMPTION — N=1 (5-frame gap × 2 safety). Re-calibrate Clinic 2.
+  const MIN_LOOKAHEAD_FRAMES = 10;
+
+  let windowMax = -Infinity;
+  let topIdx: number | null = null;
+  for (let F = Math.max(topSearchStart, 1); F <= topSearchEnd - 2; F++) {
+    const lWx = points[F].leadX;  // ← leadX (X COORDINATE). NOT leadY, NOT x, NOT y.
+    if (lWx > windowMax) windowMax = lWx;
+    if (
+      lWx < points[F - 1].leadX &&
+      lWx < points[F + 1].leadX &&
+      points[F + 1].leadX < points[F + 2].leadX &&
+      lWx < windowMax - MIN_TRAVEL
+    ) {
+      // Lookahead guard: reject if a deeper minimum exists within MIN_LOOKAHEAD_FRAMES.
+      // Validated: swing 075d79a6, false min f39 (lw_x=0.1878) → true min f44 (lw_x=0.1274), 5-frame gap (#164).
+      let hasDeeperMin = false;
+      for (let k = 1; k <= MIN_LOOKAHEAD_FRAMES && F + k <= topSearchEnd; k++) {
+        if (points[F + k].leadX < lWx) { hasDeeperMin = true; break; }
+      }
+      if (!hasDeeperMin) { topIdx = F; break; }
+    }
+  }
+  if (topIdx === null) return { phases: [], failureGate: 'top_search_bounds' };
 
   // #152 PHASE-4-IMPL: impact = argmax(combinedWristY) + 67ms (hand-low → ball contact offset).
   // Spec doc: docs/HoneySwing_Phase_Detection_Rules.md DTL Phase 4. combinedY = leadWrist.y + trailWrist.y;
