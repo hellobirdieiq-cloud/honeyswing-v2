@@ -90,7 +90,7 @@ function makeAnalysis(overrides: {
       components: { jointVisibility: 0.9, phaseDetection: 0.8, frameCoverage: 0.85, cameraAngle: 0.9 },
     },
     cameraAngleResult: {
-      angle: 'front',
+      angle: 'face_on',
       shoulderSpread: 0.25,
       hipSpread: 0.2,
       avgSpread: 0.225,

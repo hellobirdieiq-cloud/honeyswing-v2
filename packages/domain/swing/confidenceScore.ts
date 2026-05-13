@@ -117,7 +117,7 @@ const MEDIUM_TIER_METRICS: ReadonlySet<string> = new Set([
 function scoreCameraAngle(cameraAngle: CameraAngleResult): number {
   const { angle, avgSpread, footIndexNorm } = cameraAngle;
 
-  if (angle === 'front') {
+  if (angle === 'face_on') {
     // [EXTERNAL ASSUMPTION] thresholds empirically derived from 6 swings (3 DTL, 3 face-on)
     const primary = footIndexNorm ?? avgSpread;
     const lo = footIndexNorm != null ? 0.131 : 0.008;
@@ -126,7 +126,7 @@ function scoreCameraAngle(cameraAngle: CameraAngleResult): number {
     return 0.80 + 0.20 * Math.max(clarity, 0);
   }
 
-  if (angle === 'side') {
+  if (angle === 'dtl') {
     const clarity = Math.min((0.08 - avgSpread) / 0.04, 1.0);
     return 0.80 + 0.20 * Math.max(clarity, 0);
   }

@@ -108,7 +108,7 @@ group('T1. DTL HIGH path — clean stillness then takeaway');
     }
   }
   // phases.top=48 → address scan starts at E = 48-20 = 28 (latest allowed E).
-  const result = detectSwingStart(frames, { address: 0, top: 48 }, false, 'side');
+  const result = detectSwingStart(frames, { address: 0, top: 48 }, false, 'dtl');
 
   assertEq(result.trueAddressFrame, 28, 'T1: trueAddressFrame is the latest stable E');
   assertEq(result.trueSwingStartFrame, 30, 'T1: trueSwingStartFrame is first 2-of-3 motion frame');
@@ -127,7 +127,7 @@ group('T2. No stable window → LOW, preserves phases.address');
     const spec = i % 2 === 0 ? STABLE : MOTION;
     frames.push(makeFrame(i, spec, 0.50 + (i % 2) * 0.02));
   }
-  const result = detectSwingStart(frames, { address: 5, top: 48 }, false, 'side');
+  const result = detectSwingStart(frames, { address: 5, top: 48 }, false, 'dtl');
 
   assertEq(result.trueAddressFrame, 5, 'T2: falls back to phases.address');
   assertEq(result.trueSwingStartFrame, 6, 'T2: trueSwingStartFrame = phases.address + 1');
@@ -141,7 +141,7 @@ group('T3. Front camera → LOW stub mirroring phases.address');
 {
   const frames: PoseFrame[] = [];
   for (let i = 0; i < 50; i++) frames.push(makeFrame(i, STABLE));
-  const result = detectSwingStart(frames, { address: 7, top: 40 }, false, 'front');
+  const result = detectSwingStart(frames, { address: 7, top: 40 }, false, 'face_on');
 
   assertEq(result.trueAddressFrame, 7, 'T3: trueAddressFrame mirrors phases.address');
   assertEq(result.trueSwingStartFrame, 8, 'T3: trueSwingStartFrame = phases.address + 1');

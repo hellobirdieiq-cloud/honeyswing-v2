@@ -181,9 +181,9 @@ export function detectSwingStart(
   phases: { address: number; top: number },
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted for API symmetry; canonical frames are already handedness-normalized
   isLeftHanded: boolean,
-  cameraAngle: "front" | "side" | "unknown",
+  cameraAngle: "face_on" | "dtl" | "unknown",
 ): SwingStartResult {
-  if (cameraAngle === "front") {
+  if (cameraAngle === "face_on") {
     return {
       trueAddressFrame: phases.address,
       trueSwingStartFrame: phases.address + 1,

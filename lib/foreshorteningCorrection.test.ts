@@ -106,9 +106,9 @@ function makeAngles(overrides?: Partial<GolfAngles>): GolfAngles {
   };
 }
 
-function makeCameraResult(avgSpread: number, angle?: 'front' | 'side' | 'unknown'): CameraAngleResult {
+function makeCameraResult(avgSpread: number, angle?: 'face_on' | 'dtl' | 'unknown'): CameraAngleResult {
   return {
-    angle: angle ?? (avgSpread >= 0.15 ? 'front' : avgSpread <= 0.08 ? 'side' : 'unknown'),
+    angle: angle ?? (avgSpread >= 0.15 ? 'face_on' : avgSpread <= 0.08 ? 'dtl' : 'unknown'),
     shoulderSpread: avgSpread * 1.1,
     hipSpread: avgSpread * 0.9,
     avgSpread,
@@ -377,7 +377,7 @@ group('correctForeshortening — guards');
 
 {
   const angles = makeAngles();
-  const camera = makeCameraResult(FACE_ON_REFERENCE_SPREAD, 'front');
+  const camera = makeCameraResult(FACE_ON_REFERENCE_SPREAD, 'face_on');
   const result = correctForeshortening(angles, camera);
 
   assertEq(result.debug.applied, false, 'face-on: no correction');
@@ -387,7 +387,7 @@ group('correctForeshortening — guards');
 
 {
   const angles = makeAngles();
-  const camera = makeCameraResult(0.02, 'side');
+  const camera = makeCameraResult(0.02, 'dtl');
   const result = correctForeshortening(angles, camera);
 
   assertEq(result.debug.applied, false, 'extreme side: no correction');
@@ -561,7 +561,7 @@ group('Debug output shape — when not applied');
 
 {
   const angles = makeAngles();
-  const camera = makeCameraResult(FACE_ON_REFERENCE_SPREAD, 'front');
+  const camera = makeCameraResult(FACE_ON_REFERENCE_SPREAD, 'face_on');
   const result = correctForeshortening(angles, camera);
 
   assertEq(result.debug.corrections, undefined, 'no corrections object when not applied');

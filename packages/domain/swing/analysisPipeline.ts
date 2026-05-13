@@ -504,7 +504,7 @@ export function analyzePoseSequence(
     canonical.frames,
     { address: phaseAddressIdx, top: phaseTopIdx },
     isLeftHanded,
-    'side', // DTL only for now
+    'dtl', // DTL only
   );
   const resolvedAddressIdx =
     addressFrameIdx ?? (

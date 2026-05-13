@@ -1,6 +1,6 @@
 import { PoseFrame } from "../../pose/PoseTypes";
 
-export type CameraAngle = "front" | "side" | "unknown";
+export type CameraAngle = "face_on" | "dtl" | "unknown";
 
 export type MetricConfidenceWeights = {
   spineAngle: number;
@@ -23,12 +23,12 @@ export type CameraAngleResult = {
 };
 
 // [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
-const FRONT_THRESHOLD = 0.40;
+const FACE_ON_THRESHOLD = 0.40;
 // [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
-const SIDE_THRESHOLD = 0.55;
+const DTL_THRESHOLD = 0.55;
 const MIN_CONFIDENCE = 0.5;
 
-const FRONT_WEIGHTS: MetricConfidenceWeights = {
+const FACE_ON_WEIGHTS: MetricConfidenceWeights = {
   spineAngle: 0.4,
   leftElbowAngle: 0.9,
   rightElbowAngle: 0.9,
@@ -39,7 +39,7 @@ const FRONT_WEIGHTS: MetricConfidenceWeights = {
   tempo: 1.0,
 };
 
-const SIDE_WEIGHTS: MetricConfidenceWeights = {
+const DTL_WEIGHTS: MetricConfidenceWeights = {
   spineAngle: 1.0,
   leftElbowAngle: 0.6,
   rightElbowAngle: 0.6,
@@ -51,19 +51,19 @@ const SIDE_WEIGHTS: MetricConfidenceWeights = {
 };
 
 const UNKNOWN_WEIGHTS: MetricConfidenceWeights = {
-  spineAngle: Math.min(FRONT_WEIGHTS.spineAngle, SIDE_WEIGHTS.spineAngle),
-  leftElbowAngle: Math.min(FRONT_WEIGHTS.leftElbowAngle, SIDE_WEIGHTS.leftElbowAngle),
-  rightElbowAngle: Math.min(FRONT_WEIGHTS.rightElbowAngle, SIDE_WEIGHTS.rightElbowAngle),
-  leftKneeAngle: Math.min(FRONT_WEIGHTS.leftKneeAngle, SIDE_WEIGHTS.leftKneeAngle),
-  rightKneeAngle: Math.min(FRONT_WEIGHTS.rightKneeAngle, SIDE_WEIGHTS.rightKneeAngle),
-  hipSpreadDelta: Math.min(FRONT_WEIGHTS.hipSpreadDelta, SIDE_WEIGHTS.hipSpreadDelta),
-  shoulderTilt: Math.min(FRONT_WEIGHTS.shoulderTilt, SIDE_WEIGHTS.shoulderTilt),
+  spineAngle: Math.min(FACE_ON_WEIGHTS.spineAngle, DTL_WEIGHTS.spineAngle),
+  leftElbowAngle: Math.min(FACE_ON_WEIGHTS.leftElbowAngle, DTL_WEIGHTS.leftElbowAngle),
+  rightElbowAngle: Math.min(FACE_ON_WEIGHTS.rightElbowAngle, DTL_WEIGHTS.rightElbowAngle),
+  leftKneeAngle: Math.min(FACE_ON_WEIGHTS.leftKneeAngle, DTL_WEIGHTS.leftKneeAngle),
+  rightKneeAngle: Math.min(FACE_ON_WEIGHTS.rightKneeAngle, DTL_WEIGHTS.rightKneeAngle),
+  hipSpreadDelta: Math.min(FACE_ON_WEIGHTS.hipSpreadDelta, DTL_WEIGHTS.hipSpreadDelta),
+  shoulderTilt: Math.min(FACE_ON_WEIGHTS.shoulderTilt, DTL_WEIGHTS.shoulderTilt),
   tempo: 1.0,
 };
 
 const WEIGHT_TABLES: Record<CameraAngle, MetricConfidenceWeights> = {
-  front: FRONT_WEIGHTS,
-  side: SIDE_WEIGHTS,
+  face_on: FACE_ON_WEIGHTS,
+  dtl: DTL_WEIGHTS,
   unknown: UNKNOWN_WEIGHTS,
 };
 
@@ -130,19 +130,19 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
 
   let angle: CameraAngle;
   if (footIndexNorm != null) {
-    if (footIndexNorm >= SIDE_THRESHOLD) {
-      angle = "front";
-    } else if (footIndexNorm <= FRONT_THRESHOLD) {
-      angle = "side";
+    if (footIndexNorm >= DTL_THRESHOLD) {
+      angle = "face_on";
+    } else if (footIndexNorm <= FACE_ON_THRESHOLD) {
+      angle = "dtl";
     } else {
       angle = "unknown";
     }
   } else if (ankleSpread != null) {
     // [EXTERNAL ASSUMPTION] ankle fallback thresholds — empirically derived from 6 swings (3 DTL, 3 face-on)
     if (ankleSpread >= 0.07) {
-      angle = "front";
+      angle = "face_on";
     } else if (ankleSpread <= 0.02) {
-      angle = "side";
+      angle = "dtl";
     } else {
       angle = "unknown";
     }
