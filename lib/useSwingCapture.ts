@@ -51,6 +51,8 @@ interface UseSwingCaptureOptions {
   onBeginRecording: () => void;
   actualFpsRef?: React.MutableRefObject<number>;
   targetFps?: number;
+  onSwingPersisted?: (swingId: string | null) => void;
+  skipResultNavigation?: boolean;
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -70,6 +72,8 @@ export function useSwingCapture({
   onBeginRecording,
   actualFpsRef,
   targetFps,
+  onSwingPersisted,
+  skipResultNavigation = false,
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -144,6 +148,10 @@ export function useSwingCapture({
       swingId = await (swingIdPromiseRef.current ?? Promise.resolve(null));
     } catch {
       // persist failed — navigate without swingId
+    }
+    if (skipResultNavigation) {
+      onSwingPersisted?.(swingId);
+      return;
     }
     router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
