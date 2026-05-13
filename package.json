@@ -69,5 +69,8 @@
     "supabase": "2.75.0",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "optionalDependencies": {
+    "utf-8-validate": "^5.0.10"
+  }
 }
