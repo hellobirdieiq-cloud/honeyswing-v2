@@ -89,10 +89,7 @@ export default function Tab1LiveView(): React.ReactElement {
   // so it cannot fire while a session is live.
   useEffect(() => {
     if (!clinicSessionActive()) {
-      router.replace({
-        pathname: '/clinic/preflight',
-        params: { clinicNumber: '1' },
-      });
+      router.replace('/clinic/preflight');
     }
   }, [tick]);
 
@@ -351,6 +348,19 @@ export default function Tab1LiveView(): React.ReactElement {
             setCapturePhase('done');
           }}
         />
+        <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              tap();
+              setCurrentSwingId(null);
+              setCapturePhase('idle');
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.secondaryButtonText}>CANCEL</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
