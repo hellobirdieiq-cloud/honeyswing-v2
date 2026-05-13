@@ -129,17 +129,30 @@ if Δx > 0 for DIRECTION_FRAMES consecutive: takeawayIdx = F
 searchStart = swing_start + round(200 / ms_per_frame)
 searchEnd   = swing_start + round(2000 / ms_per_frame)
 
+MIN_TRAVEL           = 0.04
+// EXTERNAL ASSUMPTION — N=1 observation (5-frame gap f39→f44 × 2 safety).
+// Re-calibrate at Clinic 2 with raw wrist X traces.
+MIN_LOOKAHEAD_FRAMES = 10
+
 // Lead wrist = leftWrist RH, rightWrist LH
 for each frame F in [searchStart .. searchEnd]:
   lWx = leadWrist.x[F]
   if lWx < lWx[F-1]
     AND lWx < lWx[F+1]
     AND lWx[F+1] < lWx[F+2]
-    AND lWx < (max(lWx[searchStart..F]) - 0.04)  // MIN_TRAVEL
+    AND lWx < (max(lWx[searchStart..F]) - MIN_TRAVEL)
+    // Lookahead guard: reject candidate if a deeper minimum exists
+    // within MIN_LOOKAHEAD_FRAMES — guards against transient dips
+    // before the true top (validated: swing 075d79a6, f39→f44 gap).
+    AND NOT (∃ k in 1..MIN_LOOKAHEAD_FRAMES where
+             F + k ≤ searchEnd AND lWx[F+k] < lWx[F])
     → top = F; break
 ```
 
-**Validated:** Swing 2: f83 (pipeline f84) ✓ · Swing 3: f61 (pipeline f63) ✓
+**Validated:**
+- Swing 2: f83 (pipeline f84) ✓
+- Swing 3: f61 (pipeline f63) ✓
+- Swing 1 (075d79a6): without guard fires at f39 (false min, lw_x=0.1878); with guard advances to true min f44 (lw_x=0.1274). 5-frame gap.
 
 ---
 
@@ -155,17 +168,21 @@ searchEnd   = top_frame + round(1500 / ms_per_frame)
 
 combinedY[F] = leadWrist.y[F] + trailWrist.y[F]
 
-hand_low_frame = frame F in [searchStart..searchEnd] where:
-  combinedY[F] > combinedY[F-1]
-  AND combinedY[F] > combinedY[F+1]
-  AND combinedY[F+1] > combinedY[F+2]
+// Highest-peak scan — take the frame with MAXIMUM combinedY in the
+// full window, not the first local peak. Guards against early
+// transient peaks that latch a false hand-low (validated: swing 1,
+// first peak f60=0.7347 vs true peak f71=0.8964, 11-frame gap).
+hand_low_frame = argmax(combinedY[F]) for F in [searchStart..searchEnd]
 
 // EXTERNAL ASSUMPTION — adult 67ms, youth unvalidated
 HAND_LOW_TO_IMPACT_MS = 67
 impact_frame = hand_low_frame + round(HAND_LOW_TO_IMPACT_MS / ms_per_frame)
 ```
 
-**Validated:** Swing 2: f97 · Swing 3: f77 (velocity spike confirms) ✓
+**Validated:**
+- Swing 2: f97 ✓
+- Swing 3: f77 (velocity spike confirms) ✓
+- Swing 1 (top f54): first-peak scan picks f60 (combinedY=0.7347); max-peak scan picks true peak f71 (0.8964). 11-frame gap.
 
 ---
 
@@ -360,6 +377,7 @@ finish = first frame where rolling average reaches plateau value
 | Swing start hard multiplier | 3x | DTL 0 | DTL |
 | Swing start watch multiplier | 2x | DTL 0 | DTL |
 | MIN_TRAVEL | 0.04 | DTL 3 | DTL |
+| MIN_LOOKAHEAD_FRAMES | 10 | DTL 3 | DTL |
 | HAND_LOW_TO_IMPACT_MS | 67ms | DTL 4 | DTL |
 | Follow-through multiplier | 3.0x downswing | DTL 5 | DTL |
 | Follow-through floor | 300ms | DTL 5 | DTL |
