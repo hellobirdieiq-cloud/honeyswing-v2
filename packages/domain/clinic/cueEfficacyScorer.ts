@@ -1,17 +1,38 @@
 import type { CueBlockRecord } from './CueBlock';
 import type { SwingRecord } from './SwingRecord';
-import type { ClinicMetricKey } from './enums';
+import type { ClinicMetricKey, CueFamily } from './enums';
+import type { CueEfficacyScore } from './clinicTypes';
+import { METRIC_DEFINITIONS } from '@/packages/domain/swing/metricDefinitions';
 
-export interface CueEfficacyScore {
-  cueBlockId: string;
-  metric: ClinicMetricKey;
-  baselineAverage: number;
-  postCueAverage: number;
-  retentionAverage: number | null;
-  accommodation: number;
-  retention: number | null;
-  metricMovement: number;
-}
+export type { CueEfficacyScore } from './clinicTypes';
+
+// EXTERNAL_ASSUMPTION: cue→metric mapping locked 2026-05-13; revisit at SCR-CAL.
+export const CUE_FAMILY_TO_METRIC: Record<CueFamily, ClinicMetricKey | null> = {
+  tempo: 'tempoRatio',
+  'spine-stability': 'spineDrift',
+  'hip-rotation': 'hipSpreadDelta',
+  'shoulder-turn': 'shoulderTilt',
+  'wrist-set': null,
+  'weight-shift': null,
+  'follow-through': null,
+  setup: null,
+  other: null,
+};
+
+// EXTERNAL_ASSUMPTION: biomechanical-ideal fallback used when personal band lacks samples.
+//   Angle ideals reuse METRIC_DEFINITIONS where present; tempoRatio mirrors scoring.ts:84;
+//   spineDrift/hipSpreadDelta default to 0 (no drift / no width change).
+export const CLINIC_METRIC_IDEALS: Record<ClinicMetricKey, number> = {
+  spineAngle: METRIC_DEFINITIONS.spineAngle.ideal,
+  spineDrift: 0,
+  tempoRatio: 3.475,
+  hipSpreadDelta: 0,
+  leftElbowAngle: METRIC_DEFINITIONS.leftElbowAngle.ideal,
+  rightElbowAngle: METRIC_DEFINITIONS.rightElbowAngle.ideal,
+  leftKneeAngle: METRIC_DEFINITIONS.leftKneeAngle.ideal,
+  rightKneeAngle: METRIC_DEFINITIONS.rightKneeAngle.ideal,
+  shoulderTilt: METRIC_DEFINITIONS.shoulderTilt.ideal,
+};
 
 function clamp01(x: number): number {
   if (x < 0) return 0;

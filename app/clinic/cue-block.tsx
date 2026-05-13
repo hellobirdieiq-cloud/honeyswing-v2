@@ -15,6 +15,7 @@ import type {
 } from '@/packages/domain/clinic/enums';
 import type { CueBlockRecord } from '@/packages/domain/clinic/CueBlock';
 import { upsertCueBlock } from '@/lib/clinic/cueBlockStore';
+import { computeCueEfficacy } from '@/lib/clinic/cueEfficacyOrchestrator';
 import {
   appendCueBlock,
   getCurrentClinicSession,
@@ -577,7 +578,9 @@ export default function CueBlockScreen(): React.ReactElement | null {
   // ── Step: review ───────────────────────────────────────────────────────────
   if (step === 'review') {
     const onConfirm = () => {
-      upsertCueBlock(buildRecord(postCueSwingIds));
+      const baseRecord = buildRecord(postCueSwingIds);
+      const efficacyScore = computeCueEfficacy(baseRecord, session.baselineSwingIds);
+      upsertCueBlock(efficacyScore ? { ...baseRecord, efficacyScore } : baseRecord);
       appendCueBlock(blockId);
       setConfirmed(true);
     };

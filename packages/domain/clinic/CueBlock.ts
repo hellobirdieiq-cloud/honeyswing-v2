@@ -4,6 +4,7 @@ import type {
   BallContact,
   BallDirection,
 } from './enums';
+import type { CueEfficacyScore } from './clinicTypes';
 
 export interface PredictionTap {
   direction: BallDirection;
@@ -25,4 +26,5 @@ export interface CueBlockRecord {
   postCueSwingIds: string[];
   retentionProbeSwingIds: string[];
   notes?: string;
+  efficacyScore?: CueEfficacyScore;
 }
