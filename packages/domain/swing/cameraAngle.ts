@@ -29,7 +29,7 @@ const DTL_THRESHOLD = 0.55;
 const MIN_CONFIDENCE = 0.5;
 
 const FACE_ON_WEIGHTS: MetricConfidenceWeights = {
-  spineAngle: 0.4,
+  spineAngle: 0,
   leftElbowAngle: 0.9,
   rightElbowAngle: 0.9,
   leftKneeAngle: 0.6,

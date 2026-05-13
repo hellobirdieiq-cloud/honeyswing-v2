@@ -557,8 +557,13 @@ export function analyzePoseSequence(
 
   const rawTempo = calculateTempo(phases);
 
+  // Partial-capture guard: when the caller did not pin the address frame and the
+  // swing-start detector lacks HIGH confidence, the address timestamp is unreliable
+  // and any computed tempo is meaningless.
+  const addressUnreliable = addressFrameIdx === undefined && swingStart.reliability !== 'HIGH';
+
   // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
-  const tempo = rawTempo && isTempoTrustworthy(rawTempo, phases) ? rawTempo : null;
+  const tempo = !addressUnreliable && rawTempo && isTempoTrustworthy(rawTempo, phases) ? rawTempo : null;
 
   const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
 
