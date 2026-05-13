@@ -13,7 +13,7 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { useUser, useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../lib/storageKeys';
-import { deleteAccount } from '../../lib/supabase';
+import { deleteAccount, supabase } from '../../lib/supabase';
 import { getCoachCode } from '../../lib/coachCode';
 import { getGrip } from '../../lib/gripStore';
 import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
@@ -43,6 +43,7 @@ export default function SettingsScreen() {
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
   const [gripUri, setGripUri] = useState<string | null>(null);
+  const [isCoach, setIsCoach] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -51,7 +52,17 @@ export default function SettingsScreen() {
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
-    }, []),
+
+      (async () => {
+        if (!isSignedIn || !user) { setIsCoach(false); return; }
+        const { data } = await supabase
+          .from('coaches')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+        setIsCoach(!!data);
+      })().catch((err) => console.error('[HoneySwing]', err));
+    }, [isSignedIn, user]),
   );
   function handleAddCoach() {
     Alert.prompt(
@@ -263,6 +274,19 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      {isCoach && (
+        <View style={styles.coachModeSection}>
+          <Text style={styles.coachLabel}>Coach Mode</Text>
+          <TouchableOpacity
+            style={styles.coachModeButton}
+            onPress={() => router.push('/clinic/preflight' as Href)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.coachModeText}>Start Coach Mode</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <View style={styles.handednessSection}>
         <Text style={styles.coachLabel}>Grip</Text>
         <TouchableOpacity
@@ -467,6 +491,23 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   addCoachText: {
+    color: GOLD,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  coachModeSection: {
+    marginTop: 32,
+  },
+  coachModeButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: GOLD,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  coachModeText: {
     color: GOLD,
     fontSize: 14,
     fontWeight: '500',
