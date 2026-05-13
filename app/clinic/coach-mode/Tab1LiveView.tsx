@@ -188,7 +188,7 @@ export default function Tab1LiveView(): React.ReactElement {
     return () => {
       mounted.current = false;
     };
-  }, [cardIndex, lastSwing?.id, motionCache?.swingId]);
+  }, [cardIndex, lastSwing?.id]);
 
   const onMomentumScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
