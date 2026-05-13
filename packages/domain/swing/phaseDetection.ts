@@ -281,6 +281,7 @@ function tryHeuristicDetection(
   const velocities = computeVelocities(points);
   const smoothed = smoothVelocities(velocities, 5);
   const lastIdx = points.length - 1;
+  const msPerFrame = lastIdx > 0 ? (points[lastIdx].timestamp - points[0].timestamp) / lastIdx : 0;
 
   // Setup/address: find the last still frame before motion begins
   const addressIdx = findSetupEndIndex(smoothed, points);
@@ -298,12 +299,29 @@ function tryHeuristicDetection(
   // Design locked S89 Chat 2. Do not revert to raw minimum or plateau heuristic without re-opening decision.
   const topIdx = findSmoothedMinYIndex(points, topSearchStart, topSearchEnd, TOP_SMOOTH_WINDOW);
 
-  const impactSearchStart = topIdx + 2;
-  const impactSearchEnd = Math.min(lastIdx, Math.floor(lastIdx * 0.85));
+  // #152 PHASE-4-IMPL: impact = argmax(combinedWristY) + 67ms (hand-low → ball contact offset).
+  // Spec doc: docs/HoneySwing_Phase_Detection_Rules.md DTL Phase 4. combinedY = leadWrist.y + trailWrist.y;
+  // since points[F].y is already the wrist midpoint (analysisPipeline.ts buildTrailPoints), argmax on
+  // points[F].y is the same frame as argmax(combinedY). Highest-peak scan guards against false early
+  // peaks that latched a hand-low too soon (validated swing 1, f60→f71, 11-frame gap, #164).
+  // EXTERNAL ASSUMPTION — adult 67ms hand-low → ball contact; youth unvalidated. Re-calibrate Clinic 2.
+  const HAND_LOW_TO_IMPACT_MS = 67;
+
+  const impactSearchStart = topIdx + Math.round(100 / msPerFrame);
+  const impactSearchEnd = Math.min(lastIdx, topIdx + Math.round(1500 / msPerFrame));
 
   if (impactSearchStart >= impactSearchEnd) return { phases: [], failureGate: 'impact_search_bounds' };
 
-  const impactIdx = findMaxVelocityIndex(smoothed, impactSearchStart, impactSearchEnd);
+  let handLowFrame = impactSearchStart;
+  let maxY = -Infinity;
+  for (let F = impactSearchStart; F <= impactSearchEnd; F++) {
+    if (points[F].y > maxY) {
+      maxY = points[F].y;
+      handLowFrame = F;
+    }
+  }
+
+  const impactIdx = Math.min(lastIdx, handLowFrame + Math.round(HAND_LOW_TO_IMPACT_MS / msPerFrame));
 
   const maxImpactDistance = Math.floor(lastIdx * 0.4);
   const actualDistance = impactIdx - topIdx;
@@ -311,7 +329,38 @@ function tryHeuristicDetection(
 
   const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
-  const finishIdx = Math.min(lastIdx, impactIdx + Math.floor((lastIdx - impactIdx) * 0.7));
+
+  // #153 PHASE-5-IMPL: finish = first frame where wrist-midpoint per-frame displacement stays below
+  // VEL_NOISE_FLOOR for 3 consecutive frames, searched over a self-scaling 3× downswing window.
+  // Spec doc: docs/HoneySwing_Phase_Detection_Rules.md DTL Phase 5. velXY is per-frame displacement
+  // (no division by msPerFrame) — spec doc's validated result (swing 3, f88) only reproduces at this
+  // scale; per-ms scaling makes 0.008 unreachable. Fallback to search_end when no stillness found,
+  // matching spec doc lines 207–209; downstream temporal/bunching gates still catch pathologies.
+  // EXTERNAL ASSUMPTION — 3.0× downswing window self-scales to swing tempo. Validated N=1. Re-calibrate Clinic 2.
+  const FOLLOW_THROUGH_MULTIPLIER = 3.0;
+  // EXTERNAL ASSUMPTION — 0.008 per-frame displacement floor (normalized 0–1 coords). Validated N=1. Re-calibrate Clinic 2.
+  const VEL_NOISE_FLOOR = 0.008;
+
+  const downswingFrames = impactIdx - topIdx;
+  const finishSearchEnd = Math.min(
+    lastIdx,
+    impactIdx + Math.round(downswingFrames * FOLLOW_THROUGH_MULTIPLIER),
+  );
+  const finishSearchStart = impactIdx + Math.round(300 / msPerFrame);
+
+  let finishIdx = finishSearchEnd;
+  if (finishSearchStart >= 1 && finishSearchStart < finishSearchEnd - 1) {
+    for (let F = finishSearchStart; F <= finishSearchEnd - 2; F++) {
+      const d0 = Math.hypot(points[F].x - points[F - 1].x, points[F].y - points[F - 1].y);
+      const d1 = Math.hypot(points[F + 1].x - points[F].x, points[F + 1].y - points[F].y);
+      const d2 = Math.hypot(points[F + 2].x - points[F + 1].x, points[F + 2].y - points[F + 1].y);
+      if (d0 < VEL_NOISE_FLOOR && d1 < VEL_NOISE_FLOOR && d2 < VEL_NOISE_FLOOR) {
+        finishIdx = F;
+        break;
+      }
+    }
+  }
+  finishIdx = Math.min(finishIdx, lastIdx);
 
   const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finishIdx];
 
