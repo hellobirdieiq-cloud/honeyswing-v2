@@ -287,6 +287,9 @@ function tryHeuristicDetection(
 
   if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
 
+  // CANONICAL (locked #141): top-of-backswing = smoothed Y-minimum (S89 Chat 2).
+  // Replaced plateau heuristic ("last stable low"). Do not revert.
+  // #151 PHASE-3-IMPL (lead wrist X minimum) is a future improvement — do not implement until validated on clinic data.
   // Top detection uses smoothed minimum (TOP_SMOOTH_WINDOW=3) to resist single-frame pose artifacts.
   // Picks true biomechanical top (first minimum on smoothed path) rather than plateau end (~340ms later on observed swings).
   // Design locked S89 Chat 2. Do not revert to raw minimum or plateau heuristic without re-opening decision.
