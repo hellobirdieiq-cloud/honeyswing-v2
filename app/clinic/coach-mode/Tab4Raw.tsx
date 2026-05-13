@@ -111,13 +111,85 @@ function buildDebugBundle(
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      session,
-      kid: kidProfile
-        ? { ...kidProfile, name: '[REDACTED]' }
+      session: session
+        ? {
+            id: session.id,
+            kidId: session.kidId,
+            clinicNumber: session.clinicNumber,
+            startedAt: session.startedAt,
+            endedAt: session.endedAt,
+            preflight: session.preflight,
+            baselineSwingIds: session.baselineSwingIds,
+            cueBlockIds: session.cueBlockIds,
+            retentionProbeSwingIds: session.retentionProbeSwingIds,
+            physicalCheckResults: session.physicalCheckResults?.map((h) => ({
+              sessionId: h.sessionId,
+              clinicNumber: h.clinicNumber,
+              recordedAt: h.recordedAt,
+              test: h.test,
+              result: h.result,
+              // notes omitted — free-text PII risk
+            })),
+          }
         : null,
-      swing: lastSwing,
+      kid: kidProfile
+        ? {
+            id: kidProfile.id,
+            ageTier: kidProfile.ageTier,
+            handedness: kidProfile.handedness,
+            createdAt: kidProfile.createdAt,
+            updatedAt: kidProfile.updatedAt,
+            gripHistory: kidProfile.gripHistory?.map((h) => ({
+              sessionId: h.sessionId,
+              clinicNumber: h.clinicNumber,
+              recordedAt: h.recordedAt,
+              classification: h.classification,
+              // notes omitted
+            })),
+            faceAngleHistory: kidProfile.faceAngleHistory?.map((h) => ({
+              sessionId: h.sessionId,
+              clinicNumber: h.clinicNumber,
+              recordedAt: h.recordedAt,
+              classification: h.classification,
+              // notes omitted
+            })),
+            lumbarCupHistory: kidProfile.lumbarCupHistory?.map((h) => ({
+              sessionId: h.sessionId,
+              clinicNumber: h.clinicNumber,
+              recordedAt: h.recordedAt,
+              classification: h.classification,
+              // notes omitted
+            })),
+            physicalScreenResults: kidProfile.physicalScreenResults?.map((h) => ({
+              sessionId: h.sessionId,
+              clinicNumber: h.clinicNumber,
+              recordedAt: h.recordedAt,
+              test: h.test,
+              result: h.result,
+              // notes omitted
+            })),
+            // name omitted — direct PII
+          }
+        : null,
+      swing: lastSwing
+        ? {
+            id: lastSwing.id,
+            kidId: lastSwing.kidId,
+            sessionId: lastSwing.sessionId,
+            clinicNumber: lastSwing.clinicNumber,
+            recordedAt: lastSwing.recordedAt,
+            metrics: lastSwing.metrics,
+            phaseTags: lastSwing.phaseTags,
+            setupOk: lastSwing.setupOk,
+            effortLevel: lastSwing.effortLevel,
+            normalSwing: lastSwing.normalSwing,
+            structuralProblem: lastSwing.structuralProblem,
+            ballOutcome: lastSwing.ballOutcome,
+            // notes omitted — free-text PII risk
+          }
+        : null,
       motionFrames: motionCache?.frames ?? null,
-      swingDebug: motionCache?.swingDebug ?? null,
+      swingDebug: '[shape unverified — omitted pending type audit]',
     },
     null,
     2,
