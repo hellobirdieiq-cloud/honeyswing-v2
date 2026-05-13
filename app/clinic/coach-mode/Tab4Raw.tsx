@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import {
   clinicSessionActive,
@@ -9,13 +9,16 @@ import { getPersonalBand } from '@/lib/clinic/personalBandStore';
 import { getCueBlocksBySession } from '@/lib/clinic/cueBlockStore';
 import { getQueue } from '@/lib/clinic/kidQueueStore';
 import {
+  fetchMotionFrames,
   seedMotionFrames,
   type FetchMotionFramesResult,
   type MotionFrame,
 } from '@/lib/clinic/fetchMotionFrames';
+import { getKidProfile } from '@/lib/clinic/kidProfileStore';
 import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
 import { styles } from '../clinicStyles';
+import Tab4PhaseTrace from './Tab4PhaseTrace';
 
 const DEV_SEED_SWING_ID = 'dev-seed-swing-0001';
 
@@ -102,6 +105,20 @@ export default function Tab4Raw(): React.ReactElement {
   const cueBlocks = session ? getCueBlocksBySession(session.id) : [];
   const queue = getQueue();
 
+  const [motionCache, setMotionCache] = useState<FetchMotionFramesResult | null>(null);
+  const [motionLoading, setMotionLoading] = useState(false);
+
+  useEffect(() => {
+    // Tab4 remounts on every tab switch → this fetch re-runs each visit.
+    // Acceptable for a debug surface. Cache lift to module-level Map if it causes latency issues.
+    if (!lastSwing?.id) { setMotionCache(null); return; }
+    setMotionLoading(true);
+    fetchMotionFrames(lastSwing.id)
+      .then(setMotionCache)
+      .catch(() => setMotionCache(null))
+      .finally(() => setMotionLoading(false));
+  }, [lastSwing?.id]);
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
       <Text style={styles.rawDebugMono}>━━ SESSION ━━</Text>
@@ -131,6 +148,28 @@ export default function Tab4Raw(): React.ReactElement {
         </>
       ) : (
         <Text style={styles.rawDebugMono}>(no swings)</Text>
+      )}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ PHASE TRACE (last swing) ━━</Text>
+      {lastSwing && motionCache?.frames ? (
+        <Tab4PhaseTrace
+          frames={motionCache.frames}
+          phaseTags={lastSwing.phaseTags}
+          handedness={
+            motionCache.handedness ??
+            (session ? getKidProfile(session.kidId)?.handedness : undefined) ??
+            'right'
+          }
+        />
+      ) : (
+        <Text style={styles.rawDebugMono}>
+          {!lastSwing
+            ? '(no swing)'
+            : motionLoading
+            ? 'loading frames…'
+            : '(no motion frames)'}
+        </Text>
       )}
 
       <View style={{ height: 12 }} />
