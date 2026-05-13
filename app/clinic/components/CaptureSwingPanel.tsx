@@ -24,6 +24,23 @@ import { styles } from '../clinicStyles';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
+/** Isolated component — landmark state updates only re-render this subtree, not the parent. */
+const LiveSkeleton = React.memo(function LiveSkeleton({
+  updateRef,
+  width,
+  height,
+  frameAspect,
+}: {
+  updateRef: React.MutableRefObject<((lms: Landmark[]) => void) | null>;
+  width: number;
+  height: number;
+  frameAspect: number;
+}) {
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  updateRef.current = setLandmarks;
+  return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
+});
+
 interface CaptureSwingPanelProps {
   swingLabel: string;
   onSwingPersisted: (swingId: string | null) => void;
@@ -45,8 +62,6 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
   const frameAspectRef = useRef(0);
   const [frameAspectState, setFrameAspectState] = useState(0);
-  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
-  skeletonUpdateRef.current = setLandmarks;
 
   const cameraRef = useRef<Camera | null>(null);
   const { startCapture: startTiltCapture, stopCapture: stopTiltCapture, getReadings: getTiltReadings } = useTiltCapture();
@@ -227,8 +242,8 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
               frameProcessor={frameProcessor}
               onInitialized={() => setCameraReady(true)}
             />
-            <SkeletonOverlay
-              landmarks={landmarks}
+            <LiveSkeleton
+              updateRef={skeletonUpdateRef}
               width={screenW}
               height={containerH}
               frameAspect={frameAspectState}
