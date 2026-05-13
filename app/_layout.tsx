@@ -17,6 +17,8 @@ import { STORAGE_KEYS } from '../lib/storageKeys';
 import { getAgeTier } from '../lib/ageTier';
 import { migrateAnonSwings } from '../lib/migrateAnonSwings';
 
+export { ErrorBoundary } from '../components/ErrorBoundary';
+
 /** Session resets after this many ms in background */
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
