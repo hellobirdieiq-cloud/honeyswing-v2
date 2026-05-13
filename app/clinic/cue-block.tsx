@@ -317,6 +317,15 @@ export default function CueBlockScreen(): React.ReactElement | null {
           <Pressable style={styles.primaryButton} onPress={() => setStep('capture-post-cue')}>
             <Text style={styles.primaryButtonText}>Start Swings</Text>
           </Pressable>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => {
+              setAttentionIntent('');
+              setStep('capture-post-cue');
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Skip</Text>
+          </Pressable>
           <Pressable style={styles.secondaryButton} onPress={() => setStep('cue-selection')}>
             <Text style={styles.secondaryButtonText}>Back</Text>
           </Pressable>
@@ -362,6 +371,15 @@ export default function CueBlockScreen(): React.ReactElement | null {
               onPress={() => setAttentionActualPending(false)}
             >
               <Text style={styles.primaryButtonText}>Continue</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => {
+                setAttentionActual('');
+                setAttentionActualPending(false);
+              }}
+            >
+              <Text style={styles.secondaryButtonText}>Skip</Text>
             </Pressable>
           </View>
         </ScrollView>
