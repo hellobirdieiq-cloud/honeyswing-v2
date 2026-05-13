@@ -23,6 +23,7 @@ export interface FetchMotionFramesResult {
   handedness: 'left' | 'right' | null;
   msPerFrame: number | null;
   angleBucket: 'dtl' | 'face_on' | null;
+  swingDebug: unknown | null;
 }
 
 const EMPTY: FetchMotionFramesResult = {
@@ -30,6 +31,7 @@ const EMPTY: FetchMotionFramesResult = {
   handedness: null,
   msPerFrame: null,
   angleBucket: null,
+  swingDebug: null,
 };
 
 const seedMap = new Map<string, FetchMotionFramesResult>();
@@ -77,7 +79,7 @@ export async function fetchMotionFrames(
     const durationMs = data.duration_ms ?? 0;
     const msPerFrame = frameCount > 0 && durationMs > 0 ? durationMs / frameCount : null;
 
-    return { frames, handedness, msPerFrame, angleBucket };
+    return { frames, handedness, msPerFrame, angleBucket, swingDebug: debug ?? null };
   } catch (err) {
     console.warn('[fetchMotionFrames] failed:', err);
     return EMPTY;

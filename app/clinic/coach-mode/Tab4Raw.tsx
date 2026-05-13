@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   clinicSessionActive,
   getCurrentClinicSession,
+  type ClinicSession,
 } from '@/lib/clinic/clinicSessionStore';
 import { getSwingsBySession, upsertSwingRecord } from '@/lib/clinic/swingRecordStore';
 import { getPersonalBand } from '@/lib/clinic/personalBandStore';
@@ -15,6 +17,7 @@ import {
   type MotionFrame,
 } from '@/lib/clinic/fetchMotionFrames';
 import { getKidProfile } from '@/lib/clinic/kidProfileStore';
+import type { KidProfile } from '@/packages/domain/clinic/KidProfile';
 import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
 import { styles } from '../clinicStyles';
@@ -54,6 +57,7 @@ function buildSeedResult(): FetchMotionFramesResult {
     handedness: 'right',
     msPerFrame: 33.33,
     angleBucket: 'dtl',
+    swingDebug: null,
   };
 }
 
@@ -98,6 +102,28 @@ const METRIC_KEYS: ClinicMetricKey[] = [
   'shoulderTilt',
 ];
 
+function buildDebugBundle(
+  session: ClinicSession | null,
+  kidProfile: KidProfile | null,
+  lastSwing: SwingRecord | null,
+  motionCache: FetchMotionFramesResult | null,
+): string {
+  return JSON.stringify(
+    {
+      exportedAt: new Date().toISOString(),
+      session,
+      kid: kidProfile
+        ? { ...kidProfile, name: '[REDACTED]' }
+        : null,
+      swing: lastSwing,
+      motionFrames: motionCache?.frames ?? null,
+      swingDebug: motionCache?.swingDebug ?? null,
+    },
+    null,
+    2,
+  );
+}
+
 // Read-once debug surface. No subscriptions — Tab 4 re-mounts on tab switch (per Step 9 unmount-inactive pattern)
 // so each visit reads fresh state. UI is unstyled monospace dump.
 export default function Tab4Raw(): React.ReactElement {
@@ -110,6 +136,7 @@ export default function Tab4Raw(): React.ReactElement {
 
   const [motionCache, setMotionCache] = useState<FetchMotionFramesResult | null>(null);
   const [motionLoading, setMotionLoading] = useState(false);
+  const [shareState, setShareState] = useState<'idle' | 'pending' | 'shared' | 'error'>('idle');
 
   useEffect(() => {
     // Tab4 remounts on every tab switch → this fetch re-runs each visit.
@@ -278,6 +305,52 @@ export default function Tab4Raw(): React.ReactElement {
           [{i}] {k.id}
         </Text>
       ))}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ DEBUG BUNDLE ━━</Text>
+      <Text style={styles.rawDebugMono}>Exports session + swing + motion data as JSON.</Text>
+      <Pressable
+        onPress={async () => {
+          if (shareState === 'pending') return;
+          setShareState('pending');
+          try {
+            const bundle = buildDebugBundle(
+              session,
+              session ? getKidProfile(session.kidId) ?? null : null,
+              lastSwing,
+              motionCache,
+            );
+            const SIZE_THRESHOLD = 80 * 1024;
+            const byteLength = new TextEncoder().encode(bundle).length;
+
+            if (Platform.OS === 'ios' && byteLength > SIZE_THRESHOLD) {
+              const path = FileSystem.cacheDirectory + 'debug-bundle.json';
+              await FileSystem.writeAsStringAsync(path, bundle, {
+                encoding: FileSystem.EncodingType.UTF8,
+              });
+              await Share.share({ url: path });
+            } else {
+              await Share.share({ message: bundle });
+            }
+            setShareState('shared');
+          } catch {
+            setShareState('error');
+          } finally {
+            setTimeout(() => setShareState('idle'), 2000);
+          }
+        }}
+        style={{ marginTop: 8, padding: 10, backgroundColor: '#1C1C1E', borderRadius: 8 }}
+      >
+        <Text style={[styles.rawDebugMono, { textAlign: 'center' }]}>
+          {shareState === 'pending'
+            ? 'Preparing…'
+            : shareState === 'shared'
+            ? '✓ Shared'
+            : shareState === 'error'
+            ? '✗ Failed'
+            : 'Share Debug Bundle'}
+        </Text>
+      </Pressable>
 
       {__DEV__ && (
         <>
