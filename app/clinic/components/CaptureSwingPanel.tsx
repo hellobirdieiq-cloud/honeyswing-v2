@@ -67,7 +67,6 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
   const fpsFrameCount = useSharedValue(0);
   const fpsWindowStartTs = useSharedValue(0);
   const actualFpsRef = useRef(0);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const updateActualFpsJSRef = useRef<any>(null);
   if (updateActualFpsJSRef.current === null) {
     updateActualFpsJSRef.current = Worklets.createRunOnJS((v: number) => {
