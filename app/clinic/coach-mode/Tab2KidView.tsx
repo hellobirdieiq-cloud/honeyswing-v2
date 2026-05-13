@@ -97,11 +97,11 @@ export default function Tab2KidView(): React.ReactElement {
         }}
         numberOfLines={1}
       >
-        {kid ? kid.id : '—'}
+        {kid ? kid.name : '—'}
       </Text>
 
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={[styles.metricValueKid, { color }]} numberOfLines={1}>
+        <Text style={[styles.metricValueKid, { color }]}>
           {display}
         </Text>
         <Text
