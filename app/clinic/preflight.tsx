@@ -129,7 +129,7 @@ export default function PreflightScreen(): React.ReactElement {
         dequeueNext();
       }
 
-      router.replace('/clinic/baseline');
+      router.replace('/clinic/dave-dashboard');
     } catch {
       setError('Could not start session — are you signed in?');
       setSubmitting(false);

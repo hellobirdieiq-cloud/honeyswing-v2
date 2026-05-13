@@ -13,13 +13,16 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import {
+  appendBaselineSwing,
   clinicSessionActive,
   getCurrentClinicSession,
   subscribe as subscribeSession,
 } from '@/lib/clinic/clinicSessionStore';
 import {
+  getSwingRecord,
   getSwingsBySession,
   subscribe as subscribeSwings,
+  upsertSwingRecord,
 } from '@/lib/clinic/swingRecordStore';
 import {
   getActiveCueBlock,
@@ -40,12 +43,13 @@ import {
   fetchMotionFrames,
   type FetchMotionFramesResult,
 } from '@/lib/clinic/fetchMotionFrames';
-import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
+import type { BallContact, ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { KidProfile } from '@/packages/domain/clinic/KidProfile';
 import { GOLD } from '@/lib/colors';
 import { styles } from '../clinicStyles';
 import LiveViewCard from './LiveViewCard';
 import PhaseSignalCard from './PhaseSignalCard';
+import CaptureSwingPanel from '../components/CaptureSwingPanel';
 
 const ACTIVE_METRIC: ClinicMetricKey = 'spineAngle';
 const SCREEN_W = Dimensions.get('window').width;
@@ -144,6 +148,12 @@ export default function Tab1LiveView(): React.ReactElement {
   const [cardIndex, setCardIndex] = useState(0);
   const [motionCache, setMotionCache] = useState<MotionCache | null>(null);
 
+  // Free-form capture state. CaptureSwingPanel is mounted only when capturePhase === 'capturing'
+  // so the camera releases on every transition out of capture — see CaptureSwingPanel.tsx:182-186.
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'capturing' | 'done'>('idle');
+  const [currentSwingId, setCurrentSwingId] = useState<string | null>(null);
+  const [selectedContact, setSelectedContact] = useState<BallContact | null>(null);
+
   // Clear cache when the underlying swing changes.
   useEffect(() => {
     setMotionCache(null);
@@ -205,6 +215,38 @@ export default function Tab1LiveView(): React.ReactElement {
     setConfirmingNext(false);
   };
 
+  // ── Free-form capture handlers ──
+  // appendBaselineSwing is called AFTER upsertSwingRecord — matches baseline.tsx:105,115 ordering.
+  const onLogAndNext = (): void => {
+    tap();
+    if (currentSwingId) {
+      const existing = getSwingRecord(currentSwingId);
+      if (existing) {
+        upsertSwingRecord({
+          ...existing,
+          ballOutcome: {
+            direction: 'unknown',
+            contact: selectedContact ?? 'unknown',
+          },
+        });
+      }
+      appendBaselineSwing(currentSwingId);
+    }
+    setCurrentSwingId(null);
+    setSelectedContact(null);
+    setCapturePhase('idle');
+  };
+
+  const onSkipLog = (): void => {
+    tap();
+    if (currentSwingId) {
+      appendBaselineSwing(currentSwingId);
+    }
+    setCurrentSwingId(null);
+    setSelectedContact(null);
+    setCapturePhase('idle');
+  };
+
   // ── Bottom drawer ──
   const translateY = useRef(new Animated.Value(DRAWER_CLOSED_OFFSET)).current;
   const drawerOpenRef = useRef(false);
@@ -263,6 +305,24 @@ export default function Tab1LiveView(): React.ReactElement {
   const msPerFrame = motionCache?.result?.msPerFrame ?? 8.33;
   const cameraAngle: 'dtl' | 'face_on' = motionCache?.result?.angleBucket ?? 'dtl';
   const phaseTags = lastSwing?.phaseTags ?? [];
+  const baselineCount = session?.baselineSwingIds.length ?? 0;
+
+  // Early-return capture overlay. Unmounting Tab1's main tree releases the camera owned by
+  // CaptureSwingPanel (see CaptureSwingPanel.tsx:182-186 cleanup).
+  if (capturePhase === 'capturing') {
+    return (
+      <View style={styles.screen}>
+        <CaptureSwingPanel
+          swingLabel={`SWING ${baselineCount + 1}`}
+          immediateStart={true}
+          onSwingPersisted={(id) => {
+            setCurrentSwingId(id);
+            setCapturePhase('done');
+          }}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -314,6 +374,117 @@ export default function Tab1LiveView(): React.ReactElement {
       </ScrollView>
 
       <PageDots count={TOTAL_CARDS} activeIndex={cardIndex} />
+
+      {capturePhase === 'idle' ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: SCREEN_H * 0.18,
+            flexDirection: 'row',
+            gap: 12,
+          }}
+        >
+          <Pressable
+            style={[styles.primaryButton, { flex: 1 }]}
+            onPress={() => {
+              tap();
+              setCapturePhase('capturing');
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryButtonText}>RECORD</Text>
+          </Pressable>
+          <Pressable
+            style={[
+              styles.primaryButton,
+              { flex: 1 },
+              baselineCount < 3 ? { opacity: 0.4 } : null,
+            ]}
+            disabled={baselineCount < 3}
+            onPress={() => {
+              tap();
+              router.push('/clinic/cue-block');
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.primaryButtonText}>START CUE BLOCK</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {capturePhase === 'done' ? (
+        <View
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: SCREEN_H * 0.18,
+            backgroundColor: '#1A1A1C',
+            borderRadius: 12,
+            padding: 12,
+            gap: 10,
+          }}
+        >
+          <Text
+            style={{
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 0.5,
+            }}
+          >
+            BALL CONTACT
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            {(['solid', 'thin', 'fat', 'sky', 'shank', 'whiff'] as const).map((c) => {
+              const active = selectedContact === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setSelectedContact(c)}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: active ? GOLD : '#000',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.15)',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: active ? '#000' : '#FFF',
+                      fontSize: 12,
+                      fontWeight: '700',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {c}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Pressable
+              style={[styles.secondaryButton, { flex: 1 }]}
+              onPress={onSkipLog}
+              accessibilityRole="button"
+            >
+              <Text style={styles.secondaryButtonText}>SKIP</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.primaryButton, { flex: 1 }]}
+              onPress={onLogAndNext}
+              accessibilityRole="button"
+            >
+              <Text style={styles.primaryButtonText}>LOG + NEXT</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
 
       <View
         style={{
