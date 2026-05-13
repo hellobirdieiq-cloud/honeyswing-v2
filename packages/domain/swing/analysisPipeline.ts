@@ -120,6 +120,10 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
       x: (lw.x + rw.x) / 2,
       y: (lw.y + rw.y) / 2,
       timestamp: frame.timestampMs,
+      leadX: lw.x,   // leftWrist = lead post-canonicalTransform (both RH and LH)
+      leadY: lw.y,
+      trailX: rw.x,  // rightWrist = trail post-canonicalTransform (both RH and LH)
+      trailY: rw.y,
     });
   }
 

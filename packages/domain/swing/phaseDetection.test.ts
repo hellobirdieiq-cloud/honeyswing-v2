@@ -60,7 +60,7 @@ function computeSmoothed(points: SwingTrailPoint[], window = 5): number[] {
 const FRAME_DT_MS = 1000 / 120; // 120 fps capture
 
 function makePoint(x: number, y: number, frameIdx: number): SwingTrailPoint {
-  return { x, y, timestamp: frameIdx * FRAME_DT_MS };
+  return { x, y, timestamp: frameIdx * FRAME_DT_MS, leadX: 0, leadY: 0, trailX: 0, trailY: 0 };
 }
 
 // ---------------------------------------------------------------------------

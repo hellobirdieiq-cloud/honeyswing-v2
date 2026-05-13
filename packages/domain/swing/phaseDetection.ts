@@ -12,6 +12,10 @@ export type SwingTrailPoint = {
   x: number;
   y: number;
   timestamp: number;
+  leadX: number;  // lead wrist x, canonical space. leftWrist post-canonicalTransform = lead for both RH + LH
+  leadY: number;  // lead wrist y, canonical space
+  trailX: number; // trail wrist x, canonical space. rightWrist post-canonicalTransform = trail for both RH + LH
+  trailY: number; // trail wrist y, canonical space
 };
 
 export interface DetectedPhase {
