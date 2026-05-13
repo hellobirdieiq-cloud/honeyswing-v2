@@ -149,6 +149,7 @@ export async function persistSwing(
     motion_frames: frames,
     frame_count: frames.length,
     duration_ms: Math.round(durationMs),
+    fps_actual: durationMs > 0 ? frames.length / (durationMs / 1000.0) : null,
     score: analysis.score,
     honey_boom: analysis.honeyBoom,
     camera_angle_valid: analysis.cameraAngleValid,

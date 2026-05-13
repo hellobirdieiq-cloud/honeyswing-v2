@@ -228,6 +228,7 @@ export type Database = {
           duration_ms: number | null
           failure_reason: string | null
           feedback: Json | null
+          fps_actual: number | null
           frame_count: number | null
           honey_boom: boolean | null
           id: string
@@ -262,6 +263,7 @@ export type Database = {
           duration_ms?: number | null
           failure_reason?: string | null
           feedback?: Json | null
+          fps_actual?: number | null
           frame_count?: number | null
           honey_boom?: boolean | null
           id?: string
@@ -296,6 +298,7 @@ export type Database = {
           duration_ms?: number | null
           failure_reason?: string | null
           feedback?: Json | null
+          fps_actual?: number | null
           frame_count?: number | null
           honey_boom?: boolean | null
           id?: string
