@@ -45,7 +45,7 @@ export default function LiveViewCard(props: LiveViewCardProps): React.ReactEleme
     <View style={{ width: SCREEN_W }}>
       <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
         <Text style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '800' }} numberOfLines={1}>
-          {kid ? kid.id : '—'}
+          {kid ? kid.name : '—'}
         </Text>
         {session ? (
           <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, marginTop: 4 }}>
