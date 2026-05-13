@@ -19,6 +19,9 @@ import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { SwingRecord } from '@/packages/domain/clinic/SwingRecord';
 import { styles } from '../clinicStyles';
 import Tab4PhaseTrace from './Tab4PhaseTrace';
+import Tab4PhaseTraceGraph from './Tab4PhaseTraceGraph';
+import Tab4BoundaryInspector from './Tab4BoundaryInspector';
+import Tab4PhaseInspector from './Tab4PhaseInspector';
 
 const DEV_SEED_SWING_ID = 'dev-seed-swing-0001';
 
@@ -119,6 +122,11 @@ export default function Tab4Raw(): React.ReactElement {
       .finally(() => setMotionLoading(false));
   }, [lastSwing?.id]);
 
+  const resolvedHandedness: 'left' | 'right' =
+    motionCache?.handedness ??
+    (session ? getKidProfile(session.kidId)?.handedness : undefined) ??
+    'right';
+
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ padding: 12, paddingBottom: 80 }}>
       <Text style={styles.rawDebugMono}>━━ SESSION ━━</Text>
@@ -156,11 +164,61 @@ export default function Tab4Raw(): React.ReactElement {
         <Tab4PhaseTrace
           frames={motionCache.frames}
           phaseTags={lastSwing.phaseTags}
-          handedness={
-            motionCache.handedness ??
-            (session ? getKidProfile(session.kidId)?.handedness : undefined) ??
-            'right'
-          }
+          handedness={resolvedHandedness}
+        />
+      ) : (
+        <Text style={styles.rawDebugMono}>
+          {!lastSwing
+            ? '(no swing)'
+            : motionLoading
+            ? 'loading frames…'
+            : '(no motion frames)'}
+        </Text>
+      )}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ PHASE TRACE — GRAPH (last swing) ━━</Text>
+      {lastSwing && motionCache?.frames ? (
+        <Tab4PhaseTraceGraph
+          frames={motionCache.frames}
+          phaseTags={lastSwing.phaseTags}
+          handedness={resolvedHandedness}
+        />
+      ) : (
+        <Text style={styles.rawDebugMono}>
+          {!lastSwing
+            ? '(no swing)'
+            : motionLoading
+            ? 'loading frames…'
+            : '(no motion frames)'}
+        </Text>
+      )}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ BOUNDARY INSPECTOR (last swing) ━━</Text>
+      {lastSwing && motionCache?.frames ? (
+        <Tab4BoundaryInspector
+          frames={motionCache.frames}
+          phaseTags={lastSwing.phaseTags}
+          handedness={resolvedHandedness}
+        />
+      ) : (
+        <Text style={styles.rawDebugMono}>
+          {!lastSwing
+            ? '(no swing)'
+            : motionLoading
+            ? 'loading frames…'
+            : '(no motion frames)'}
+        </Text>
+      )}
+
+      <View style={{ height: 12 }} />
+      <Text style={styles.rawDebugMono}>━━ PHASE INSPECTOR (last swing) ━━</Text>
+      {lastSwing && motionCache?.frames ? (
+        <Tab4PhaseInspector
+          frames={motionCache.frames}
+          phaseTags={lastSwing.phaseTags}
+          handedness={resolvedHandedness}
         />
       ) : (
         <Text style={styles.rawDebugMono}>
