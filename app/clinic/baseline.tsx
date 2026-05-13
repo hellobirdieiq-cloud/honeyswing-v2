@@ -276,6 +276,7 @@ export default function BaselineScreen(): React.ReactElement | null {
     <View style={styles.screen}>
       <CaptureSwingPanel
         swingLabel={`BASELINE ${swingsSaved + 1} OF 5`}
+        immediateStart={true}
         onSwingPersisted={(id) => {
           setCurrentSwingId(id);
           setDraftLog({

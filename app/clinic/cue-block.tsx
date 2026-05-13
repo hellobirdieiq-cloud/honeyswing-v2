@@ -373,6 +373,7 @@ export default function CueBlockScreen(): React.ReactElement | null {
         <View style={styles.screen}>
           <CaptureSwingPanel
             swingLabel={`CUE SWING ${postCueSwingIds.length + 1} OF ${POST_CUE_SWING_TARGET}`}
+            immediateStart={true}
             onSwingPersisted={(id) => {
               setCurrentSwingId(id);
               setDraftLog({

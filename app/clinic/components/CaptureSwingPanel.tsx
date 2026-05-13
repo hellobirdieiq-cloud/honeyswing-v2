@@ -28,10 +28,11 @@ interface CaptureSwingPanelProps {
   swingLabel: string;
   onSwingPersisted: (swingId: string | null) => void;
   onCapturePhaseDone?: () => void;
+  immediateStart?: boolean;
 }
 
 export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.ReactElement {
-  const { swingLabel, onSwingPersisted, onCapturePhaseDone } = props;
+  const { swingLabel, onSwingPersisted, onCapturePhaseDone, immediateStart } = props;
   const navRouter = useRouter();
   const goPlayer = useAudioPlayer(require('../../../assets/go.wav'));
   const { width: screenW } = useWindowDimensions();
@@ -85,6 +86,7 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
     capturePhase,
     countdown,
     startCountdownCapture,
+    startInstantCapture,
     updateCapturePhase,
     capturePhaseRef,
     clearTimers,
@@ -181,7 +183,7 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
       mounted = false;
       clearTimers();
     };
-  }, [clearTimers]);
+  }, []);
 
   useEffect(() => {
     if (capturePhase === 'complete') {
@@ -275,7 +277,7 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
           <Pressable
             style={[styles.primaryButton, !canRecord && { opacity: 0.5 }]}
             disabled={!canRecord}
-            onPress={() => startCountdownCapture()}
+            onPress={() => (immediateStart ? startInstantCapture() : startCountdownCapture())}
           >
             <Text style={styles.primaryButtonText}>
               {isInitializing
