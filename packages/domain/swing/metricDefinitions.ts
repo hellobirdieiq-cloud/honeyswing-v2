@@ -79,7 +79,7 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   },
   shoulderTilt: {
     segments: [['leftShoulder', 'rightShoulder']],
-    ideal: 0, underTolerance: 25, overTolerance: 16.67,
+    ideal: 48, underTolerance: 25, overTolerance: 16.67,
     label: 'Shoulders',
     cue: (v, _i, ageTier) => {
       const junior = ageTier === 'junior';
