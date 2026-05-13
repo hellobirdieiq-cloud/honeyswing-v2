@@ -6,7 +6,7 @@
  * coachingTips. Consolidates what was previously triplicated across those files.
  */
 
-import type { AgeTier } from '../../../lib/ageTier';
+type AgeTier = 'junior' | 'youth' | 'teen' | 'adult';
 
 export type MetricKey =
   | 'spineAngle'
@@ -83,8 +83,8 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
     label: 'Shoulders',
     cue: (v, _i, ageTier) => {
       const junior = ageTier === 'junior';
-      if (v > 0) return junior ? 'Try to keep your shoulders even' : 'Your lead shoulder is too high at address — try to level them';
-      return junior ? 'Try to keep your shoulders even' : 'Your trail shoulder is too high at address — try to level them';
+      if (v > 0) return junior ? 'Try to keep your shoulders even' : 'Your lead shoulder is too high at the top — try to level them';
+      return junior ? 'Try to keep your shoulders even' : 'Your trail shoulder is too high at the top — try to level them';
     },
   },
 };
