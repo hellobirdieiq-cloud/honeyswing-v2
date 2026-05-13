@@ -152,9 +152,9 @@ export async function persistSwing(
     score: analysis.score,
     honey_boom: analysis.honeyBoom,
     camera_angle_valid: analysis.cameraAngleValid,
-    angles: (analysis.angles ?? null) as unknown as Json,
-    tempo: (analysis.tempo ?? null) as unknown as Json,
-    phases: (analysis.phases ?? null) as unknown as Json,
+    angles: analysis.angles ?? null,
+    tempo: analysis.tempo ?? null,
+    phases: analysis.phases ?? null,
     trail_points: analysis.trail ?? null,
     metric_confidences: analysis.metricConfidences ?? null,
     category_scores: analysis.aggregate

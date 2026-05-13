@@ -1,3 +1,5 @@
+import type { JsonValue } from "./jsonTypes";
+
 export type SwingPhase =
   | "address"
   | "takeaway"
@@ -19,6 +21,7 @@ export interface DetectedPhase {
   index: number;
   timestamp: number;
   source: "heuristic" | "fallback";
+  [key: string]: JsonValue | undefined;
 }
 
 export interface ImpactData {

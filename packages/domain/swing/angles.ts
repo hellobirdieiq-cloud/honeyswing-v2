@@ -1,4 +1,5 @@
 import { JointName, PoseFrame } from "../../pose/PoseTypes";
+import type { JsonValue } from "./jsonTypes";
 
 export interface GolfAngles {
   spineAngle: number | null;
@@ -8,6 +9,7 @@ export interface GolfAngles {
   rightKneeAngle: number | null;
   hipSpreadDelta: number | null;
   shoulderTilt: number | null;
+  [key: string]: JsonValue | undefined;
 }
 
 type Point = { x: number; y: number; z?: number };

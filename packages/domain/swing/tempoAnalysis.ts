@@ -1,4 +1,5 @@
 import { DetectedPhase } from "./phaseDetection";
+import type { JsonValue } from "./jsonTypes";
 
 export interface SwingTempo {
   backswingMs: number;
@@ -7,6 +8,7 @@ export interface SwingTempo {
   totalSwingMs: number;
   tempoRating: TempoRating;
   phaseTimestamps: PhaseTimestamps;
+  [key: string]: JsonValue | undefined;
 }
 
 export type TempoRating = "rushed" | "fast" | "good" | "slow" | "very_slow";
@@ -18,6 +20,7 @@ export interface PhaseTimestamps {
   downswing: number;
   impact: number;
   follow_through: number;
+  [key: string]: JsonValue | undefined;
 }
 
 const TEMPO_THRESHOLDS: { max: number; rating: TempoRating }[] = [
