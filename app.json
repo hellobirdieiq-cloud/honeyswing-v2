@@ -59,6 +59,10 @@
         "projectId": "6d20482e-c974-426d-83d9-13ff4e5c8c99"
       }
     },
-    "owner": "honeyswing"
+    "owner": "honeyswing",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/6d20482e-c974-426d-83d9-13ff4e5c8c99"
+    }
   }
 }
