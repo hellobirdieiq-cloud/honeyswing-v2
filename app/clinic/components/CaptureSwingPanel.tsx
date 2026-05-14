@@ -52,7 +52,7 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const { swingLabel, onSwingPersisted, onCapturePhaseDone, immediateStart } = props;
   const navRouter = useRouter();
   const goPlayer = useAudioPlayer(require('../../../assets/go.wav'));
-  const { width: screenW } = useWindowDimensions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
 
   const [containerH, setContainerH] = useState(0);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -240,7 +240,7 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
             <LiveSkeleton
               updateRef={skeletonUpdateRef}
               width={screenW}
-              height={containerH}
+              height={screenH}
               frameAspect={frameAspectState}
             />
             {capturePhase === 'idle' && cameraReady && (
