@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { useUser, useAuth } from '@clerk/expo';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../../lib/storageKeys';
@@ -385,6 +387,10 @@ export default function SettingsScreen() {
           This will permanently remove your profile and all swing data.
         </Text>
       </View>
+
+      <Text style={styles.versionText}>
+        v{Constants.expoConfig?.version ?? '?'} · rt {Updates.runtimeVersion ?? '?'} · {Updates.updateId ? Updates.updateId.slice(0, 8) : 'embedded'}
+      </Text>
     </ScrollView>
   );
 }
@@ -616,5 +622,12 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 6,
     backgroundColor: '#333',
+  },
+  versionText: {
+    marginTop: 24,
+    marginBottom: 16,
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 12,
   },
 });
