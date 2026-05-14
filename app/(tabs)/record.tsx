@@ -234,6 +234,15 @@ export default function RecordTab() {
     }, [])
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      setIsCameraActive(true);
+      return () => {
+        setIsCameraActive(false);
+      };
+    }, [])
+  );
+
   useEffect(() => {
     let mounted = true;
 
