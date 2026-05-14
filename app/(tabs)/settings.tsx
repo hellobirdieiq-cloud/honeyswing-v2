@@ -40,6 +40,7 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
@@ -124,6 +125,24 @@ export default function SettingsScreen() {
         },
       ],
     );
+  }
+
+  async function handleCheckForUpdate() {
+    setCheckingUpdate(true);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) {
+        await Updates.fetchUpdateAsync();
+        await Updates.reloadAsync();
+      } else {
+        Alert.alert('Up to Date', 'You are on the latest version.');
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      Alert.alert('Update Check Failed', message);
+    } finally {
+      setCheckingUpdate(false);
+    }
   }
 
   async function handleRestore() {
@@ -388,6 +407,17 @@ export default function SettingsScreen() {
         </Text>
       </View>
 
+      <TouchableOpacity
+        style={styles.updateButton}
+        onPress={handleCheckForUpdate}
+        disabled={checkingUpdate}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.updateButtonText}>
+          {checkingUpdate ? 'Checking...' : 'Check for Update'}
+        </Text>
+      </TouchableOpacity>
+
       <Text style={styles.versionText}>
         v{Constants.expoConfig?.version ?? '?'} · rt {Updates.runtimeVersion ?? '?'} · {Updates.updateId ? Updates.updateId.slice(0, 8) : 'embedded'}
       </Text>
@@ -623,8 +653,22 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#333',
   },
-  versionText: {
+  updateButton: {
     marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'center',
+  },
+  updateButtonText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  versionText: {
+    marginTop: 8,
     marginBottom: 16,
     textAlign: 'center',
     color: '#666',
