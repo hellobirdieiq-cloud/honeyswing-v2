@@ -16,7 +16,7 @@ import {
   getPersonalBand,
   subscribe as subscribeBands,
 } from '@/lib/clinic/personalBandStore';
-import type { ClinicMetricKey } from '@/packages/domain/clinic/enums';
+import type { ClinicMetricKey, PhaseTag } from '@/packages/domain/clinic/enums';
 import { GOLD } from '@/lib/colors';
 import { styles } from '../clinicStyles';
 
@@ -33,6 +33,8 @@ const METRIC_KEYS: ClinicMetricKey[] = [
 ];
 
 const SCREEN_H = Dimensions.get('window').height;
+
+const VISIBLE_PHASES: readonly PhaseTag[] = ['takeaway', 'top', 'downswing', 'impact'];
 
 function tap(): void {
   Vibration.vibrate(10);
@@ -98,16 +100,19 @@ export default function Tab3DrillDown(): React.ReactElement {
     setSelectedPhaseIndex(null);
   }, [selectedSwing?.id]);
 
-  const totalFrames = selectedSwing
-    ? selectedSwing.phaseTags.reduce(
-        (acc, p) => acc + Math.max(0, p.endFrameIndex - p.startFrameIndex),
-        0,
-      )
-    : 0;
+  const visiblePhases = useMemo(
+    () =>
+      selectedSwing
+        ? selectedSwing.phaseTags.filter((p) => VISIBLE_PHASES.includes(p.phase))
+        : [],
+    [selectedSwing],
+  );
+  const totalFrames = visiblePhases.reduce(
+    (acc, p) => acc + Math.max(0, p.endFrameIndex - p.startFrameIndex),
+    0,
+  );
   const selectedPhase =
-    selectedPhaseIndex !== null && selectedSwing
-      ? (selectedSwing.phaseTags[selectedPhaseIndex] ?? null)
-      : null;
+    selectedPhaseIndex !== null ? (visiblePhases[selectedPhaseIndex] ?? null) : null;
   const selectedPhaseFrames = selectedPhase
     ? Math.max(0, selectedPhase.endFrameIndex - selectedPhase.startFrameIndex)
     : 0;
@@ -156,7 +161,7 @@ export default function Tab3DrillDown(): React.ReactElement {
 
       {/* ── Phase visualization ── */}
       <Text style={[styles.header, { marginTop: 24 }]}>PHASES</Text>
-      {selectedSwing && selectedSwing.phaseTags.length > 0 && totalFrames > 0 ? (
+      {selectedSwing && visiblePhases.length > 0 && totalFrames > 0 ? (
         <>
           <View
             style={{
@@ -168,7 +173,7 @@ export default function Tab3DrillDown(): React.ReactElement {
               backgroundColor: '#1A1A1C',
             }}
           >
-            {selectedSwing.phaseTags.map((p, i) => {
+            {visiblePhases.map((p, i) => {
               const span = Math.max(0, p.endFrameIndex - p.startFrameIndex);
               const ratio = totalFrames > 0 ? span / totalFrames : 0;
               const isSelected = selectedPhaseIndex === i;
