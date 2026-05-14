@@ -9,6 +9,7 @@ export interface GolfAngles {
   rightKneeAngle: number | null;
   hipSpreadDelta: number | null;
   shoulderTilt: number | null;
+  spineDrift: number | null;
   [key: string]: JsonValue | undefined;
 }
 
@@ -135,5 +136,6 @@ export function calculateGolfAngles(frame: PoseFrame): GolfAngles {
     rightKneeAngle,
     hipSpreadDelta,
     shoulderTilt,
+    spineDrift: null,
   };
 }

@@ -225,6 +225,20 @@ function computePhaseWindowedAngles(
     hipSpreadDelta = impactAngles.hipSpreadDelta - addressAngles.hipSpreadDelta;
   }
 
+  // Spine drift: signed lateral displacement of the shoulder midpoint (canonical x,
+  // normalized 0–1) from address to top of backswing. Positive = away from target (sway);
+  // negative = toward target (reverse pivot).
+  let spineDrift: number | null = null;
+  const aLS = addressFrame.joints.leftShoulder;
+  const aRS = addressFrame.joints.rightShoulder;
+  const tLS = topFrame.joints.leftShoulder;
+  const tRS = topFrame.joints.rightShoulder;
+  if (aLS && aRS && tLS && tRS) {
+    const addressMidX = (aLS.x + aRS.x) / 2;
+    const topMidX = (tLS.x + tRS.x) / 2;
+    spineDrift = topMidX - addressMidX;
+  }
+
   const angles: GolfAngles = {
     spineAngle: addressAngles.spineAngle,
     leftElbowAngle: impactAngles.leftElbowAngle,
@@ -233,6 +247,7 @@ function computePhaseWindowedAngles(
     rightKneeAngle: addressAngles.rightKneeAngle,
     hipSpreadDelta,
     shoulderTilt: topAngles.shoulderTilt,
+    spineDrift,
   };
 
   return {

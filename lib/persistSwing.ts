@@ -50,7 +50,7 @@ function extractPhaseSource(phases: DetectedPhase[] | undefined): string {
 function buildMetricSnapshotFromAnalysis(analysis: AnalysisResult): MetricSnapshot {
   return {
     spineAngle: analysis.angles?.spineAngle ?? null,
-    spineDrift: null,
+    spineDrift: analysis.angles?.spineDrift ?? null,
     tempoRatio: analysis.tempo?.tempoRatio ?? null,
     hipSpreadDelta: analysis.angles?.hipSpreadDelta ?? null,
     leftElbowAngle: analysis.angles?.leftElbowAngle ?? null,

@@ -54,6 +54,7 @@ function makeAngles(overrides: Partial<GolfAngles> = {}): GolfAngles {
     rightKneeAngle: 155,
     hipSpreadDelta: null,
     shoulderTilt: 0,
+    spineDrift: null,
     ...overrides,
   };
 }
@@ -158,6 +159,7 @@ group('B2. All null angles + null tempo → score:null, honeyBoom=false');
     rightKneeAngle: null,
     hipSpreadDelta: null,
     shoulderTilt: null,
+    spineDrift: null,
   };
   const result = scoreSwing({ angles: allNull, tempo: null });
   assertEq(result.score, null, 'score = null (was 50 pre-SCR-0b-1)');
@@ -250,6 +252,7 @@ group('B9. All terrible angles → score 0');
     rightKneeAngle: 50,     // way under → 0
     hipSpreadDelta: null,
     shoulderTilt: 100,      // way over → 0
+    spineDrift: null,
   };
   const result = scoreSwing({ angles: terrible, tempo: makeTempo(0) }); // ratio 0: way under → 0
   assertEq(result.score, 0, 'all terrible → score 0');
@@ -368,6 +371,7 @@ group('D6. All angles + tempo null → score: null');
     rightKneeAngle: null,
     hipSpreadDelta: null,
     shoulderTilt: null,
+    spineDrift: null,
   };
   const result = scoreSwing({ angles: allNull, tempo: null });
   assertEq(result.score, null, 'D6: all null → score null');
