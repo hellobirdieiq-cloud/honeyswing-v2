@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus, Linking } from 'react-native';
 import { Stack, useRouter, type Href } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Updates from 'expo-updates';
 import { ClerkProvider, useUser, getClerkInstance } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -81,6 +82,20 @@ export default function RootLayout() {
     });
 
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (result.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        }
+      } catch {
+        // silent — dev builds, no network, no update channel all land here
+      }
+    })();
   }, []);
 
   // Task 7 + 14: reset tip frequency, positive reinforcement, and session accumulator
