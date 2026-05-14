@@ -37,6 +37,7 @@ export interface SwingRecord {
   recordedAt: number;
   metrics: MetricSnapshot;
   phaseTags: PhaseTagRange[];
+  spineAngleSeries?: (number | null)[];
   setupOk?: boolean;
   effortLevel?: EffortLevel;
   normalSwing?: boolean;

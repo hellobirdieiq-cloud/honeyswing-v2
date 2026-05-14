@@ -45,9 +45,11 @@ import {
 } from '@/lib/clinic/fetchMotionFrames';
 import type { BallContact, ClinicMetricKey } from '@/packages/domain/clinic/enums';
 import type { KidProfile } from '@/packages/domain/clinic/KidProfile';
+import { computeSpineAngleSummary } from '@/packages/domain/clinic/spineAngleSummary';
 import { GOLD } from '@/lib/colors';
 import { styles } from '../clinicStyles';
 import LiveViewCard from './LiveViewCard';
+import SpineAngleCard from './SpineAngleCard';
 import PhaseSignalCard from './PhaseSignalCard';
 import CaptureSwingPanel from '../components/CaptureSwingPanel';
 
@@ -148,6 +150,17 @@ export default function Tab1LiveView(): React.ReactElement {
       deltaVariant = delta < 0 ? 'positive' : 'negative';
     }
   }
+
+  const spineSummary = useMemo(
+    () =>
+      computeSpineAngleSummary(
+        lastSwing?.spineAngleSeries ?? null,
+        lastSwing?.phaseTags ?? [],
+      ),
+    [lastSwing?.id],
+  );
+  const useStructuredSpineCard =
+    ACTIVE_METRIC === 'spineAngle' && !!lastSwing?.spineAngleSeries;
 
   // ── Pager state ──
   const scrollRef = useRef<ScrollView | null>(null);
@@ -389,19 +402,29 @@ export default function Tab1LiveView(): React.ReactElement {
         style={{ flexGrow: 0 }}
         contentContainerStyle={{ paddingBottom: SCREEN_H * 0.4 }}
       >
-        <LiveViewCard
-          kid={kid}
-          session={session}
-          lastSwing={lastSwing}
-          activeMetricKey={ACTIVE_METRIC}
-          value={value ?? null}
-          band={band}
-          hasBandData={hasBandData}
-          delta={delta}
-          deltaVariant={deltaVariant}
-          barRatio={barRatio}
-          cue={cue}
-        />
+        {useStructuredSpineCard ? (
+          <SpineAngleCard
+            kid={kid}
+            session={session}
+            lastSwing={lastSwing}
+            summary={spineSummary}
+            cue={cue}
+          />
+        ) : (
+          <LiveViewCard
+            kid={kid}
+            session={session}
+            lastSwing={lastSwing}
+            activeMetricKey={ACTIVE_METRIC}
+            value={value ?? null}
+            band={band}
+            hasBandData={hasBandData}
+            delta={delta}
+            deltaVariant={deltaVariant}
+            barRatio={barRatio}
+            cue={cue}
+          />
+        )}
         {PHASE_INDICES.map((p) => (
           <PhaseSignalCard
             key={p}

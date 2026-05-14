@@ -4,6 +4,7 @@ import type { Database, Json } from './database.types';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
+import { calculateGolfAngles } from '../packages/domain/swing/angles';
 import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
 import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
@@ -97,6 +98,10 @@ function buildPhaseTagsFromAnalysis(
     });
   }
   return ranges;
+}
+
+function buildSpineAngleSeries(frames: PoseFrame[]): (number | null)[] {
+  return frames.map((f) => calculateGolfAngles(f).spineAngle);
 }
 
 function calcFpsEstimate(frames: PoseFrame[]): number | null {
@@ -210,6 +215,7 @@ export async function persistSwing(
       recordedAt: Date.now(),
       metrics: buildMetricSnapshotFromAnalysis(analysis),
       phaseTags: buildPhaseTagsFromAnalysis(analysis, frames.length),
+      spineAngleSeries: buildSpineAngleSeries(frames),
     };
     const clinicRecord: SwingRecord = session
       ? {
