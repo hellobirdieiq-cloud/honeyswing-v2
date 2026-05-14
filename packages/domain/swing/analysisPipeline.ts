@@ -1,11 +1,17 @@
 import { JointName, PoseFrame } from "../../pose/PoseTypes";
 import { PoseSequence } from "../../pose/PoseTypes";
 import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
-import { CameraAngle, CameraAngleResult, detectCameraAngle } from "./cameraAngle";
+import { CameraAngle, CameraAngleResult, detectCameraAngle, detectCameraAngleEarly } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
 import { toCanonicalSequence } from "./canonicalTransform";
-import { detectSwingPhasesWithDebug, DetectedPhase, SwingTrailPoint, type FallbackGate } from "./phaseDetection";
+import {
+  detectSwingPhasesWithDebug,
+  DetectedPhase,
+  SwingTrailPoint,
+  type FallbackGate,
+  type PhaseRuleDebug,
+} from "./phaseDetection";
 import { detectSwingStart } from "./swingStartDetection";
 import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
@@ -54,6 +60,8 @@ export type FrameSelectionDebug = {
   visibility_weighting?: VisibilityWeightingResult;
   implausible_frame_filter?: ImplausibleFrameDebug;
   z_trace?: ZTraceDebug;
+  phase_rules?: PhaseRuleDebug;
+  camera_angle_pre?: CameraAngle;
 };
 
 /** Per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
@@ -515,7 +523,12 @@ export function analyzePoseSequence(
   }
 
   const trail = buildTrailPoints(canonical);
-  const { phases, fallbackGate } = detectSwingPhasesWithDebug(trail);
+  const earlyAngle = detectCameraAngleEarly(canonical);
+  const { phases, fallbackGate, ruleDebug } = detectSwingPhasesWithDebug({
+    canonical,
+    trail,
+    angle: earlyAngle.angle,
+  });
 
   const phaseAddressIdx = phases.find(p => p.phase === 'address')?.index ?? 0;
   const phaseTopIdx = phases.find(p => p.phase === 'top')?.index ?? canonical.frames.length - 1;
@@ -654,6 +667,8 @@ export function analyzePoseSequence(
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
       z_trace: computeZTrace(canonical.frames, phases),
+      phase_rules: ruleDebug,
+      camera_angle_pre: earlyAngle.angle,
     },
   };
 }

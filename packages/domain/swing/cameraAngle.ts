@@ -1,4 +1,4 @@
-import { PoseFrame } from "../../pose/PoseTypes";
+import { PoseFrame, PoseSequence } from "../../pose/PoseTypes";
 
 export type CameraAngle = "face_on" | "dtl" | "unknown";
 
@@ -158,4 +158,54 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
     footIndexNorm,
     weights: WEIGHT_TABLES[angle],
   };
+}
+
+/**
+ * Camera angle pre-detection from the address-hold window (pre-swing).
+ *
+ * The phase-detection dispatcher needs an angle bucket BEFORE phase
+ * detection runs (to pick DTL vs face-on rules), but the standard
+ * detectCameraAngle() reads from the post-detection address frame.
+ * This variant scans the first N frames (golfer holding address) and
+ * runs detectCameraAngle on the median-confidence frame. Returns
+ * `unknown` if no early frame meets confidence thresholds.
+ */
+const EARLY_WINDOW_FRAMES = 30;
+
+export function detectCameraAngleEarly(sequence: PoseSequence): CameraAngleResult {
+  const frames = sequence.frames;
+  if (!frames || frames.length === 0) return unknownResult();
+
+  const windowEnd = Math.min(frames.length, EARLY_WINDOW_FRAMES);
+  type Scored = { frame: PoseFrame; conf: number };
+  const scored: Scored[] = [];
+
+  for (let i = 0; i < windowEnd; i++) {
+    const f = frames[i];
+    const ls = f.joints.leftShoulder;
+    const rs = f.joints.rightShoulder;
+    const lh = f.joints.leftHip;
+    const rh = f.joints.rightHip;
+    if (
+      !ls || !rs || !lh || !rh ||
+      (ls.confidence ?? 0) < MIN_CONFIDENCE ||
+      (rs.confidence ?? 0) < MIN_CONFIDENCE ||
+      (lh.confidence ?? 0) < MIN_CONFIDENCE ||
+      (rh.confidence ?? 0) < MIN_CONFIDENCE
+    ) {
+      continue;
+    }
+    const conf =
+      (ls.confidence ?? 0) +
+      (rs.confidence ?? 0) +
+      (lh.confidence ?? 0) +
+      (rh.confidence ?? 0);
+    scored.push({ frame: f, conf });
+  }
+
+  if (scored.length === 0) return unknownResult();
+
+  scored.sort((a, b) => a.conf - b.conf);
+  const median = scored[Math.floor(scored.length / 2)].frame;
+  return detectCameraAngle(median);
 }

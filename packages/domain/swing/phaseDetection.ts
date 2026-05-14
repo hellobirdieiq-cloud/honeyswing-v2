@@ -1,4 +1,34 @@
+/**
+ * phaseDetection.ts — angle-aware phase detection dispatcher.
+ *
+ * Public surface is unchanged for back-compat: existing call sites that
+ * pass only `trail` continue to work and route to the legacy detector.
+ * The angle-aware path is opted into by passing `{ canonical, trail,
+ * angle, msPerFrame }` to `detectSwingPhasesWithDebug` — the
+ * `analysisPipeline.ts` call site does this after running the early-frame
+ * camera angle pre-detector.
+ *
+ * Rules per camera angle: docs/HoneySwing_Phase_Detection_Rules.md.
+ *   - "dtl"     → packages/domain/swing/phaseDetectionDTL.ts
+ *   - "face_on" → packages/domain/swing/phaseDetectionFaceOn.ts
+ *   - "unknown" → packages/domain/swing/phaseDetectionLegacy.ts
+ */
+
+import type { PoseSequence } from "../../pose/PoseTypes";
+import type { CameraAngle } from "./cameraAngle";
 import type { JsonValue } from "./jsonTypes";
+import { detectDTLPhases } from "./phaseDetectionDTL";
+import { detectFaceOnPhases } from "./phaseDetectionFaceOn";
+import { detectLegacyPhases, detectImpactLegacy } from "./phaseDetectionLegacy";
+import {
+  emptyReliability,
+  msPerFrameFromTrail,
+  type PhaseRuleDebug,
+} from "./phaseDetectionShared";
+
+// ---------------------------------------------------------------------------
+// Types — preserved verbatim so external importers don't break
+// ---------------------------------------------------------------------------
 
 export type SwingPhase =
   | "address"
@@ -12,10 +42,10 @@ export type SwingTrailPoint = {
   x: number;
   y: number;
   timestamp: number;
-  leadX: number;  // lead wrist x, canonical space. leftWrist post-canonicalTransform = lead for both RH + LH
-  leadY: number;  // lead wrist y, canonical space
-  trailX: number; // trail wrist x, canonical space. rightWrist post-canonicalTransform = trail for both RH + LH
-  trailY: number; // trail wrist y, canonical space
+  leadX: number;
+  leadY: number;
+  trailX: number;
+  trailY: number;
 };
 
 export interface DetectedPhase {
@@ -37,410 +67,83 @@ export interface ImpactData {
 }
 
 export type FallbackGate =
-  | 'points_too_short'
-  | 'top_search_bounds'
-  | 'impact_search_bounds'
-  | 'impact_distance_out_of_range'
-  | 'temporal_inversion'
-  | 'phases_too_bunched'
-  | 'backswing_ratio_check_failed';
+  | "points_too_short"
+  | "top_search_bounds"
+  | "impact_search_bounds"
+  | "impact_distance_out_of_range"
+  | "temporal_inversion"
+  | "phases_too_bunched"
+  | "backswing_ratio_check_failed";
 
-const TOP_SMOOTH_WINDOW = 3;
+// Re-export shared helpers that tests and other modules still import.
+export {
+  findSetupEndIndex,
+  findSetupEndIndexStillness,
+} from "./phaseDetectionShared";
 
-function velocity(a: SwingTrailPoint, b: SwingTrailPoint): number {
-  const dt = b.timestamp - a.timestamp;
-  if (dt === 0) return 0;
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  return Math.sqrt(dx * dx + dy * dy) / dt;
-}
+export type { PhaseRuleDebug } from "./phaseDetectionShared";
 
-function computeVelocities(points: SwingTrailPoint[]): number[] {
-  const velocities: number[] = [0];
-  for (let i = 1; i < points.length; i++) {
-    velocities.push(velocity(points[i - 1], points[i]));
-  }
-  return velocities;
-}
+// ---------------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------------
 
-function smoothVelocities(velocities: number[], window: number = 5): number[] {
-  const half = Math.floor(window / 2);
-  return velocities.map((_, i) => {
-    const start = Math.max(0, i - half);
-    const end = Math.min(velocities.length - 1, i + half);
-    let sum = 0;
-    for (let j = start; j <= end; j++) sum += velocities[j];
-    return sum / (end - start + 1);
-  });
-}
-
-/**
- * Magnitude-based stillness gate (legacy). Direction-blind — kept as a safety
- * fallback for findSetupEndIndex so the directional gate can never make a
- * swing strictly worse than today.
- */
-export function findSetupEndIndexStillness(
-  smoothed: number[],
-  points: SwingTrailPoint[],
-): number {
-  // Compute a threshold: use 20% of the median velocity as the "still" cutoff,
-  // with a floor so we don't get stuck on noise-free data.
-  const sorted = [...smoothed].filter((v) => v > 0).sort((a, b) => a - b);
-  const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
-  const threshold = Math.max(median * 0.2, 0.0001);
-
-  // Walk forward: find the first frame where velocity exceeds threshold
-  // after at least 2 still frames. The frame before that is setup end.
-  let stillCount = 0;
-  for (let i = 0; i < points.length; i++) {
-    if (smoothed[i] <= threshold) {
-      stillCount++;
-    } else if (stillCount >= 2) {
-      // Motion started — previous frame is end of setup
-      return Math.max(0, i - 1);
-    } else {
-      // Not enough still frames yet, likely noise at very start
-      stillCount = 0;
-    }
-  }
-
-  // If the entire capture is still (unlikely), address is near the start
-  return Math.min(2, points.length - 1);
-}
-
-/**
- * Find the end of the setup/address phase using a sign-aware directional gate
- * on the canonical wrist-midpoint x. Δx > 0 is the takeaway direction in
- * canonical space (lefty x is mirrored upstream), so a sustained positive Δx
- * window indicates committed swing initiation rather than waggle, glove-tug,
- * or forward-press noise. Falls back to the legacy stillness gate when no
- * directional onset is found or the onset arrives too late.
- */
-export function findSetupEndIndex(
-  smoothed: number[],
-  points: SwingTrailPoint[],
-): number {
-  const DIRECTION_FRAMES = 20;        // ~167 ms at 120 fps; below 200 ms waggle window
-  const DIRECTION_THRESHOLD = 0.002;  // min Δx per frame (normalized 0–1) to count
-  const MAX_ADDRESS_FRACTION = 0.6;   // addressIdx safety cap vs lastIdx
-
-  if (points.length < DIRECTION_FRAMES + 1) {
-    return findSetupEndIndexStillness(smoothed, points);
-  }
-
-  const lastIdx = points.length - 1;
-  const minDelta = DIRECTION_FRAMES * DIRECTION_THRESHOLD;
-
-  for (let i = DIRECTION_FRAMES; i < points.length; i++) {
-    const delta = points[i].x - points[i - DIRECTION_FRAMES].x;
-    if (delta > minDelta) {
-      const candidate = i - DIRECTION_FRAMES;
-      if (candidate <= MAX_ADDRESS_FRACTION * lastIdx) {
-        return candidate;
-      }
-      // Onset too late — let stillness fallback try
-      break;
-    }
-  }
-
-  return findSetupEndIndexStillness(smoothed, points);
-}
-
-function findMinYIndex(points: SwingTrailPoint[], startIdx: number, endIdx: number): number {
-  let minY = Infinity;
-  let minIdx = startIdx;
-  for (let i = startIdx; i <= endIdx; i++) {
-    if (points[i].y < minY) {
-      minY = points[i].y;
-      minIdx = i;
-    }
-  }
-  return minIdx;
-}
-
-function findSmoothedMinYIndex(
-  points: SwingTrailPoint[],
-  startIdx: number,
-  endIdx: number,
-  window: number,
-): number {
-  const half = Math.floor(window / 2);
-  let minSmoothed = Infinity;
-  let minIdx = startIdx;
-  for (let i = startIdx; i <= endIdx; i++) {
-    const lo = Math.max(startIdx, i - half);
-    const hi = Math.min(endIdx, i + half);
-    let sum = 0;
-    let count = 0;
-    for (let j = lo; j <= hi; j++) {
-      sum += points[j].y;
-      count++;
-    }
-    const avg = sum / count;
-    if (avg < minSmoothed) {
-      minSmoothed = avg;
-      minIdx = i;
-    }
-  }
-  return minIdx;
-}
-
-function findMaxVelocityIndex(velocities: number[], startIdx: number, endIdx: number): number {
-  let maxV = 0;
-  let maxIdx = startIdx;
-  for (let i = startIdx; i <= endIdx; i++) {
-    if (velocities[i] > maxV) {
-      maxV = velocities[i];
-      maxIdx = i;
-    }
-  }
-  return maxIdx;
-}
-
-const PHASE_LABELS: Record<SwingPhase, string> = {
-  address: "Address",
-  takeaway: "Takeaway",
-  top: "Top",
-  downswing: "Downswing",
-  impact: "Impact",
-  follow_through: "Finish",
-};
-
-const PHASE_ORDER: SwingPhase[] = [
-  "address",
-  "takeaway",
-  "top",
-  "downswing",
-  "impact",
-  "follow_through",
-];
-
-function fallbackPhases(points: SwingTrailPoint[]): DetectedPhase[] {
-  const pcts = [0.02, 0.12, 0.45, 0.55, 0.65, 0.9];
-
-  return PHASE_ORDER.map((phase, i) => {
-    const idx = Math.min(points.length - 1, Math.max(0, Math.floor(pcts[i] * (points.length - 1))));
-    return {
-      phase,
-      label: PHASE_LABELS[phase],
-      point: points[idx],
-      index: idx,
-      timestamp: points[idx].timestamp,
-      source: "fallback" as const,
+export type DispatcherInput =
+  | SwingTrailPoint[]
+  | {
+      canonical: PoseSequence;
+      trail: SwingTrailPoint[];
+      angle: CameraAngle;
+      msPerFrame?: number;
     };
-  });
+
+function isLegacyInput(input: DispatcherInput): input is SwingTrailPoint[] {
+  return Array.isArray(input);
 }
 
-export function detectSwingPhases(points: SwingTrailPoint[]): DetectedPhase[] {
-  if (points.length < 6) {
-    return [];
-  }
+function legacyDebug(detector: "legacy"): PhaseRuleDebug {
+  return {
+    detector,
+    swing_start_frame: null,
+    true_address_frame: null,
+    reliability: emptyReliability(),
+    external_assumptions_used: [],
+  };
+}
 
-  const heuristicResult = tryHeuristicDetection(points);
-
-  if (heuristicResult.phases.length === 6) {
-    const topTs = heuristicResult.phases[2].timestamp;
-    const addressTs = heuristicResult.phases[0].timestamp;
-    const impactTs = heuristicResult.phases[4].timestamp;
-    const backswing = topTs - addressTs;
-    const downswing = impactTs - topTs;
-
-    if (downswing > 0 && backswing > 0 && backswing / downswing >= 0.8) {
-      return heuristicResult.phases;
-    }
-  }
-
-  return fallbackPhases(points);
+/**
+ * Back-compat entry. Returns phases only — for the rich debug payload,
+ * use `detectSwingPhasesWithDebug`.
+ */
+export function detectSwingPhases(input: DispatcherInput): DetectedPhase[] {
+  return detectSwingPhasesWithDebug(input).phases;
 }
 
 export function detectSwingPhasesWithDebug(
-  points: SwingTrailPoint[],
-): { phases: DetectedPhase[]; fallbackGate: FallbackGate | null } {
-  if (points.length < 6) {
-    return { phases: [], fallbackGate: 'points_too_short' };
+  input: DispatcherInput,
+): {
+  phases: DetectedPhase[];
+  fallbackGate: FallbackGate | null;
+  ruleDebug: PhaseRuleDebug;
+} {
+  if (isLegacyInput(input)) {
+    const { phases, fallbackGate } = detectLegacyPhases(input);
+    return { phases, fallbackGate, ruleDebug: legacyDebug("legacy") };
   }
 
-  const heuristicResult = tryHeuristicDetection(points);
+  const { canonical, trail, angle } = input;
+  const msPerFrame = input.msPerFrame ?? msPerFrameFromTrail(trail);
 
-  if (heuristicResult.phases.length === 6) {
-    const topTs = heuristicResult.phases[2].timestamp;
-    const addressTs = heuristicResult.phases[0].timestamp;
-    const impactTs = heuristicResult.phases[4].timestamp;
-    const backswing = topTs - addressTs;
-    const downswing = impactTs - topTs;
-
-    if (downswing > 0 && backswing > 0 && backswing / downswing >= 0.8) {
-      return { phases: heuristicResult.phases, fallbackGate: null };
-    }
-
-    return { phases: fallbackPhases(points), fallbackGate: 'backswing_ratio_check_failed' };
+  if (angle === "dtl") {
+    return detectDTLPhases({ canonical, trail, msPerFrame });
   }
-
-  return { phases: fallbackPhases(points), fallbackGate: heuristicResult.failureGate };
+  if (angle === "face_on") {
+    return detectFaceOnPhases({ canonical, trail, msPerFrame });
+  }
+  const { phases, fallbackGate } = detectLegacyPhases(trail);
+  return { phases, fallbackGate, ruleDebug: legacyDebug("legacy") };
 }
 
-function tryHeuristicDetection(
-  points: SwingTrailPoint[],
-): { phases: DetectedPhase[]; failureGate: FallbackGate | null } {
-  const velocities = computeVelocities(points);
-  const smoothed = smoothVelocities(velocities, 5);
-  const lastIdx = points.length - 1;
-  const msPerFrame = lastIdx > 0 ? (points[lastIdx].timestamp - points[0].timestamp) / lastIdx : 0;
-
-  // Setup/address: find the last still frame before motion begins
-  const addressIdx = findSetupEndIndex(smoothed, points);
-
-  const topSearchStart = Math.min(lastIdx, addressIdx + Math.round(200 / msPerFrame));
-  const topSearchEnd   = Math.min(lastIdx, addressIdx + Math.round(2000 / msPerFrame));
-
-  if (topSearchStart >= topSearchEnd) return { phases: [], failureGate: 'top_search_bounds' };
-
-  // CANONICAL (locked #141, updated #151): top-of-backswing = lead-wrist X minimum + lookahead guard.
-  // Anchored to addressIdx (Phase 0 dSpreadX swing_start is computed downstream in analysisPipeline.ts
-  // and cannot feed back in). Window [addressIdx+200ms, addressIdx+2000ms] gives slack for the up-to-+21
-  // frame addressIdx offset confirmed in the spec validation table.
-  // MIN_LOOKAHEAD_FRAMES=10 from #164 rule fix (5-frame false-min gap × 2 safety).
-  // Validated N=4 DTL swings (Luca, May 2026); spec doc DTL Phase 3.
-  // Prior canonical: smoothed Y-minimum (S89 Chat 2) — preserved in findSmoothedMinYIndex for reference.
-  // EXTERNAL ASSUMPTION — N=4 DTL swings validated. Re-calibrate Clinic 2.
-  const MIN_TRAVEL = 0.04;
-  // EXTERNAL ASSUMPTION — N=1 (5-frame gap × 2 safety). Re-calibrate Clinic 2.
-  const MIN_LOOKAHEAD_FRAMES = 10;
-
-  let windowMax = -Infinity;
-  let topIdx: number | null = null;
-  for (let F = Math.max(topSearchStart, 1); F <= topSearchEnd - 2; F++) {
-    const lWx = points[F].leadX;  // ← leadX (X COORDINATE). NOT leadY, NOT x, NOT y.
-    if (lWx > windowMax) windowMax = lWx;
-    if (
-      lWx < points[F - 1].leadX &&
-      lWx < points[F + 1].leadX &&
-      points[F + 1].leadX < points[F + 2].leadX &&
-      lWx < windowMax - MIN_TRAVEL
-    ) {
-      // Lookahead guard: reject if a deeper minimum exists within MIN_LOOKAHEAD_FRAMES.
-      // Validated: swing 075d79a6, false min f39 (lw_x=0.1878) → true min f44 (lw_x=0.1274), 5-frame gap (#164).
-      let hasDeeperMin = false;
-      for (let k = 1; k <= MIN_LOOKAHEAD_FRAMES && F + k <= topSearchEnd; k++) {
-        if (points[F + k].leadX < lWx) { hasDeeperMin = true; break; }
-      }
-      if (!hasDeeperMin) { topIdx = F; break; }
-    }
-  }
-  if (topIdx === null) return { phases: [], failureGate: 'top_search_bounds' };
-
-  // #152 PHASE-4-IMPL: impact = argmax(combinedWristY) + 67ms (hand-low → ball contact offset).
-  // Spec doc: docs/HoneySwing_Phase_Detection_Rules.md DTL Phase 4. combinedY = leadWrist.y + trailWrist.y;
-  // since points[F].y is already the wrist midpoint (analysisPipeline.ts buildTrailPoints), argmax on
-  // points[F].y is the same frame as argmax(combinedY). Highest-peak scan guards against false early
-  // peaks that latched a hand-low too soon (validated swing 1, f60→f71, 11-frame gap, #164).
-  // EXTERNAL ASSUMPTION — adult 67ms hand-low → ball contact; youth unvalidated. Re-calibrate Clinic 2.
-  const HAND_LOW_TO_IMPACT_MS = 67;
-
-  const impactSearchStart = topIdx + Math.round(100 / msPerFrame);
-  const impactSearchEnd = Math.min(lastIdx, topIdx + Math.round(1500 / msPerFrame));
-
-  if (impactSearchStart >= impactSearchEnd) return { phases: [], failureGate: 'impact_search_bounds' };
-
-  let handLowFrame = impactSearchStart;
-  let maxY = -Infinity;
-  for (let F = impactSearchStart; F <= impactSearchEnd; F++) {
-    if (points[F].y > maxY) {
-      maxY = points[F].y;
-      handLowFrame = F;
-    }
-  }
-
-  const impactIdx = Math.min(lastIdx, handLowFrame + Math.round(HAND_LOW_TO_IMPACT_MS / msPerFrame));
-
-  const maxImpactDistance = Math.floor(lastIdx * 0.4);
-  const actualDistance = impactIdx - topIdx;
-  if (actualDistance > maxImpactDistance || actualDistance < 2) return { phases: [], failureGate: 'impact_distance_out_of_range' };
-
-  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
-  const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
-
-  // #153 PHASE-5-IMPL: finish = first frame where wrist-midpoint per-frame displacement stays below
-  // VEL_NOISE_FLOOR for 3 consecutive frames, searched over a self-scaling 3× downswing window.
-  // Spec doc: docs/HoneySwing_Phase_Detection_Rules.md DTL Phase 5. velXY is per-frame displacement
-  // (no division by msPerFrame) — spec doc's validated result (swing 3, f88) only reproduces at this
-  // scale; per-ms scaling makes 0.008 unreachable. Fallback to search_end when no stillness found,
-  // matching spec doc lines 207–209; downstream temporal/bunching gates still catch pathologies.
-  // EXTERNAL ASSUMPTION — 3.0× downswing window self-scales to swing tempo. Validated N=1. Re-calibrate Clinic 2.
-  const FOLLOW_THROUGH_MULTIPLIER = 3.0;
-  // EXTERNAL ASSUMPTION — 0.008 per-frame displacement floor (normalized 0–1 coords). Validated N=1. Re-calibrate Clinic 2.
-  const VEL_NOISE_FLOOR = 0.008;
-
-  const downswingFrames = impactIdx - topIdx;
-  const finishSearchEnd = Math.min(
-    lastIdx,
-    impactIdx + Math.round(downswingFrames * FOLLOW_THROUGH_MULTIPLIER),
-  );
-  const finishSearchStart = impactIdx + Math.round(300 / msPerFrame);
-
-  let finishIdx = finishSearchEnd;
-  if (finishSearchStart >= 1 && finishSearchStart < finishSearchEnd - 1) {
-    for (let F = finishSearchStart; F <= finishSearchEnd - 2; F++) {
-      const d0 = Math.hypot(points[F].x - points[F - 1].x, points[F].y - points[F - 1].y);
-      const d1 = Math.hypot(points[F + 1].x - points[F].x, points[F + 1].y - points[F].y);
-      const d2 = Math.hypot(points[F + 2].x - points[F + 1].x, points[F + 2].y - points[F + 1].y);
-      if (d0 < VEL_NOISE_FLOOR && d1 < VEL_NOISE_FLOOR && d2 < VEL_NOISE_FLOOR) {
-        finishIdx = F;
-        break;
-      }
-    }
-  }
-  finishIdx = Math.min(finishIdx, lastIdx);
-
-  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finishIdx];
-
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] <= indices[i - 1]) {
-      return { phases: [], failureGate: 'temporal_inversion' };
-    }
-  }
-
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] - indices[i - 1] < 2) {
-      return { phases: [], failureGate: 'phases_too_bunched' };
-    }
-  }
-
-  return {
-    phases: PHASE_ORDER.map((phase, i) => ({
-      phase,
-      label: PHASE_LABELS[phase],
-      point: points[indices[i]],
-      index: indices[i],
-      timestamp: points[indices[i]].timestamp,
-      source: "heuristic" as const,
-    })),
-    failureGate: null,
-  };
-}
-
+/** Legacy entry used by older callers — preserved here for back-compat. */
 export function detectImpact(points: SwingTrailPoint[]): ImpactData | null {
-  if (points.length < 10) return null;
-
-  const velocities = computeVelocities(points);
-  const smoothed = smoothVelocities(velocities, 5);
-  const lastIdx = points.length - 1;
-
-  const topSearchStart = Math.floor(lastIdx * 0.2);
-  const topSearchEnd = Math.floor(lastIdx * 0.75);
-  if (topSearchStart >= topSearchEnd) return null;
-  const topIdx = findMinYIndex(points, topSearchStart, topSearchEnd);
-
-  const impactSearchStart = topIdx + 2;
-  const impactSearchEnd = Math.min(lastIdx, Math.floor(lastIdx * 0.85));
-  if (impactSearchStart >= impactSearchEnd) return null;
-  const impactIdx = findMaxVelocityIndex(smoothed, impactSearchStart, impactSearchEnd);
-
-  return {
-    frameIndex: impactIdx,
-    timestamp: points[impactIdx].timestamp,
-    point: points[impactIdx],
-    velocity: smoothed[impactIdx],
-    source: "heuristic",
-  };
+  return detectImpactLegacy(points);
 }
