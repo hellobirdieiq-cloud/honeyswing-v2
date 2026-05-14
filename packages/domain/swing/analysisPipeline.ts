@@ -569,7 +569,7 @@ export function analyzePoseSequence(
   // Withhold tempo when phase detection is unreliable — scores neutral 50 instead
   const tempo = !addressUnreliable && rawTempo && isTempoTrustworthy(rawTempo, phases) ? rawTempo : null;
 
-  const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 0);
+  const angleGating = computeAngleGating(foreshorteningResult.debug.estimatedAngleDegrees ?? 45);
 
   const scoring = scoreSwing({
     angles,
