@@ -177,12 +177,17 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     Self.frameCount += 1
 
     do {
+      let t_callbackStart = CFAbsoluteTimeGetCurrent()
+      let t_bgraStart = CFAbsoluteTimeGetCurrent()
       guard let rotatedBuffer = Self.convertToBGRA(pixelBuffer, orientation: frame.orientation) else {
         return [["_diagnostic": "bgra_conversion_failed"]]
       }
+      let t_bgraEnd = CFAbsoluteTimeGetCurrent()
       let mpImage = try MPImage(pixelBuffer: rotatedBuffer, orientation: .up)
       let timestampMs = Int(CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(frame.buffer)) * 1000)
+      let t_submitStart = CFAbsoluteTimeGetCurrent()
       try poseLandmarker.detectAsync(image: mpImage, timestampInMilliseconds: timestampMs)
+      let t_submitEnd = CFAbsoluteTimeGetCurrent()
 
       // Grip path retains the pre-rotated BGRA buffer; cropForGrip is coupled to that orientation.
       // Throttled to every 10th frame — convertToBGRA is a synchronous CIContext render and dominates per-frame cost.
@@ -193,8 +198,20 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
         }
       }
 
+      let t_slotStart = CFAbsoluteTimeGetCurrent()
       let consumed = Self.resultLock.withLock { (r: inout PoseLandmarkerResult?) -> PoseLandmarkerResult? in
         let out = r; r = nil; return out
+      }
+      let t_slotEnd = CFAbsoluteTimeGetCurrent()
+
+      if Self.frameCount % 30 == 0 {
+        let bgraMs = (t_bgraEnd - t_bgraStart) * 1000
+        let submitMs = (t_submitEnd - t_submitStart) * 1000
+        let slotMs = (t_slotEnd - t_slotStart) * 1000
+        let totalMs = (t_slotEnd - t_callbackStart) * 1000
+        print(String(format: "[PoseTiming] CALLBACK f=%d ts=%d bgra=%.2fms submit=%.2fms slot=%.2fms total=%.2fms consumed=%@",
+          Self.frameCount, timestampMs, bgraMs, submitMs, slotMs, totalMs,
+          consumed != nil ? "yes" : "no"))
       }
       guard let poseLandmarks = consumed?.landmarks.first else { return [] }
 
@@ -230,6 +247,8 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     error: (any Error)?
   ) {
     guard let result = result, error == nil else { return }
+    print(String(format: "[PoseTiming] DELEGATE input_ts=%d at=%.3f",
+      timestampInMilliseconds, CFAbsoluteTimeGetCurrent()))
     Self.resultLock.withLock { $0 = result }
   }
 
