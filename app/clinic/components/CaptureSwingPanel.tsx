@@ -210,15 +210,15 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete;
 
   return (
-    <View
-      style={{ flex: 1 }}
-      onLayout={(e) => {
-        const h = e.nativeEvent.layout.height;
-        if (h !== containerH) setContainerH(h);
-      }}
-    >
+    <View style={{ flex: 1 }}>
       <Text style={styles.swingCounter}>{swingLabel}</Text>
-      <View style={styles.capturePanel}>
+      <View
+        style={styles.capturePanel}
+        onLayout={(e) => {
+          const h = e.nativeEvent.layout.height;
+          if (h !== containerH) setContainerH(h);
+        }}
+      >
         {showCamera ? (
           <>
             <ReanimatedCamera
