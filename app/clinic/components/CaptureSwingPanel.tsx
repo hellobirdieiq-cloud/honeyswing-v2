@@ -10,7 +10,7 @@ import {
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
+import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, runAtTargetFps } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
 import { honeyPoseDetect } from '../../../modules/vision-camera-pose/src';
 import SkeletonOverlay, { type Landmark } from '../../../components/SkeletonOverlay';
@@ -75,10 +75,8 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
     { fps: 120, videoResolution: { width: 1280, height: 720 } },
   ]);
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
-  const skipInterval = 1;
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
-  const frameSkipCounter = useSharedValue(0);
   const fpsFrameCount = useSharedValue(0);
   const fpsWindowStartTs = useSharedValue(0);
   const actualFpsRef = useRef(0);
@@ -117,9 +115,7 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
     hasPermission,
     hasDevice: !!device,
     cameraReady,
-    onBeginRecording: () => {
-      frameSkipCounter.value = 0;
-    },
+    onBeginRecording: () => {},
     actualFpsRef,
     targetFps,
     skipResultNavigation: true,
@@ -144,8 +140,6 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
-      frameSkipCounter.value = frameSkipCounter.value + 1;
-
       if (fpsWindowStartTs.value === 0) {
         fpsWindowStartTs.value = frame.timestamp;
       }
@@ -158,16 +152,17 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
         fpsWindowStartTs.value = frame.timestamp;
       }
 
-      if (frameSkipCounter.value % skipInterval !== 0) return;
-
-      const lms = honeyPoseDetect(frame);
-      const detected = Array.isArray(lms) && lms.length > 0;
-      if (detected) {
-        const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
-        appendPoseFrame(lms, frame.timestamp, frame.width, frame.height, aspect);
-      }
+      runAtTargetFps(30, () => {
+        'worklet';
+        const lms = honeyPoseDetect(frame);
+        const detected = Array.isArray(lms) && lms.length > 0;
+        if (detected) {
+          const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
+          appendPoseFrame(lms, frame.timestamp, frame.width, frame.height, aspect);
+        }
+      });
     },
-    [appendPoseFrame, skipInterval, frameSkipCounter, fpsFrameCount, fpsWindowStartTs]
+    [appendPoseFrame, fpsFrameCount, fpsWindowStartTs]
   );
 
   useEffect(() => {
