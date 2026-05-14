@@ -332,6 +332,14 @@ export default function Tab1LiveView(): React.ReactElement {
   const phaseTags = lastSwing?.phaseTags ?? [];
   const baselineCount = session?.baselineSwingIds.length ?? 0;
 
+  const handleSwingPersisted = useCallback((id: string | null) => {
+    setCurrentSwingId(id);
+    setSelectedSetupIssues(stickyIssues);
+    setSetupIssuesExpanded(false);
+    setStickyPrompt(null);
+    setCapturePhase('done');
+  }, [stickyIssues]);
+
   // Early-return capture overlay. Unmounting Tab1's main tree releases the camera owned by
   // CaptureSwingPanel (see CaptureSwingPanel.tsx:182-186 cleanup).
   if (capturePhase === 'capturing') {
@@ -340,13 +348,7 @@ export default function Tab1LiveView(): React.ReactElement {
         <CaptureSwingPanel
           swingLabel={`SWING ${baselineCount + 1}`}
           immediateStart={true}
-          onSwingPersisted={(id) => {
-            setCurrentSwingId(id);
-            setSelectedSetupIssues(stickyIssues);
-            setSetupIssuesExpanded(false);
-            setStickyPrompt(null);
-            setCapturePhase('done');
-          }}
+          onSwingPersisted={handleSwingPersisted}
         />
         <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
           <Pressable

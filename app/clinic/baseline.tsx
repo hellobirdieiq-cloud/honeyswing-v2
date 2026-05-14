@@ -69,6 +69,17 @@ export default function BaselineScreen(): React.ReactElement | null {
     effortLevel: null,
   });
 
+  const handleSwingPersisted = useCallback((id: string | null) => {
+    setCurrentSwingId(id);
+    setDraftLog({
+      ballContact: 'unknown',
+      ballDirection: 'unknown',
+      setupOk: null,
+      effortLevel: null,
+    });
+    setPhase('logging');
+  }, []);
+
   if (!session) {
     return null;
   }
@@ -277,16 +288,7 @@ export default function BaselineScreen(): React.ReactElement | null {
       <CaptureSwingPanel
         swingLabel={`BASELINE ${swingsSaved + 1} OF 5`}
         immediateStart={true}
-        onSwingPersisted={(id) => {
-          setCurrentSwingId(id);
-          setDraftLog({
-            ballContact: 'unknown',
-            ballDirection: 'unknown',
-            setupOk: null,
-            effortLevel: null,
-          });
-          setPhase('logging');
-        }}
+        onSwingPersisted={handleSwingPersisted}
       />
     </View>
   );

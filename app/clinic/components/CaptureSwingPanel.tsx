@@ -48,7 +48,7 @@ interface CaptureSwingPanelProps {
   immediateStart?: boolean;
 }
 
-export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.ReactElement {
+const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSwingPanelProps): React.ReactElement {
   const { swingLabel, onSwingPersisted, onCapturePhaseDone, immediateStart } = props;
   const navRouter = useRouter();
   const goPlayer = useAudioPlayer(require('../../../assets/go.wav'));
@@ -305,4 +305,5 @@ export default function CaptureSwingPanel(props: CaptureSwingPanelProps): React.
       </View>
     </View>
   );
-}
+});
+export default CaptureSwingPanel;

@@ -129,6 +129,17 @@ export default function CueBlockScreen(): React.ReactElement | null {
   const [attentionActualPending, setAttentionActualPending] = useState<boolean>(false);
   const [confirmed, setConfirmed] = useState<boolean>(false);
 
+  const handleSwingPersisted = useCallback((id: string | null) => {
+    setCurrentSwingId(id);
+    setDraftLog({
+      ballContact: 'unknown',
+      ballDirection: 'unknown',
+      setupOk: null,
+      effortLevel: null,
+    });
+    setSwingPhase('logging');
+  }, []);
+
   if (!session) {
     return null;
   }
@@ -392,16 +403,7 @@ export default function CueBlockScreen(): React.ReactElement | null {
           <CaptureSwingPanel
             swingLabel={`CUE SWING ${postCueSwingIds.length + 1} OF ${POST_CUE_SWING_TARGET}`}
             immediateStart={true}
-            onSwingPersisted={(id) => {
-              setCurrentSwingId(id);
-              setDraftLog({
-                ballContact: 'unknown',
-                ballDirection: 'unknown',
-                setupOk: null,
-                effortLevel: null,
-              });
-              setSwingPhase('logging');
-            }}
+            onSwingPersisted={handleSwingPersisted}
           />
         </View>
       );
