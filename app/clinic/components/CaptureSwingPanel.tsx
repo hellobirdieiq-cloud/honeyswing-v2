@@ -144,30 +144,8 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
-      frameSkipCounter.value = frameSkipCounter.value + 1;
-
-      if (fpsWindowStartTs.value === 0) {
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-      fpsFrameCount.value += 1;
-      if (fpsFrameCount.value >= 30) {
-        const elapsedSec = (frame.timestamp - fpsWindowStartTs.value) / 1e3;
-        const actualFps = elapsedSec > 0 ? fpsFrameCount.value / elapsedSec : 0;
-        updateActualFpsJSRef.current(actualFps);
-        fpsFrameCount.value = 0;
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-
-      if (frameSkipCounter.value % skipInterval !== 0) return;
-
-      const lms = honeyPoseDetect(frame);
-      const detected = Array.isArray(lms) && lms.length > 0;
-      if (detected) {
-        const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
-        appendPoseFrame(lms, frame.timestamp, frame.width, frame.height, aspect);
-      }
     },
-    [appendPoseFrame, skipInterval, frameSkipCounter, fpsFrameCount, fpsWindowStartTs]
+    []
   );
 
   useEffect(() => {
