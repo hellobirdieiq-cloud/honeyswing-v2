@@ -209,7 +209,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
         let submitMs = (t_submitEnd - t_submitStart) * 1000
         let slotMs = (t_slotEnd - t_slotStart) * 1000
         let totalMs = (t_slotEnd - t_callbackStart) * 1000
-        print(String(format: "[PoseTiming] CALLBACK f=%d ts=%d bgra=%.2fms submit=%.2fms slot=%.2fms total=%.2fms consumed=%@",
+        NSLog(String(format: "[PoseTiming] CALLBACK f=%d ts=%d bgra=%.2fms submit=%.2fms slot=%.2fms total=%.2fms consumed=%@",
           Self.frameCount, timestampMs, bgraMs, submitMs, slotMs, totalMs,
           consumed != nil ? "yes" : "no"))
       }
@@ -247,7 +247,7 @@ public class HoneyVisionCameraPosePlugin: FrameProcessorPlugin, PoseLandmarkerLi
     error: (any Error)?
   ) {
     guard let result = result, error == nil else { return }
-    print(String(format: "[PoseTiming] DELEGATE input_ts=%d at=%.3f",
+    NSLog(String(format: "[PoseTiming] DELEGATE input_ts=%d at=%.3f",
       timestampInMilliseconds, CFAbsoluteTimeGetCurrent()))
     Self.resultLock.withLock { $0 = result }
   }
