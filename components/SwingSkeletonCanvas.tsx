@@ -142,11 +142,11 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     const rh = getJoint(f0, 'rightHip');
     if (!top || !bot || !lh || !rh) return null;
     const vertical = Math.max(0.01, bot.y - top.y);
-    const scale = (height * 0.9) / vertical;
+    const scale = (height * 0.75) / vertical;
     const hipX0 = (lh.x + rh.x) / 2;
     const hipY0 = (lh.y + rh.y) / 2;
     const anchorX = width / 2;
-    const anchorY = height * 0.55;
+    const anchorY = height * 0.5;
     const tx = (x: number) => anchorX + (x - hipX0) * scale;
     const ty = (y: number) => anchorY + (y - hipY0) * scale;
     return { tx, ty };
