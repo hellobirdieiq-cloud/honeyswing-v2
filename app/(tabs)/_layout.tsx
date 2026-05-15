@@ -24,6 +24,7 @@ export default function TabLayout() {
         title: 'Settings',
         tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
       }} />
+      <Tabs.Screen name="recordStyles" options={{ href: null }} />
     </Tabs>
   );
 }
