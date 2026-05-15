@@ -95,6 +95,11 @@ function SwingRow({ item }: { item: SwingHistoryRecord }) {
   const ratioText = hasTempo
     ? (item.tempo_ratio as number).toFixed(2)
     : 'Tempo unavailable';
+  const showScore = item.score != null;
+  const scoreColor =
+    hasTempo && scoreTempoTrafficLight(item.tempo_ratio as number).isGreen
+      ? '#44CC44'
+      : '#FFFFFF';
 
   return (
     <TouchableOpacity
@@ -103,6 +108,9 @@ function SwingRow({ item }: { item: SwingHistoryRecord }) {
       activeOpacity={0.7}
     >
       <View style={[styles.dot, { backgroundColor: dotColor }]} />
+      {showScore && (
+        <Text style={[styles.rowScore, { color: scoreColor }]}>{item.score}</Text>
+      )}
       <View style={styles.rowText}>
         <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
         <Text style={styles.rowRatio}>{ratioText}</Text>
@@ -130,6 +138,13 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 7,
     marginRight: 14,
+  },
+  rowScore: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginRight: 12,
+    minWidth: 32,
+    textAlign: 'right',
   },
   rowText: {
     flex: 1,
