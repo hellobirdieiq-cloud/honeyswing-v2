@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Line, Circle, Polygon, Path, G } from 'react-native-svg';
 import type { PoseFrame, JointName, NormalizedJoint } from '../packages/pose/PoseTypes';
 import type { DetectedPhase, SwingPhase } from '../packages/domain/swing/phaseDetection';
+import { GOLD } from '../lib/colors';
 
 const MIN_CONF = 0.2;
 
@@ -432,28 +433,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   speedButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: '#1a1a1d',
-    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#1A1A1C',
+    borderRadius: 8,
   },
   speedButtonActive: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: GOLD,
   },
   speedText: {
     color: '#999',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   speedTextActive: {
-    color: '#FFFFFF',
+    color: '#111',
   },
   playButton: {
     marginLeft: 8,
     paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: '#1a1a1d',
-    borderRadius: 999,
+    paddingVertical: 8,
+    backgroundColor: '#1A1A1C',
+    borderRadius: 8,
   },
   playText: {
     color: '#FFFFFF',
@@ -463,22 +464,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     marginTop: 10,
   },
   chip: {
     paddingHorizontal: 12,
-    paddingVertical: 5,
-    backgroundColor: '#1a1a1d',
-    borderRadius: 999,
+    paddingVertical: 10,
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    flexBasis: '31%',
+    alignItems: 'center',
   },
   chipDisabled: {
     opacity: 0.4,
   },
   chipText: {
-    color: '#DDDDDD',
-    fontSize: 12,
-    fontWeight: '500',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   chipTextDisabled: {
     color: '#666',

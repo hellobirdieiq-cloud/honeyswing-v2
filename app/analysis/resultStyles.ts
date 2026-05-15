@@ -285,8 +285,8 @@ export const styles = StyleSheet.create({
   },
   coachingCue: {
     color: '#F59E0B',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
     marginTop: 6,
     textAlign: 'center',
     paddingHorizontal: 16,
