@@ -153,6 +153,8 @@ export function msToFrames(ms: number, msPerFrame: number): number {
 const TAKEAWAY_DIRECTION_FRAMES = 20;   // ~167 ms at 120 fps
 const TAKEAWAY_DIRECTION_THRESHOLD = 0.002;
 const TAKEAWAY_MAX_ADDRESS_FRACTION = 0.6;
+const MEDIAN_GATE_WINDOW = 8;     // frames per window
+const MEDIAN_GATE_REQUIRED = 6;   // middle N that must all be positive (drops 1 outlier each end)
 
 /**
  * Magnitude-based stillness gate (legacy). Direction-blind — kept as a
@@ -192,17 +194,25 @@ export function findSetupEndIndex(
   smoothed: number[],
   points: SwingTrailPoint[],
 ): number {
-  if (points.length < TAKEAWAY_DIRECTION_FRAMES + 1) {
+  if (points.length < MEDIAN_GATE_WINDOW + 1) {
     return findSetupEndIndexStillness(smoothed, points);
   }
 
   const lastIdx = points.length - 1;
-  const minDelta = TAKEAWAY_DIRECTION_FRAMES * TAKEAWAY_DIRECTION_THRESHOLD;
 
-  for (let i = TAKEAWAY_DIRECTION_FRAMES; i < points.length; i++) {
-    const delta = points[i].x - points[i - TAKEAWAY_DIRECTION_FRAMES].x;
-    if (delta > minDelta) {
-      const candidate = i - TAKEAWAY_DIRECTION_FRAMES;
+  for (let i = MEDIAN_GATE_WINDOW; i < points.length; i++) {
+    const window: number[] = [];
+    for (let j = i - (MEDIAN_GATE_WINDOW - 1); j <= i; j++) {
+      window.push(points[j].x - points[j - 1].x);
+    }
+    window.sort((a, b) => a - b);
+    // Drop sorted[0] and sorted[7]; require sorted[1..6] all > 0.
+    let allPositive = true;
+    for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
+      if (window[k] <= 0) { allPositive = false; break; }
+    }
+    if (allPositive) {
+      const candidate = i - MEDIAN_GATE_WINDOW;
       if (candidate <= TAKEAWAY_MAX_ADDRESS_FRACTION * lastIdx) {
         return candidate;
       }
