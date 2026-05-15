@@ -31,6 +31,7 @@ import { getCoachCode } from '../../lib/coachCode';
 import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import SwingArtCard from '../../components/SwingArtCard';
+import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';
 import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
@@ -362,6 +363,15 @@ export default function ResultScreen() {
                 </View>
               )}
             </View>
+
+            {motion?.frames?.length ? (
+              <SwingSkeletonCanvas
+                frames={motion.frames}
+                phases={analysis?.phases ?? null}
+                width={screenW - 32}
+                height={300}
+              />
+            ) : null}
 
             {/* 2. Video */}
             {videoUri && player && (
