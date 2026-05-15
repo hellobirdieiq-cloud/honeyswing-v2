@@ -253,7 +253,7 @@ export function useSwingCapture({
     swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
       camera_angle_at_start: guidanceSnapshotRef.current.separation,
       camera_guidance_color: guidanceSnapshotRef.current.color,
-    }, nativeGripResult, captureFrameStats, actualFps, targetFps ?? null).then((swingId) => {
+    }, nativeGripResult, captureFrameStats, actualFps, targetFps ?? null, gravityReadings).then((swingId) => {
       if (swingId) {
         console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
       } else {

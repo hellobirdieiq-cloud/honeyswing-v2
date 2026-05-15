@@ -1,10 +1,11 @@
 import { supabase, getUserId } from './supabase';
 import { incrementLocalSwingCount } from './swingLimit';
 import type { Database, Json } from './database.types';
-import type { PoseFrame } from '../packages/pose/PoseTypes';
+import type { PoseFrame, NormalizedJoint, JointName } from '../packages/pose/PoseTypes';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import { calculateGolfAngles } from '../packages/domain/swing/angles';
+import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
 import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
@@ -120,6 +121,36 @@ function calcFpsEstimate(frames: PoseFrame[]): number | null {
   return Math.round((1000 / medianDt) * 10) / 10;
 }
 
+function enrichFramesWithVelocity(input: PoseFrame[]): PoseFrame[] {
+  return input.map((f, i) => {
+    const prev = i > 0 ? input[i - 1] : null;
+    const dt = prev ? f.timestampMs - prev.timestampMs : 0;
+    const clonedJoints: Record<JointName, NormalizedJoint | undefined> = { ...f.joints };
+    for (const key of Object.keys(clonedJoints) as JointName[]) {
+      const curr = clonedJoints[key];
+      if (!curr) continue;
+      const previous = prev?.joints[key];
+      if (
+        prev &&
+        dt > 0 &&
+        previous &&
+        (curr.confidence ?? 0) > 0 &&
+        (previous.confidence ?? 0) > 0
+      ) {
+        clonedJoints[key] = {
+          ...curr,
+          vx: (curr.x - previous.x) / dt,
+          vy: (curr.y - previous.y) / dt,
+          vz: ((curr.z ?? 0) - (previous.z ?? 0)) / dt,
+        };
+      } else {
+        clonedJoints[key] = { ...curr };
+      }
+    }
+    return { ...f, joints: clonedJoints };
+  });
+}
+
 export async function persistSwing(
   frames: PoseFrame[],
   analysis: AnalysisResult,
@@ -129,6 +160,7 @@ export async function persistSwing(
   captureFrameStats?: CaptureFrameStats,
   actualFps?: number,
   requestedFps?: number | null,
+  gravityReadings?: GravityReading[],
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -149,9 +181,22 @@ export async function persistSwing(
   const isLeftHanded = await getIsLeftHanded();
   const ageTier = await getAgeTier();
 
+  const enrichedFrames = enrichFramesWithVelocity(frames);
+
+  let gravityVector: Json | null = null;
+  if (gravityReadings && gravityReadings.length > 0) {
+    const n = gravityReadings.length;
+    const sum = gravityReadings.reduce(
+      (acc, g) => ({ x: acc.x + g.x, y: acc.y + g.y, z: acc.z + g.z }),
+      { x: 0, y: 0, z: 0 },
+    );
+    gravityVector = { x: sum.x / n, y: sum.y / n, z: sum.z / n };
+  }
+
   const row: Database['public']['Tables']['swings']['Insert'] = {
     ...(profileId ? { user_id: profileId } : {}),
-    motion_frames: frames,
+    motion_frames: enrichedFrames,
+    gravity_vector: gravityVector,
     frame_count: frames.length,
     duration_ms: Math.round(durationMs),
     fps_actual: durationMs > 0 ? frames.length / (durationMs / 1000.0) : null,

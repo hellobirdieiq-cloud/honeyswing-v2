@@ -230,6 +230,7 @@ export type Database = {
           feedback: Json | null
           fps_actual: number | null
           frame_count: number | null
+          gravity_vector: Json | null
           honey_boom: boolean | null
           id: string
           impact_frame_index: number | null
@@ -265,6 +266,7 @@ export type Database = {
           feedback?: Json | null
           fps_actual?: number | null
           frame_count?: number | null
+          gravity_vector?: Json | null
           honey_boom?: boolean | null
           id?: string
           impact_frame_index?: number | null
@@ -300,6 +302,7 @@ export type Database = {
           feedback?: Json | null
           fps_actual?: number | null
           frame_count?: number | null
+          gravity_vector?: Json | null
           honey_boom?: boolean | null
           id?: string
           impact_frame_index?: number | null

@@ -44,6 +44,9 @@ export type NormalizedJoint = {
   y: number;
   z?: number;
   confidence?: number;
+  vx?: number;
+  vy?: number;
+  vz?: number;
 };
 
 export type PoseFrame = {
