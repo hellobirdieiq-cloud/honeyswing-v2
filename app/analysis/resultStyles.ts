@@ -277,4 +277,58 @@ export const styles = StyleSheet.create({
     textAlign: 'center' as const,
   },
 
+  tempoVerdict: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  coachingCue: {
+    color: '#F59E0B',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 6,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  tempoRatio: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 14,
+  },
+  timingRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 24,
+    marginTop: 6,
+  },
+  timingItem: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  videoWrapper: {
+    width: '100%',
+    aspectRatio: 9 / 16,
+    position: 'relative',
+  },
+  videoPlayButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoPlayButtonIcon: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+    marginLeft: 2,
+  },
+
 });

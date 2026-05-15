@@ -35,7 +35,11 @@ import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
 import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
-import { isMeasured } from '../../packages/domain/swing/scoring';
+import {
+  scoreTempoTrafficLight,
+  TEMPO_GREEN_LOWER,
+  TEMPO_GREEN_UPPER,
+} from '../../packages/domain/swing/scoring';
 import type { GripClassification } from '../../lib/classifyGrip';
 
 const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
@@ -44,11 +48,12 @@ const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
   needs_adjustment: { label: 'Needs Adjustment', color: '#FF4444' },
 };
 
-const PHASE_CHIPS: { phase: SwingPhase; label: string }[] = [
+type PhaseChipKey = SwingPhase | 'full_swing';
+const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
+  { phase: 'full_swing',     label: 'Full Swing' },
   { phase: 'address',        label: 'Address' },
   { phase: 'takeaway',       label: 'Takeaway' },
   { phase: 'top',            label: 'Top' },
-  { phase: 'downswing',      label: 'Downswing' },
   { phase: 'impact',         label: 'Impact' },
   { phase: 'follow_through', label: 'Finish' },
 ];
@@ -70,12 +75,31 @@ export default function ResultScreen() {
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
     p.playbackRate = 0.25;
-    p.play();
   });
 
   useEffect(() => {
     if (player) player.playbackRate = speed;
   }, [speed, player]);
+
+  const [isPlaying, setIsPlaying] = useState(false);
+  useEffect(() => {
+    if (!player) return;
+    const sub = player.addListener('playingChange', (payload) => {
+      setIsPlaying(payload.isPlaying);
+    });
+    return () => sub.remove();
+  }, [player]);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const [videoSectionY, setVideoSectionY] = useState<number | null>(null);
+  useEffect(() => {
+    if (videoSectionY == null) return;
+    const t = setTimeout(
+      () => scrollRef.current?.scrollTo({ y: videoSectionY, animated: true }),
+      2000,
+    );
+    return () => clearTimeout(t);
+  }, [videoSectionY]);
 
   useEffect(() => {
     getIsLeftHanded().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
@@ -129,10 +153,41 @@ export default function ResultScreen() {
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = motion?.frames?.[0]?.timestampMs;
 
-  const breakdownEntries = analysis?.swing_debug?.scoring_breakdown ?? [];
-  const measuredCount = breakdownEntries.filter(isMeasured).length;
-  const totalCount = breakdownEntries.length;
-  const showAspectsSubtitle = analysis != null && totalCount > 0 && measuredCount < totalCount;
+  const tempoResult = tempo ? scoreTempoTrafficLight(tempo.tempoRatio) : null;
+  const isGreen = tempoResult?.isGreen ?? false;
+  const tooFast = !!tempo && tempo.tempoRatio < TEMPO_GREEN_LOWER;
+  const tooSlow = !!tempo && tempo.tempoRatio > TEMPO_GREEN_UPPER;
+  const scoreColor = isGreen ? '#44CC44' : '#FFFFFF';
+  const tempoLabelText = isGreen
+    ? 'Perfect swing speed!'
+    : tooFast
+    ? 'Slow down your backswing'
+    : tooSlow
+    ? 'Speed up your backswing'
+    : null;
+  const coachingCueText = tooFast
+    ? "Swing back slow like you're moving through honey"
+    : tooSlow
+    ? 'Whip the club head back fast'
+    : null;
+
+  const finalScore = analysis?.score ?? 0;
+  const [displayedScore, setDisplayedScore] = useState(0);
+  useEffect(() => {
+    if (finalScore <= 0) {
+      setDisplayedScore(0);
+      return;
+    }
+    let raf: number;
+    const start = Date.now();
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / 800);
+      setDisplayedScore(Math.round(finalScore * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [finalScore]);
 
   const isLowConfidence = classification?.validity === 'partial';
 
@@ -263,7 +318,7 @@ export default function ResultScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
         {!motion ? (
           <Text style={styles.emptyText}>No swing data available yet.</Text>
         ) : classification?.validity === 'invalid' ? (
@@ -282,14 +337,54 @@ export default function ResultScreen() {
           </View>
         ) : (
           <>
+            {/* 1. Score */}
+            <View style={styles.scoreCard}>
+              <Text style={[styles.score, { color: scoreColor }]}>
+                {displayedScore}
+              </Text>
+              {tempoLabelText && (
+                <Text style={[styles.tempoVerdict, { color: scoreColor }]}>
+                  {tempoLabelText}
+                </Text>
+              )}
+              {coachingCueText && (
+                <Text style={styles.coachingCue}>{coachingCueText}</Text>
+              )}
+              {tempo && (
+                <Text style={styles.tempoRatio}>
+                  {tempo.tempoRatio.toFixed(2)}:1
+                </Text>
+              )}
+              {tempo && (
+                <View style={styles.timingRow}>
+                  <Text style={styles.timingItem}>Back {Math.round(tempo.backswingMs)}ms</Text>
+                  <Text style={styles.timingItem}>Down {Math.round(tempo.downswingMs)}ms</Text>
+                </View>
+              )}
+            </View>
+
             {/* 2. Video */}
             {videoUri && player && (
-              <View style={styles.videoSection}>
-                <VideoView
-                  player={player}
-                  style={styles.videoPlayer}
-                  nativeControls={false}
-                />
+              <View
+                style={styles.videoSection}
+                onLayout={(e) => setVideoSectionY(e.nativeEvent.layout.y)}
+              >
+                <View style={styles.videoWrapper}>
+                  <VideoView
+                    player={player}
+                    style={styles.videoPlayer}
+                    nativeControls={false}
+                  />
+                  {!isPlaying && (
+                    <TouchableOpacity
+                      style={styles.videoPlayButton}
+                      onPress={() => player.play()}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.videoPlayButtonIcon}>▶</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <View style={styles.speedRow}>
                   {([0.25, 0.5, 1] as const).map((s) => (
                     <TouchableOpacity
@@ -307,9 +402,35 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* 2b. Phase chips */}
+            {/* 3. Phase chips */}
             <View style={styles.phaseChipsRow}>
               {PHASE_CHIPS.map((entry) => {
+                if (entry.phase === 'full_swing') {
+                  const enabled = !!player && !!videoUri;
+                  return (
+                    <TouchableOpacity
+                      key={entry.phase}
+                      style={enabled ? styles.phaseChip : styles.phaseChipDisabled}
+                      disabled={!enabled}
+                      onPress={
+                        enabled
+                          ? () => {
+                              player.pause();
+                              player.currentTime = 0;
+                              setTimeout(() => {
+                                player.play();
+                              }, 100);
+                            }
+                          : undefined
+                      }
+                      activeOpacity={0.7}
+                    >
+                      <Text style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}>
+                        {entry.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }
                 const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
                 const enabled = !!phaseEntry && !!player && !!videoUri && firstFrameTimestamp != null;
                 return (
@@ -340,91 +461,7 @@ export default function ResultScreen() {
               })}
             </View>
 
-            {/* 3. Score */}
-            <View style={styles.scoreCard}>
-              {isLowConfidence && (
-                <Text style={styles.lowConfBadge}>Quick look — try a longer swing next time</Text>
-              )}
-              <Text style={styles.score}>{analysis?.score ?? '—'}</Text>
-              {analysis?.honeyBoom && (
-                <Text style={styles.honeyBoom}>Honey Boom!</Text>
-              )}
-              {showAspectsSubtitle && (
-                <Text style={styles.tempoSubLabel}>
-                  {measuredCount} of {totalCount} aspects measured
-                </Text>
-              )}
-              {tempoLabel && (
-                <Text style={styles.tempoSubLabel}>{tempoLabel}</Text>
-              )}
-            </View>
-
-            {/* 4. Coaching */}
-            {positiveResult.card ? (
-              <View style={styles.positiveCard}>
-                <Text style={styles.positiveCardText}>{positiveResult.card.message}</Text>
-              </View>
-            ) : sessionInsight ? (
-              <View style={styles.sessionInsightCard}>
-                <Text style={styles.sessionInsightText}>{sessionInsight.message}</Text>
-              </View>
-            ) : (
-              keyLandmarks.length > 0 && (
-                <VisualCoachCard
-                  landmarks={keyLandmarks}
-                  angles={angles}
-                  width={skeletonW}
-                  height={skeletonH}
-                  isLowConfidence={isLowConfidence}
-                  isLeftHanded={isLeftHanded ?? false}
-                  suppressedMetrics={analysis?.swing_debug?.angle_gating?.suppressed}
-                />
-              )
-            )}
-
-            {/* 5. Coach */}
-            {coachName && (
-              <View style={styles.coachChip}>
-                <Text style={styles.coachChipLabel}>Coach</Text>
-                <Text style={styles.coachChipValue}>{coachName}</Text>
-              </View>
-            )}
-
-            {/* 5b. Grip */}
-            {gripCloud && GRIP_CHIP_COLORS[gripCloud.overall] && (
-              <View style={styles.gripChip}>
-                <Text style={styles.gripChipLabel}>Grip</Text>
-                <Text style={[styles.gripChipValue, { color: GRIP_CHIP_COLORS[gripCloud.overall].color }]}>
-                  {GRIP_CHIP_COLORS[gripCloud.overall].label}
-                </Text>
-              </View>
-            )}
-
-            {/* 6. CTA */}
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.primaryButtonText}>Record Again</Text>
-            </TouchableOpacity>
-
-            {/* 7. Sign-in */}
-            {limitHit && (
-              <TouchableOpacity
-                style={styles.signInPrompt}
-                onPress={() => router.push('/signin' as Href)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.signInPromptTitle}>Want to keep practicing?</Text>
-                <Text style={styles.signInPromptText}>
-                  Create a free account to save your swings and keep going.
-                </Text>
-                <Text style={styles.signInPromptCta}>Sign up free →</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* 8. Swing Art */}
+            {/* 4. Swing Art */}
             {classification?.validity === 'valid' && motion && (
               <View style={{ marginTop: 8 }}>
                 <SwingArtCard
@@ -434,6 +471,15 @@ export default function ResultScreen() {
                 />
               </View>
             )}
+
+            {/* 5. CTA */}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => router.back()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Record Again</Text>
+            </TouchableOpacity>
           </>
         )}
       </ScrollView>

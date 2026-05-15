@@ -53,6 +53,12 @@ export type GripHistoryRecord = {
   grip_failed: string | null;
 };
 
+export type SwingHistoryRecord = {
+  id: string;
+  created_at: string;
+  tempo_ratio: number | null;
+};
+
 // ---------------------------------------------------------------------------
 // Adapter (overridable for tests) — mirrors lib/eventBus.ts:160-209
 // ---------------------------------------------------------------------------
@@ -69,6 +75,13 @@ export type SwingStoreAdapter = {
     data: GripHistoryRecord[] | null;
     error: { message: string } | null;
   }>;
+  fetchSwingHistory(
+    userId: string,
+    sinceIso: string,
+  ): Promise<{
+    data: SwingHistoryRecord[] | null;
+    error: { message: string } | null;
+  }>;
   getUserId(): Promise<string | null>;
 };
 
@@ -82,6 +95,8 @@ const GRIP_HISTORY_COLUMNS =
   'id, created_at, ' +
   'grip_overall:swing_debug->grip_cloud->>overall, ' +
   'grip_failed:swing_debug->grip_cloud->>analysis_failed';
+
+const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio';
 
 type SupabaseError = { message: string };
 type SupabaseResult<T> = { data: T; error: SupabaseError | null };
@@ -146,6 +161,18 @@ function getAdapter(): SwingStoreAdapter {
           error: error ? { message: error.message } : null,
         };
       },
+      async fetchSwingHistory(userId, sinceIso) {
+        const { data, error } = await mod.supabase
+          .from('swings')
+          .select(SWING_HISTORY_COLUMNS)
+          .eq('user_id', userId)
+          .gte('created_at', sinceIso)
+          .order('created_at', { ascending: false });
+        return {
+          data: (data as SwingHistoryRecord[] | null) ?? null,
+          error: error ? { message: error.message } : null,
+        };
+      },
       async getUserId() {
         return mod.getUserId();
       },
@@ -157,6 +184,9 @@ function getAdapter(): SwingStoreAdapter {
         return { data: null, error: { message: 'supabase unavailable' } };
       },
       async fetchGripHistory() {
+        return { data: null, error: { message: 'supabase unavailable' } };
+      },
+      async fetchSwingHistory() {
         return { data: null, error: { message: 'supabase unavailable' } };
       },
       async getUserId() {
@@ -209,6 +239,27 @@ export async function getGripHistory(
     // Message prefix preserved verbatim from components/GripHistoryRow.tsx:59
     // so observability dashboards keyed on the existing string keep working.
     console.error('[HoneySwing] grip history fetch error:', error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+/**
+ * Fetch the current user's swing history within a recency window (defaults to
+ * 30 days), newest first. Returns [] when no user is authenticated or on DB
+ * error (logged). Does not throw.
+ */
+export async function getSwingHistory(
+  opts?: { windowMs?: number },
+): Promise<SwingHistoryRecord[]> {
+  const a = getAdapter();
+  const userId = await a.getUserId();
+  if (!userId) return [];
+  const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
+  const sinceIso = new Date(Date.now() - windowMs).toISOString();
+  const { data, error } = await a.fetchSwingHistory(userId, sinceIso);
+  if (error) {
+    console.error('[HoneySwing] swing history fetch error:', error.message);
     return [];
   }
   return data ?? [];
