@@ -542,7 +542,7 @@ export function analyzePoseSequence(
     canonical.frames,
     { address: phaseAddressIdx, top: phaseTopIdx },
     isLeftHanded,
-    'dtl', // DTL only
+    earlyAngle.angle,
   );
   const resolvedAddressIdx =
     addressFrameIdx ?? (

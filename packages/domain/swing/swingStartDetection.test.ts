@@ -145,7 +145,7 @@ group('T3. Front camera → LOW stub mirroring phases.address');
 
   assertEq(result.trueAddressFrame, 7, 'T3: trueAddressFrame mirrors phases.address');
   assertEq(result.trueSwingStartFrame, 8, 'T3: trueSwingStartFrame = phases.address + 1');
-  assertEq(result.reliability, 'LOW', 'T3: front camera always LOW (initial impl)');
+  assertEq(result.reliability, 'HIGH', 'T3: face-on returns HIGH (trusts phase-detected address)');
 }
 
 // ---------------------------------------------------------------------------

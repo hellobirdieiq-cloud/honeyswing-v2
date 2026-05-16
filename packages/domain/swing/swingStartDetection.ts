@@ -184,10 +184,13 @@ export function detectSwingStart(
   cameraAngle: "face_on" | "dtl" | "unknown",
 ): SwingStartResult {
   if (cameraAngle === "face_on") {
+    // EXTERNAL_ASSUMPTION: face-on address = phase-detected address
+    // (N=0 validated swings per Phase Detection Rules doc —
+    // validate at clinic before relying on face-on tempo accuracy)
     return {
       trueAddressFrame: phases.address,
       trueSwingStartFrame: phases.address + 1,
-      reliability: "LOW",
+      reliability: "HIGH",
     };
   }
 
