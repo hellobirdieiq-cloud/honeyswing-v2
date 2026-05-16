@@ -481,3 +481,122 @@ export function detectFaceOnPhases(input: {
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Debug-only entry: runs the same sub-detectors as detectFaceOnPhases but
+// does NOT return early on gate violations. Used by scripts/debugPhaseDetection.ts
+// to surface the interim addressIdx / topIdx / impactIdx values that the
+// temporal_inversion gate compares.
+// ---------------------------------------------------------------------------
+
+export type FaceOnPhasesDebugResult = {
+  swingStartFrame: number | null;
+  takeawayAddressIdx: number | null;
+  addressIdx: number | null;
+  takeawayIdx: number | null;
+  topIdx: number | null;
+  downswingIdx: number | null;
+  impactIdx: number | null;
+  finishFrame: number | null;
+  triggerA: { fired: boolean; condition: string };
+  triggerB: { fired: boolean; offendingPair: string | null };
+  wouldFallbackGate: FallbackGate | null;
+};
+
+export function detectFaceOnPhasesDebug(input: {
+  canonical: PoseSequence;
+  trail: SwingTrailPoint[];
+  msPerFrame: number;
+}): FaceOnPhasesDebugResult {
+  const { canonical, trail, msPerFrame } = input;
+  const frames = canonical.frames;
+
+  const result: FaceOnPhasesDebugResult = {
+    swingStartFrame: null,
+    takeawayAddressIdx: null,
+    addressIdx: null,
+    takeawayIdx: null,
+    topIdx: null,
+    downswingIdx: null,
+    impactIdx: null,
+    finishFrame: null,
+    triggerA: { fired: false, condition: "n/a (missing indices)" },
+    triggerB: { fired: false, offendingPair: null },
+    wouldFallbackGate: null,
+  };
+
+  if (trail.length < 6) {
+    result.wouldFallbackGate = "points_too_short";
+    return result;
+  }
+
+  const swingStart = detectFaceOnSwingStart(frames, msPerFrame);
+  result.swingStartFrame = swingStart.frame;
+
+  const velocities = computeTrailVelocities(trail);
+  const smoothed = smoothVelocities(velocities, 5);
+  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
+  result.takeawayAddressIdx = takeawayAddressIdx;
+  result.addressIdx = takeawayAddressIdx;
+
+  const impact = detectFaceOnImpact(frames, msPerFrame);
+  result.impactIdx = impact.frame;
+
+  if (impact.frame == null) {
+    result.wouldFallbackGate = "impact_search_bounds";
+    return result;
+  }
+
+  const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
+  const top = detectFaceOnTop(frames, topSearchAnchor, impact.frame);
+  result.topIdx = top.frame;
+
+  if (top.frame == null) {
+    result.wouldFallbackGate = "top_search_bounds";
+    return result;
+  }
+
+  const addressIdx = takeawayAddressIdx;
+  const topIdx = top.frame;
+  const impactIdx = impact.frame;
+
+  const triggerAOk = addressIdx < topIdx && topIdx < impactIdx;
+  result.triggerA = {
+    fired: !triggerAOk,
+    condition: `${addressIdx} < ${topIdx} < ${impactIdx} = ${triggerAOk}`,
+  };
+
+  if (!triggerAOk) {
+    result.wouldFallbackGate = "temporal_inversion";
+    return result;
+  }
+
+  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
+  const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
+  result.takeawayIdx = takeawayIdx;
+  result.downswingIdx = downswingIdx;
+
+  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
+  result.finishFrame = finish.frame;
+
+  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
+  const labels = ["address", "takeaway", "top", "downswing", "impact", "follow_through"];
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] <= indices[i - 1]) {
+      result.triggerB = {
+        fired: true,
+        offendingPair: `${labels[i - 1]}=${indices[i - 1]} >= ${labels[i]}=${indices[i]}`,
+      };
+      result.wouldFallbackGate = "temporal_inversion";
+      return result;
+    }
+  }
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] - indices[i - 1] < 2) {
+      result.wouldFallbackGate = "phases_too_bunched";
+      return result;
+    }
+  }
+
+  return result;
+}
