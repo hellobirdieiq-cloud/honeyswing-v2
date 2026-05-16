@@ -402,7 +402,13 @@ export function detectFaceOnPhases(input: {
   reliability.top = top.reliability ?? "medium";
 
   // Phase 1 — true_address not validated face-on; use takeaway gate fallback.
-  const addressIdx = takeawayAddressIdx;
+  // takeawayAddressIdx is a TRAIL-space index from findSetupEndIndex; convert to
+  // frame-space so phases[].index is canonical and agrees with topIdx/impactIdx.
+  const addressTimestamp = trail[takeawayAddressIdx].timestamp;
+  const addressIdx = frames.findIndex(f => f.timestampMs === addressTimestamp);
+  if (addressIdx === -1) {
+    throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
+  }
   reliability.true_address = "low";
 
   // Sanity: address must precede top must precede impact.

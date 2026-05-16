@@ -495,8 +495,12 @@ export default function ResultScreen() {
                     onPress={
                       enabled
                         ? () => {
-                            const offsetMs = phaseEntry.timestamp - firstFrameTimestamp;
-                            const seekSeconds = Math.max(0, offsetMs / 1000);
+                            if (typeof phaseEntry.index !== 'number') return;
+                            const frames = effectiveMotion?.frames;
+                            const msPerFrame = (frames && frames.length > 1)
+                              ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) / (frames.length - 1)
+                              : 33;
+                            const seekSeconds = Math.max(0, (phaseEntry.index * msPerFrame) / 1000);
                             player.pause();
                             player.currentTime = seekSeconds;
                             setTimeout(() => {
