@@ -238,6 +238,7 @@ export type Database = {
           motion_frames: Json | null
           phase_source: string | null
           phases: Json | null
+          player_profile_id: string | null
           pose_success_rate: number | null
           score: number | null
           swing_debug: Json | null
@@ -274,6 +275,7 @@ export type Database = {
           motion_frames?: Json | null
           phase_source?: string | null
           phases?: Json | null
+          player_profile_id?: string | null
           pose_success_rate?: number | null
           score?: number | null
           swing_debug?: Json | null
@@ -310,6 +312,7 @@ export type Database = {
           motion_frames?: Json | null
           phase_source?: string | null
           phases?: Json | null
+          player_profile_id?: string | null
           pose_success_rate?: number | null
           score?: number | null
           swing_debug?: Json | null

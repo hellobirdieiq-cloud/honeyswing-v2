@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
@@ -19,6 +19,7 @@ import {
   getProfiles,
   getActiveProfile,
   setActiveProfileId,
+  getDisplayName,
   type PlayerProfile,
 } from '../../lib/playerProfiles';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
@@ -82,8 +83,6 @@ export default function RecordTab() {
 
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
-  const [showProfilePicker, setShowProfilePicker] = useState(false);
-
   // Camera device/format selection
   const device = useCameraDevice('back');
 
@@ -400,16 +399,6 @@ export default function RecordTab() {
         </View>
       )}
 
-      {cameraReady && profiles.length >= 2 && (
-        <TouchableOpacity
-          onPress={() => setShowProfilePicker(true)}
-          style={{ position: 'absolute', top: 16, left: 16, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}
-          hitSlop={6}
-        >
-          <Text style={{ color: '#fff', fontSize: 13 }}>👤 {activeProfile?.name ?? 'Select Player'}</Text>
-        </TouchableOpacity>
-      )}
-
       {/* Today's Focus card or framing tips — both gated on idle + cameraReady */}
       {capturePhase === 'idle' && cameraReady && (
         /* focus ? (
@@ -493,6 +482,56 @@ export default function RecordTab() {
             >
               <Text style={styles.recordButtonText}>Record Now</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.playerChipButton,
+                profiles.length === 0 && styles.playerChipButtonAddBorder,
+              ]}
+              onPress={() => {
+                if (profiles.length === 0) {
+                  router.push('/(tabs)/settings' as Href);
+                } else if (profiles.length === 1) {
+                  // not tappable
+                } else if (profiles.length === 2 && activeProfile) {
+                  const idx = profiles.findIndex((p) => p.id === activeProfile.id);
+                  const next = profiles[(idx + 1) % profiles.length];
+                  setActiveProfileId(next.id);
+                  setActiveProfile(next);
+                } else {
+                  Alert.alert(
+                    'Switch player',
+                    undefined,
+                    [
+                      ...profiles.map((p) => ({
+                        text: getDisplayName(p),
+                        onPress: () => {
+                          setActiveProfileId(p.id);
+                          setActiveProfile(p);
+                        },
+                      })),
+                      {
+                        text: 'Add Player',
+                        style: 'destructive' as const,
+                        onPress: () => router.push('/(tabs)/settings' as Href),
+                      },
+                      { text: 'Cancel', style: 'cancel' as const },
+                    ],
+                  );
+                }
+              }}
+              disabled={profiles.length === 1}
+              activeOpacity={profiles.length === 1 ? 1 : 0.7}
+            >
+              <Text style={styles.playerChipText}>
+                {profiles.length === 0
+                  ? 'Add Player'
+                  : profiles.length === 1
+                  ? getDisplayName(profiles[0])
+                  : profiles.length === 2
+                  ? getDisplayName(activeProfile ?? profiles[0])
+                  : `${getDisplayName(activeProfile ?? profiles[0])} ▾`}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
         {/* TEMP debug button — read AsyncStorage capture-stats slots */}
@@ -513,43 +552,6 @@ export default function RecordTab() {
         )}
       </View>
 
-      <Modal
-        visible={showProfilePicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowProfilePicker(false)}
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={() => setShowProfilePicker(false)}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
-        >
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#1a1a1a', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, paddingBottom: 40 }}>
-            {profiles.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={async () => {
-                  try {
-                    await setActiveProfileId(p.id);
-                    setActiveProfile(p);
-                  } catch (err) { console.error('[HoneySwing]', err); }
-                  setShowProfilePicker(false);
-                }}
-                style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
-              >
-                <Text style={{ flex: 1, color: '#fff', fontSize: 16 }}>{p.name}</Text>
-                <Text style={{ color: '#999', fontSize: 13 }}>{p.isLeftHanded ? 'LH' : 'RH'}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity
-              onPress={() => setShowProfilePicker(false)}
-              style={{ paddingVertical: 14, marginTop: 8, alignItems: 'center' }}
-            >
-              <Text style={{ color: '#999', fontSize: 15 }}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </GestureHandlerRootView>
   );
 }

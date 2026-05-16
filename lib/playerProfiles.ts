@@ -6,7 +6,11 @@ export type PlayerProfile = {
   name: string;
   isLeftHanded: boolean;
   createdAt: number;
+  isPrimary?: boolean;
+  nickname?: string;
 };
+
+// POST-CLINIC TODO: sync profiles to Supabase when signed in
 
 export async function getProfiles(): Promise<PlayerProfile[]> {
   try {
@@ -70,4 +74,23 @@ export async function getActiveProfile(): Promise<PlayerProfile | null> {
   if (!id) return null;
   const profiles = await getProfiles();
   return profiles.find((p) => p.id === id) ?? null;
+}
+
+export async function setPrimaryProfile(id: string): Promise<void> {
+  const existing = await getProfiles();
+  const updated = existing.map((p) => ({ ...p, isPrimary: p.id === id }));
+  await saveProfiles(updated);
+}
+
+export async function getPrimaryProfile(): Promise<PlayerProfile | null> {
+  const profiles = await getProfiles();
+  const primary = profiles.find((p) => p.isPrimary === true);
+  if (primary) return primary;
+  if (profiles.length > 0) return profiles[0];
+  return null;
+}
+
+export function getDisplayName(p: PlayerProfile): string {
+  if (p.nickname && p.nickname.trim() !== '') return p.nickname;
+  return p.name.slice(0, 7);
 }

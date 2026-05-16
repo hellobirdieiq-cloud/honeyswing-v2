@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getSwingHistory, type SwingHistoryRecord } from '../lib/swingStore';
 import { getUserId } from '../lib/supabase';
@@ -8,6 +8,7 @@ import {
   TEMPO_BAND_COLORS,
 } from '../packages/domain/swing/scoring';
 import { GOLD } from '../lib/colors';
+import { getProfiles, getDisplayName, type PlayerProfile } from '../lib/playerProfiles';
 
 type LoadState =
   | { kind: 'loading' }
@@ -19,7 +20,6 @@ function formatDate(iso: string): string {
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
-    year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
@@ -28,6 +28,16 @@ function formatDate(iso: string): string {
 export default function SwingHistoryList() {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
+  const [profileMap, setProfileMap] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<string>('all');
+
+  useEffect(() => {
+    getProfiles().then((ps) => {
+      setProfiles(ps);
+      setProfileMap(Object.fromEntries(ps.map((p) => [p.id, getDisplayName(p)])));
+    }).catch((err) => console.error('[HoneySwing]', err));
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,25 +79,76 @@ export default function SwingHistoryList() {
     );
   }
 
-  if (state.rows.length === 0) {
-    return (
-      <View style={styles.emptyWrap}>
-        <Text style={styles.emptyBody}>No swings recorded yet.</Text>
-      </View>
-    );
-  }
+  const isIndividualTab = activeTab !== 'all';
+  const filteredRows =
+    activeTab === 'all'
+      ? state.rows
+      : state.rows.filter((r) => r.player_profile_id === activeTab);
+
+  const showTabs = profiles.length >= 2;
 
   return (
-    <FlatList
-      data={state.rows}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.listContent}
-      renderItem={({ item }) => <SwingRow item={item} />}
-    />
+    <View style={{ flex: 1 }}>
+      {showTabs && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsRow}
+        >
+          <TabButton
+            label="All"
+            active={activeTab === 'all'}
+            onPress={() => setActiveTab('all')}
+          />
+          {profiles.map((p) => (
+            <TabButton
+              key={p.id}
+              label={getDisplayName(p)}
+              active={activeTab === p.id}
+              onPress={() => setActiveTab(p.id)}
+            />
+          ))}
+        </ScrollView>
+      )}
+      {filteredRows.length === 0 ? (
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyBody}>No swings recorded yet.</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredRows}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <SwingRow item={item} profileMap={profileMap} isIndividualTab={isIndividualTab} />
+          )}
+        />
+      )}
+    </View>
   );
 }
 
-function SwingRow({ item }: { item: SwingHistoryRecord }) {
+function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[styles.tab, active && styles.tabActive]}
+    >
+      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function SwingRow({
+  item,
+  profileMap,
+  isIndividualTab,
+}: {
+  item: SwingHistoryRecord;
+  profileMap: Record<string, string>;
+  isIndividualTab: boolean;
+}) {
   const router = useRouter();
   const hasTempo = item.tempo_ratio != null && Number.isFinite(item.tempo_ratio);
   const band = hasTempo ? scoreTempoTrafficLight(item.tempo_ratio as number).band : null;
@@ -100,6 +161,9 @@ function SwingRow({ item }: { item: SwingHistoryRecord }) {
     hasTempo && scoreTempoTrafficLight(item.tempo_ratio as number).isGreen
       ? '#44CC44'
       : '#FFFFFF';
+  const playerLabel = item.player_profile_id ? profileMap[item.player_profile_id] : null;
+  const secondLine =
+    playerLabel && !isIndividualTab ? `${playerLabel} · ${ratioText}` : ratioText;
 
   return (
     <TouchableOpacity
@@ -113,7 +177,7 @@ function SwingRow({ item }: { item: SwingHistoryRecord }) {
       )}
       <View style={styles.rowText}>
         <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
-        <Text style={styles.rowRatio}>{ratioText}</Text>
+        <Text style={styles.rowRatio}>{secondLine}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -187,5 +251,30 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 16,
     fontWeight: '700',
+  },
+  tabsRow: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  tab: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#333',
+    marginRight: 8,
+  },
+  tabActive: {
+    backgroundColor: `${GOLD}26`,
+    borderColor: GOLD,
+  },
+  tabText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: GOLD,
   },
 });

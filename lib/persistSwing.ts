@@ -18,6 +18,7 @@ import type { PhaseTag } from '../packages/domain/clinic/enums';
 import { isGoodFrame, type CaptureClassification } from './captureValidity';
 import { getCoachCode } from './coachCode';
 import { getIsLeftHanded } from './handedness';
+import { getActiveProfileId } from './playerProfiles';
 import { getFrequencyDebugInfo } from './tipFrequency';
 import { positiveReinforcementEngine } from './positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
@@ -161,6 +162,7 @@ export async function persistSwing(
   actualFps?: number,
   requestedFps?: number | null,
   gravityReadings?: GravityReading[],
+  playerProfileId?: string | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -174,6 +176,9 @@ export async function persistSwing(
     return null;
   }
   const profileId = authUserId;
+
+  const resolvedPlayerProfileId =
+    playerProfileId !== undefined ? playerProfileId : await getActiveProfileId();
 
   const cloudGrip = getGripClassification();
 
@@ -195,6 +200,7 @@ export async function persistSwing(
 
   const row: Database['public']['Tables']['swings']['Insert'] = {
     ...(profileId ? { user_id: profileId } : {}),
+    player_profile_id: resolvedPlayerProfileId ?? null,
     motion_frames: enrichedFrames,
     gravity_vector: gravityVector,
     frame_count: frames.length,

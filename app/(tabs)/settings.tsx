@@ -23,7 +23,7 @@ import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
-import { getProfiles, addProfile, deleteProfile, type PlayerProfile } from '../../lib/playerProfiles';
+import { getProfiles, addProfile, deleteProfile, saveProfiles, setPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
 import { tipFrequencyLimiter } from '../../lib/tipFrequency';
 import { GOLD } from '../../lib/colors';
 
@@ -354,24 +354,84 @@ export default function SettingsScreen() {
 
       <View style={styles.handednessSection}>
         <Text style={styles.coachLabel}>Players</Text>
-        {profiles.map((p) => (
-          <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-            <Text style={{ flex: 1, color: '#fff', fontSize: 15 }}>{p.name}</Text>
-            <Text style={{ color: '#999', marginRight: 12, fontSize: 13 }}>{p.isLeftHanded ? 'LH' : 'RH'}</Text>
-            <TouchableOpacity
-              onPress={async () => {
-                try {
-                  await deleteProfile(p.id);
-                  const next = await getProfiles();
-                  setProfiles(next);
-                } catch (err) { console.error('[HoneySwing]', err); }
-              }}
-              hitSlop={10}
-            >
-              <Text style={{ color: '#999', fontSize: 18 }}>×</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+        {profiles.map((p) => {
+          const needsNickname = p.name.length > 7;
+          const nicknameEmpty = !p.nickname || p.nickname.trim() === '';
+          return (
+            <View key={p.id}>
+              <TouchableOpacity
+                onPress={async () => {
+                  try {
+                    await setPrimaryProfile(p.id);
+                    const next = await getProfiles();
+                    setProfiles(next);
+                  } catch (err) { console.error('[HoneySwing]', err); }
+                }}
+                activeOpacity={0.7}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+              >
+                <Text style={{ color: GOLD, marginRight: 8, fontSize: 15, width: 12 }}>
+                  {p.isPrimary ? '●' : ' '}
+                </Text>
+                <Text style={{ flex: 1, color: '#fff', fontSize: 15 }}>{p.name}</Text>
+                <Text style={{ color: '#999', marginRight: 12, fontSize: 13 }}>
+                  {p.isLeftHanded ? 'Left-handed' : 'Right-handed'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(
+                      `Delete ${p.name}?`,
+                      '',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: async () => {
+                            try {
+                              await deleteProfile(p.id);
+                              const next = await getProfiles();
+                              setProfiles(next);
+                            } catch (err) { console.error('[HoneySwing]', err); }
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  hitSlop={10}
+                >
+                  <Text style={{ color: '#999', fontSize: 18 }}>×</Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+              {needsNickname && (
+                <TextInput
+                  value={p.nickname ?? ''}
+                  onChangeText={(text) => {
+                    const updated = profiles.map((q) =>
+                      q.id === p.id ? { ...q, nickname: text } : q,
+                    );
+                    setProfiles(updated);
+                    saveProfiles(updated).catch((err) => console.error('[HoneySwing]', err));
+                  }}
+                  placeholder="Nickname (required)"
+                  placeholderTextColor="#666"
+                  style={{
+                    backgroundColor: '#1a1a1a',
+                    color: '#fff',
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 14,
+                    marginBottom: 8,
+                    marginLeft: 20,
+                    borderWidth: 1,
+                    borderColor: nicknameEmpty ? GOLD : 'transparent',
+                  }}
+                />
+              )}
+            </View>
+          );
+        })}
         <View style={{ marginTop: 12 }}>
           <TextInput
             value={newPlayerName}
@@ -386,14 +446,14 @@ export default function SettingsScreen() {
               onPress={() => setNewPlayerIsLeft(false)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.optionText, !newPlayerIsLeft && styles.optionTextSelected]}>RH</Text>
+              <Text style={[styles.optionText, !newPlayerIsLeft && styles.optionTextSelected]}>Right-handed</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleOption, newPlayerIsLeft && styles.optionSelected]}
               onPress={() => setNewPlayerIsLeft(true)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.optionText, newPlayerIsLeft && styles.optionTextSelected]}>LH</Text>
+              <Text style={[styles.optionText, newPlayerIsLeft && styles.optionTextSelected]}>Left-handed</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity
@@ -414,35 +474,37 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      <View style={styles.handednessSection}>
-        <Text style={styles.coachLabel}>Dominant hand</Text>
-        <View style={styles.toggleRow}>
-          <TouchableOpacity
-            style={[styles.toggleOption, !isLeftHanded && styles.optionSelected]}
-            onPress={() => {
-              setIsLeftHandedState(false);
-              setIsLeftHanded(false);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.optionText, !isLeftHanded && styles.optionTextSelected]}>
-              Right-handed
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.toggleOption, isLeftHanded && styles.optionSelected]}
-            onPress={() => {
-              setIsLeftHandedState(true);
-              setIsLeftHanded(true);
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.optionText, isLeftHanded && styles.optionTextSelected]}>
-              Left-handed
-            </Text>
-          </TouchableOpacity>
+      {profiles.length === 0 && (
+        <View style={styles.handednessSection}>
+          <Text style={styles.coachLabel}>Dominant hand</Text>
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[styles.toggleOption, !isLeftHanded && styles.optionSelected]}
+              onPress={() => {
+                setIsLeftHandedState(false);
+                setIsLeftHanded(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.optionText, !isLeftHanded && styles.optionTextSelected]}>
+                Right-handed
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleOption, isLeftHanded && styles.optionSelected]}
+              onPress={() => {
+                setIsLeftHandedState(true);
+                setIsLeftHanded(true);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.optionText, isLeftHanded && styles.optionTextSelected]}>
+                Left-handed
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.restoreSection}>
         <TouchableOpacity

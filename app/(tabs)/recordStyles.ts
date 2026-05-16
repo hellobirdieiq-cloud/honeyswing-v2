@@ -94,6 +94,25 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: `${GOLD}4D`,
   },
+  playerChipButton: {
+    backgroundColor: `${GOLD}26`,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: `${GOLD}4D`,
+    width: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerChipButtonAddBorder: {
+    borderColor: GOLD,
+  },
+  playerChipText: {
+    color: GOLD,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   countdownButtonText: {
     color: GOLD,
     fontSize: 17,

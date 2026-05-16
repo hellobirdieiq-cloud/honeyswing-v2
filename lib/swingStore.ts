@@ -58,6 +58,7 @@ export type SwingHistoryRecord = {
   created_at: string;
   tempo_ratio: number | null;
   score: number | null;
+  player_profile_id: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -97,7 +98,7 @@ const GRIP_HISTORY_COLUMNS =
   'grip_overall:swing_debug->grip_cloud->>overall, ' +
   'grip_failed:swing_debug->grip_cloud->>analysis_failed';
 
-const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score';
+const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id';
 
 type SupabaseError = { message: string };
 type SupabaseResult<T> = { data: T; error: SupabaseError | null };

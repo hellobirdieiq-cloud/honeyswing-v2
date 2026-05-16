@@ -27,6 +27,7 @@ import {
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
+import { getActiveProfile, type PlayerProfile } from '../../lib/playerProfiles';
 import { getCoachCode } from '../../lib/coachCode';
 import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
@@ -72,6 +73,11 @@ export default function ResultScreen() {
   const [speed, setSpeed] = useState(0.25);
   const swingAddedRef = useRef(false);
   const [gripCloud, setGripCloud] = useState<GripClassification | null>(null);
+  const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
+
+  useEffect(() => {
+    getActiveProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
+  }, []);
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -315,7 +321,9 @@ export default function ResultScreen() {
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Your Swing</Text>
+        <Text style={styles.headerTitle}>
+          {activeProfile?.name ? `${activeProfile.name}'s Swing` : 'Your Swing'}
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
