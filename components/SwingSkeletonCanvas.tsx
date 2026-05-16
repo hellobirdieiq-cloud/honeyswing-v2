@@ -143,11 +143,13 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     if (!top || !bot || !lh || !rh) return null;
     const vertical = Math.max(0.01, bot.y - top.y);
     const scale = (height * 0.75) / vertical;
+    const H_PAD = 0.70;
+    const hScale = scale * H_PAD;
     const hipX0 = (lh.x + rh.x) / 2;
     const hipY0 = (lh.y + rh.y) / 2;
     const anchorX = width / 2;
-    const anchorY = height * 0.5;
-    const tx = (x: number) => anchorX + (x - hipX0) * scale;
+    const anchorY = height * 0.40;
+    const tx = (x: number) => anchorX + (x - hipX0) * hScale;
     const ty = (y: number) => anchorY + (y - hipY0) * scale;
     return { tx, ty };
   }, [frames, width, height]);
@@ -169,11 +171,13 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState<number>(0.25);
   const rafRef = useRef<number | null>(null);
+  const frameDebtRef = useRef(0);
   const lastWallRef = useRef<number>(0);
 
   useEffect(() => {
     if (!isPlaying) return;
     let cancelled = false;
+    frameDebtRef.current = 0;
     lastWallRef.current = Date.now();
     const tick = () => {
       if (cancelled) return;
@@ -185,18 +189,17 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
           setIsPlaying(false);
           return endIdx;
         }
-        const dFrameNeeded = dWall * speed;
         let next = idx;
-        let consumed = 0;
+        let debt = frameDebtRef.current + dWall * speed;
         while (next < endIdx) {
           const cur = frames[next].timestampMs;
           const nxt = frames[next + 1].timestampMs;
           const step = Math.max(1, nxt - cur);
-          if (consumed + step > dFrameNeeded) break;
-          consumed += step;
+          if (debt < step) break;
+          debt -= step;
           next++;
         }
-        if (next === idx) next = Math.min(endIdx, idx + 1);
+        frameDebtRef.current = debt;
         if (next >= endIdx) {
           setIsPlaying(false);
           return endIdx;
