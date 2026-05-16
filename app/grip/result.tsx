@@ -73,7 +73,7 @@ export default function GripResultScreen() {
         setState({ status: 'error', errorType });
         clearGrip();
       });
-  }, []);
+  }, [params.landmarks]);
 
   const isLoading = state.status === 'loading';
 

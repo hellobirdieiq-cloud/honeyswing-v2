@@ -157,7 +157,7 @@ export default function Tab1LiveView(): React.ReactElement {
         lastSwing?.spineAngleSeries ?? null,
         lastSwing?.phaseTags ?? [],
       ),
-    [lastSwing?.id],
+    [lastSwing?.phaseTags, lastSwing?.spineAngleSeries],
   );
   const useStructuredSpineCard =
     ACTIVE_METRIC === 'spineAngle' && !!lastSwing?.spineAngleSeries;
@@ -201,7 +201,7 @@ export default function Tab1LiveView(): React.ReactElement {
     return () => {
       mounted.current = false;
     };
-  }, [cardIndex, lastSwing?.id]);
+  }, [cardIndex, lastSwing?.id, motionCache?.swingId]);
 
   const onMomentumScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {

@@ -192,6 +192,7 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
       mounted = false;
       clearTimers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clearTimers is defined inline in useSwingCapture and would cause infinite loop if tracked
   }, []);
 
   useEffect(() => {

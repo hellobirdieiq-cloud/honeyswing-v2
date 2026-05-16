@@ -250,7 +250,8 @@ export default function RecordTab() {
           setActiveProfile(active);
         } catch (err) { console.error('[HoneySwing]', err); }
       })();
-    }, [])
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- capturePhaseRef is a ref object (stable; .current is intentionally not tracked); updateCapturePhase is defined inline in useSwingCapture and would cause infinite loop if tracked
+    }, [router])
   );
 
   useFocusEffect(
@@ -307,7 +308,8 @@ export default function RecordTab() {
       mounted = false;
       clearTimers();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- motionFramesRef is a ref object (stable; .current is intentionally not tracked); clearTimers is defined inline in useSwingCapture and would cause infinite loop if tracked
+  }, [router]);
 
   // Fallback banner: show after 5s if camera hasn't initialized
   useEffect(() => {

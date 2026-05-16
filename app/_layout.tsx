@@ -82,7 +82,7 @@ export default function RootLayout() {
     });
 
     return () => subscription.remove();
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     (async () => {
@@ -200,7 +200,8 @@ function AuthListener() {
       prevSignedInRef.current = false;
       return;
     }
-  }, [isLoaded, isSignedIn, user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- user?.id is already tracked; adding the full user object would cause extra re-runs on Clerk reference changes
+  }, [isLoaded, isSignedIn, user?.id, router]);
 
   return null;
 }
