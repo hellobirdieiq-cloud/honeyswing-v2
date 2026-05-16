@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import Constants from 'expo-constants';
@@ -22,6 +23,7 @@ import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
+import { getProfiles, addProfile, deleteProfile, type PlayerProfile } from '../../lib/playerProfiles';
 import { tipFrequencyLimiter } from '../../lib/tipFrequency';
 import { GOLD } from '../../lib/colors';
 
@@ -47,12 +49,16 @@ export default function SettingsScreen() {
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
   const [gripUri, setGripUri] = useState<string | null>(null);
   const [isCoach, setIsCoach] = useState(false);
+  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerIsLeft, setNewPlayerIsLeft] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
+      getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
       const grip = getGrip();
       setGripUri(grip?.photoUri ?? null);
 
@@ -343,6 +349,68 @@ export default function SettingsScreen() {
               </Text>
             </TouchableOpacity>
           ))}
+        </View>
+      </View>
+
+      <View style={styles.handednessSection}>
+        <Text style={styles.coachLabel}>Players</Text>
+        {profiles.map((p) => (
+          <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+            <Text style={{ flex: 1, color: '#fff', fontSize: 15 }}>{p.name}</Text>
+            <Text style={{ color: '#999', marginRight: 12, fontSize: 13 }}>{p.isLeftHanded ? 'LH' : 'RH'}</Text>
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  await deleteProfile(p.id);
+                  const next = await getProfiles();
+                  setProfiles(next);
+                } catch (err) { console.error('[HoneySwing]', err); }
+              }}
+              hitSlop={10}
+            >
+              <Text style={{ color: '#999', fontSize: 18 }}>×</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        <View style={{ marginTop: 12 }}>
+          <TextInput
+            value={newPlayerName}
+            onChangeText={setNewPlayerName}
+            placeholder="Player name"
+            placeholderTextColor="#666"
+            style={{ backgroundColor: '#1a1a1a', color: '#fff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 }}
+          />
+          <View style={[styles.toggleRow, { marginTop: 8 }]}>
+            <TouchableOpacity
+              style={[styles.toggleOption, !newPlayerIsLeft && styles.optionSelected]}
+              onPress={() => setNewPlayerIsLeft(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.optionText, !newPlayerIsLeft && styles.optionTextSelected]}>RH</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleOption, newPlayerIsLeft && styles.optionSelected]}
+              onPress={() => setNewPlayerIsLeft(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.optionText, newPlayerIsLeft && styles.optionTextSelected]}>LH</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            disabled={newPlayerName.trim() === ''}
+            onPress={async () => {
+              try {
+                await addProfile(newPlayerName, newPlayerIsLeft);
+                const next = await getProfiles();
+                setProfiles(next);
+                setNewPlayerName('');
+                setNewPlayerIsLeft(false);
+              } catch (err) { console.error('[HoneySwing]', err); }
+            }}
+            style={{ marginTop: 10, backgroundColor: newPlayerName.trim() === '' ? '#333' : GOLD, paddingVertical: 12, borderRadius: 8, alignItems: 'center', opacity: newPlayerName.trim() === '' ? 0.5 : 1 }}
+          >
+            <Text style={{ color: newPlayerName.trim() === '' ? '#666' : '#000', fontSize: 15, fontWeight: '600' }}>Add</Text>
+          </TouchableOpacity>
         </View>
       </View>
 

@@ -18,7 +18,7 @@ import {
 import { persistSwing } from './persistSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
 import { classifyCapture, isGoodFrame } from './captureValidity';
-import { getIsLeftHanded } from './handedness';
+import { getActiveProfileHandedness } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
@@ -210,7 +210,7 @@ export function useSwingCapture({
       },
     };
 
-    const isLeftHanded = await getIsLeftHanded();
+    const isLeftHanded = await getActiveProfileHandedness();
     const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
 
     // Grip estimation — awaited with 500ms timeout, result passed to persistSwing

@@ -9,3 +9,12 @@ export async function getIsLeftHanded(): Promise<boolean> {
 export async function setIsLeftHanded(value: boolean): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.isLeftHanded, String(value));
 }
+
+export async function getActiveProfileHandedness(): Promise<boolean> {
+  try {
+    const { getActiveProfile } = await import('./playerProfiles');
+    const profile = await getActiveProfile();
+    if (profile !== null) return profile.isLeftHanded;
+  } catch {}
+  return getIsLeftHanded();
+}
