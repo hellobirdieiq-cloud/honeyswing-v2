@@ -39,6 +39,9 @@ import {
 } from './visibilityWeighting';
 import type { ConfidenceComponents } from './confidenceScore';
 import { aggregateSwing, type AggregateResult } from './categoryAggregation';
+import { computeLeadWristHinge, type LeadWristHinge } from './wristHinge';
+import { computeSyntheticClubheadPath, type SyntheticClubheadPath } from './syntheticClubheadPath';
+import { computeFaceToPath, type FaceToPath } from './faceToPath';
 
 export type FrameSelectionDebug = {
   frame_selection_method: 'phase_windowed' | 'mid_frame_fallback';
@@ -62,6 +65,9 @@ export type FrameSelectionDebug = {
   z_trace?: ZTraceDebug;
   phase_rules?: PhaseRuleDebug;
   camera_angle_pre?: CameraAngle;
+  lead_wrist_hinge?: LeadWristHinge | null;
+  synthetic_clubhead_path?: SyntheticClubheadPath | null;
+  face_to_path?: FaceToPath | null;
 };
 
 /** Per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
@@ -577,6 +583,19 @@ export function analyzePoseSequence(
     implausibleFrameDebug = visWeighting.implausibleDebug;
   }
 
+  // Face-to-path read (swing_debug only for now; UI lands after clinic calibration).
+  // Phase-windowed path only — mid-frame fallback has no trustworthy top/impact indices.
+  let leadWristHinge: LeadWristHinge | null = null;
+  let syntheticClubheadPath: SyntheticClubheadPath | null = null;
+  let faceToPath: FaceToPath | null = null;
+  if (isHeuristicPhases) {
+    leadWristHinge = computeLeadWristHinge(canonical.frames, phases);
+    syntheticClubheadPath = computeSyntheticClubheadPath(canonical.frames, phases);
+    if (leadWristHinge && syntheticClubheadPath) {
+      faceToPath = computeFaceToPath(leadWristHinge, syntheticClubheadPath);
+    }
+  }
+
   const cameraAngle = detectCameraAngle(addressFrame);
 
   const foreshorteningResult = correctForeshortening(angles, cameraAngle);
@@ -669,6 +688,9 @@ export function analyzePoseSequence(
       z_trace: computeZTrace(canonical.frames, phases),
       phase_rules: ruleDebug,
       camera_angle_pre: earlyAngle.angle,
+      lead_wrist_hinge: leadWristHinge,
+      synthetic_clubhead_path: syntheticClubheadPath,
+      face_to_path: faceToPath,
     },
   };
 }
