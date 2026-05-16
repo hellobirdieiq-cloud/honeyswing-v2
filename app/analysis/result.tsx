@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -13,13 +13,14 @@ import {
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getUser, supabase } from '../../lib/supabase';
-import { getSwingById } from '../../lib/swingStore';
+import { getSwingById, getSwingMotionFrames } from '../../lib/swingStore';
+import { GOLD } from '../../lib/colors';
 import {
   analyzePoseSequence,
   type AnalysisResult,
 } from '../../packages/domain/swing/analysisPipeline';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
-import type { PoseSequence } from '../../packages/pose/PoseTypes';
+import type { PoseSequence, PoseFrame } from '../../packages/pose/PoseTypes';
 import {
   TEMPO_LABELS,
   type TempoRating,
@@ -74,6 +75,24 @@ export default function ResultScreen() {
   const swingAddedRef = useRef(false);
   const [gripCloud, setGripCloud] = useState<GripClassification | null>(null);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
+  const [historicalFrames, setHistoricalFrames] = useState<PoseFrame[] | null>(null);
+  const [framesLoading, setFramesLoading] = useState(false);
+
+  const effectiveMotion = useMemo(
+    () =>
+      motion ??
+      (historicalFrames
+        ? {
+            frames: historicalFrames,
+            recordedAt: 0,
+            // EXTERNAL ASSUMPTION: source='live-camera' for historical frames.
+            // Verified no consumer branches on this value (only assigned to
+            // sequence.source).
+            source: 'live-camera' as const,
+          }
+        : null),
+    [motion, historicalFrames],
+  );
 
   useEffect(() => {
     getActiveProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
@@ -130,24 +149,37 @@ export default function ResultScreen() {
     });
   }, [swingId]);
 
+  useEffect(() => {
+    if (!swingId || motion) return;
+    setFramesLoading(true);
+    getSwingMotionFrames(swingId)
+      .then((frames) => setHistoricalFrames(frames))
+      .catch((err) => console.error('[HoneySwing]', err))
+      .finally(() => setFramesLoading(false));
+    // motion intentionally NOT in deps — effect runs once on mount. If
+    // motion populates after mount, effectiveMotion picks it up via
+    // derivation above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swingId]);
+
   const classification: CaptureClassification | null = useMemo(
-    () => (motion ? classifyCapture(motion.frames) : null),
-    [motion],
+    () => (effectiveMotion ? classifyCapture(effectiveMotion.frames) : null),
+    [effectiveMotion],
   );
 
   const sequence: PoseSequence | null = useMemo(() => {
-    if (!motion) return null;
+    if (!effectiveMotion) return null;
     return {
-      frames: motion.frames,
-      source: motion.source,
+      frames: effectiveMotion.frames,
+      source: effectiveMotion.source,
       metadata: {
         durationMs:
-          motion.frames.length > 1
-            ? motion.frames[motion.frames.length - 1].timestampMs - motion.frames[0].timestampMs
+          effectiveMotion.frames.length > 1
+            ? effectiveMotion.frames[effectiveMotion.frames.length - 1].timestampMs - effectiveMotion.frames[0].timestampMs
             : 0,
       },
     };
-  }, [motion]);
+  }, [effectiveMotion]);
 
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
     if (isLeftHanded === null) return null;
@@ -158,7 +190,7 @@ export default function ResultScreen() {
   const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
-  const firstFrameTimestamp = motion?.frames?.[0]?.timestampMs;
+  const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
 
   const tempoResult = tempo ? scoreTempoTrafficLight(tempo.tempoRatio) : null;
   const isGreen = tempoResult?.isGreen ?? false;
@@ -298,8 +330,8 @@ export default function ResultScreen() {
   const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
 
   const keyFrame = useMemo(
-    () => (motion ? pickKeyFrame(motion.frames) : null),
-    [motion],
+    () => (effectiveMotion ? pickKeyFrame(effectiveMotion.frames) : null),
+    [effectiveMotion],
   );
   const keyLandmarks = useMemo(
     () => (keyFrame ? frameToLandmarks(keyFrame) : []),
@@ -328,8 +360,12 @@ export default function ResultScreen() {
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
-        {!motion ? (
-          <Text style={styles.emptyText}>No swing data available yet.</Text>
+        {!effectiveMotion && !storedAnalysis ? (
+          framesLoading ? (
+            <ActivityIndicator color={GOLD} style={{ marginTop: 40 }} />
+          ) : (
+            <Text style={styles.emptyText}>No swing data available yet.</Text>
+          )
         ) : classification?.validity === 'invalid' ? (
           <View style={styles.invalidContainer}>
             <Text style={styles.invalidTitle}>Couldn&apos;t clearly capture your swing</Text>
@@ -372,9 +408,9 @@ export default function ResultScreen() {
               )}
             </View>
 
-            {motion?.frames?.length ? (
+            {effectiveMotion?.frames?.length ? (
               <SwingSkeletonCanvas
-                frames={motion.frames}
+                frames={effectiveMotion.frames}
                 phases={analysis?.phases ?? null}
                 width={screenW - 32}
                 height={380}
@@ -480,10 +516,10 @@ export default function ResultScreen() {
             </View>
 
             {/* 4. Swing Art */}
-            {classification?.validity === 'valid' && motion && (
+            {classification?.validity === 'valid' && effectiveMotion && (
               <View style={{ marginTop: 8 }}>
                 <SwingArtCard
-                  frames={motion.frames}
+                  frames={effectiveMotion.frames}
                   phases={analysis?.phases ?? []}
                   width={screenW - 48}
                 />

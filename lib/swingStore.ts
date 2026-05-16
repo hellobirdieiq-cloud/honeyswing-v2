@@ -11,6 +11,8 @@
  * caching. Future Phase D consumers add narrow methods as they land.
  */
 
+import type { PoseFrame } from '../packages/pose/PoseTypes';
+
 // Lazy require for ./supabase — that module transitively loads @clerk/expo
 // which can't run under the plain tsx test runner. Matches lib/eventBus.ts:21.
 declare function require(id: string): unknown;
@@ -217,6 +219,44 @@ export async function getSwingById(id: string): Promise<SwingRecord | null> {
     return null;
   }
   return data;
+}
+
+/**
+ * Fetch motion_frames (raw PoseFrame array) for a single swing by id.
+ * Direct Supabase call — bypasses the adapter because motion_frames is
+ * excluded from the v1 adapter projection (see SWING_RECORD_COLUMNS).
+ * Returns null on not-found, on any DB error (logged), or when the
+ * column is null. Does not throw.
+ */
+export async function getSwingMotionFrames(
+  id: string,
+): Promise<PoseFrame[] | null> {
+  try {
+    const mod = require('./supabase') as {
+      supabase: { from(table: string): QueryChain };
+    };
+    const { data, error } = await mod.supabase
+      .from('swings')
+      .select('motion_frames')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) {
+      console.error(
+        '[HoneySwing] swingStore getSwingMotionFrames error:',
+        error.message,
+      );
+      return null;
+    }
+    // EXTERNAL ASSUMPTION: motion_frames JSON matches PoseFrame[] shape —
+    // no runtime validator. Enriched frames (with velocity fields) are
+    // compatible; extra fields are ignored by consumers.
+    return (
+      (data as { motion_frames: PoseFrame[] | null } | null)?.motion_frames ??
+      null
+    );
+  } catch {
+    return null;
+  }
 }
 
 /**
