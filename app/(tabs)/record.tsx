@@ -381,13 +381,13 @@ export default function RecordTab() {
 
       {/* Today's Focus card or framing tips — both gated on idle + cameraReady */}
       {capturePhase === 'idle' && cameraReady && (
-        focus ? (
+        /* focus ? (
           <View style={styles.focusCard}>
             <Text style={styles.focusTitle}>Today&apos;s Focus</Text>
             <Text style={styles.focusLabel}>{focus.label}</Text>
             <Text style={styles.focusCue}>{focus.cue}</Text>
           </View>
-        ) : (showTips ? (
+        ) : */ (showTips ? (
           <TouchableOpacity
             style={styles.tipsOverlay}
             onPress={() => setShowTips(false)}
