@@ -103,9 +103,10 @@ export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
 // ── Tempo sanity thresholds (single location, easy to tune) ──────────
 // Minimum phase duration in ms — anything shorter is noise, not a real swing segment
 export const TEMPO_MIN_PHASE_MS = 200;
-// Plausible tempo ratio band — real swings are roughly 2:1 to 4:1 (backswing:downswing)
-// Allow wider band for tolerance, but reject extreme/inverted values
-export const TEMPO_MIN_RATIO = 1.5;
+// Plausible tempo ratio band — real swings span a wide range. The traffic-light
+// scoring in scoring.ts assigns red below 1.5 / above 5.0, so the trust gate
+// must allow those ratios through; only truly inverted or broken values are rejected.
+export const TEMPO_MIN_RATIO = 0.5;
 export const TEMPO_MAX_RATIO = 10;
 
 /**
