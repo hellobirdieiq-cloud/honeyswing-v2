@@ -264,6 +264,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#333',
     marginRight: 8,
+    alignSelf: 'flex-start',
   },
   tabActive: {
     backgroundColor: `${GOLD}26`,
