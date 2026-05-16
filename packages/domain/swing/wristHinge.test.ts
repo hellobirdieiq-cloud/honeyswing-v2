@@ -207,6 +207,22 @@ group("gating: missing phases → null");
 group("MIN_HINGE_FRAMES constant");
 assertEq(MIN_HINGE_FRAMES, 3, "MIN_HINGE_FRAMES = 3");
 
+group("outlier cap: |hinge| > 60° → null");
+{
+  // Hand swung far behind forearm — geometrically yields ~104° (anatomically impossible).
+  const OUTLIER_HINGE: Hinge = { ...FOREARM, index: [0.75, 1.0] };
+  const frames = buildSequence(10, 20, FLAT_HINGE, OUTLIER_HINGE);
+  const phases = [makePhase("top", 10), makePhase("impact", 20)];
+  assertEq(computeLeadWristHinge(frames, phases), null, "outlier impact hinge → null");
+}
+{
+  // Same outlier geometry at top → also rejects.
+  const OUTLIER_HINGE: Hinge = { ...FOREARM, index: [0.75, 1.0] };
+  const frames = buildSequence(10, 20, OUTLIER_HINGE, FLAT_HINGE);
+  const phases = [makePhase("top", 10), makePhase("impact", 20)];
+  assertEq(computeLeadWristHinge(frames, phases), null, "outlier top hinge → null");
+}
+
 // ---------------------------------------------------------------------------
 
 console.log(`\n${"═".repeat(55)}`);

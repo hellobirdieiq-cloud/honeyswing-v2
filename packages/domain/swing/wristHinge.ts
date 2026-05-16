@@ -38,6 +38,10 @@ export const CUPPED_THRESHOLD_DEG = 15;
 // PLACEHOLDER: calibrate from corpus replay; see scripts/replayWristHinge.ts
 export const BOWED_THRESHOLD_DEG = -10;
 
+// Lead-wrist hinge is anatomically bounded — anything past this is a tracking
+// artifact (e.g. leftIndex jumping to a non-hand pixel), not a real hinge.
+const MAX_PLAUSIBLE_HINGE_DEG = 60;
+
 function isGood(j: NormalizedJoint | undefined): j is NormalizedJoint {
   return j != null && (j.confidence ?? 0) >= MIN_CONFIDENCE;
 }
@@ -123,6 +127,8 @@ export function computeLeadWristHinge(
 
   const hingeAtTopDeg = signedHingeDeg(topAvg.elbow, topAvg.wrist, topAvg.index);
   const hingeAtImpactDeg = signedHingeDeg(impactAvg.elbow, impactAvg.wrist, impactAvg.index);
+  if (Math.abs(hingeAtTopDeg) > MAX_PLAUSIBLE_HINGE_DEG) return null;
+  if (Math.abs(hingeAtImpactDeg) > MAX_PLAUSIBLE_HINGE_DEG) return null;
   const deltaTransitionDeg = hingeAtImpactDeg - hingeAtTopDeg;
 
   const fullWindow = 2 * WINDOW_RADIUS + 1;

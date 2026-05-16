@@ -107,7 +107,7 @@ interface SwingRow {
   created_at: string;
   frame_count: number | null;
   motion_frames: PoseFrame[] | null;
-  is_left_handed: boolean | null;
+  swing_debug: { handedness?: string } | null;
 }
 
 function fmt(v: number | null | undefined, digits = 1): string {
@@ -136,7 +136,7 @@ async function main() {
 
   const { swingId, limit } = parseArgs(process.argv);
 
-  const select = "id, created_at, frame_count, motion_frames, is_left_handed";
+  const select = "id, created_at, frame_count, motion_frames, swing_debug";
   let rows: SwingRow[];
 
   if (swingId) {
@@ -188,7 +188,8 @@ async function main() {
       continue;
     }
     const sequence: PoseSequence = { frames, source: "replay" };
-    const result = analyzePoseSequence(sequence, row.is_left_handed ?? false);
+    const isLeftHanded = row.swing_debug?.handedness === "left";
+    const result = analyzePoseSequence(sequence, isLeftHanded);
     const hinge = result.swing_debug?.lead_wrist_hinge ?? null;
     const path = result.swing_debug?.synthetic_clubhead_path ?? null;
     const ftp = result.swing_debug?.face_to_path ?? null;
