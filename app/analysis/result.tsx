@@ -369,7 +369,7 @@ export default function ResultScreen() {
                 frames={motion.frames}
                 phases={analysis?.phases ?? null}
                 width={screenW - 32}
-                height={300}
+                height={380}
               />
             ) : null}
 
