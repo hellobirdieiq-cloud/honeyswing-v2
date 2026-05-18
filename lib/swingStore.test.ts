@@ -56,6 +56,7 @@ function assertEq<T>(actual: T, expected: T, label: string): void {
 type AdapterCalls = {
   fetchSwingById: Array<{ id: string }>;
   fetchGripHistory: Array<{ userId: string; sinceIso: string }>;
+  fetchSwingHistory: Array<{ userId: string; sinceIso: string }>;
   getUserId: number;
 };
 
@@ -65,6 +66,7 @@ function makeAdapter(overrides: Partial<SwingStoreAdapter> = {}): MockAdapter {
   const calls: AdapterCalls = {
     fetchSwingById: [],
     fetchGripHistory: [],
+    fetchSwingHistory: [],
     getUserId: 0,
   };
   return {
@@ -77,6 +79,11 @@ function makeAdapter(overrides: Partial<SwingStoreAdapter> = {}): MockAdapter {
     async fetchGripHistory(userId, sinceIso) {
       calls.fetchGripHistory.push({ userId, sinceIso });
       if (overrides.fetchGripHistory) return overrides.fetchGripHistory(userId, sinceIso);
+      return { data: [], error: null };
+    },
+    async fetchSwingHistory(userId, sinceIso) {
+      calls.fetchSwingHistory.push({ userId, sinceIso });
+      if (overrides.fetchSwingHistory) return overrides.fetchSwingHistory(userId, sinceIso);
       return { data: [], error: null };
     },
     async getUserId() {
