@@ -11,6 +11,10 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		554008F6766037C8849D682E /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B406AB072D1AA88B215BC8 /* ExpoModulesProvider.swift */; };
 		5C90BACB190CCE3F039A5909 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 78DD56137DB06044F53E50EE /* PrivacyInfo.xcprivacy */; };
+		7E1D4B012FBC38490007DF94 /* HoneyLiDARDemoModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D4B002FBC38490007DF94 /* HoneyLiDARDemoModule.m */; };
+		7E1D4B032FBC384B0007DF94 /* HoneyLiDARDemoModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D4B022FBC384B0007DF94 /* HoneyLiDARDemoModule.swift */; };
+		7E1D4B052FBC385E0007DF94 /* HoneyLiDARDemoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E1D4B042FBC385E0007DF94 /* HoneyLiDARDemoViewController.swift */; };
+		7E1D4B072FBC39CD0007DF94 /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E1D4B062FBC39CD0007DF94 /* ARKit.framework */; };
 		7E6141E32F86DE080080471E /* hand_landmarker.task in Resources */ = {isa = PBXBuildFile; fileRef = 7E6141E22F86DE070080471E /* hand_landmarker.task */; };
 		7ED75E912F832FD000A0156A /* HoneyVisionCameraHandPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */; };
 		7ED75E922F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */; };
@@ -30,6 +34,10 @@
 		3C1BE52308CCFE4C83E062F7 /* libPods-honeyswing.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-honeyswing.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5FFB1FE821DAC8360EAA640B /* Pods-honeyswing.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-honeyswing.release.xcconfig"; path = "Target Support Files/Pods-honeyswing/Pods-honeyswing.release.xcconfig"; sourceTree = "<group>"; };
 		78DD56137DB06044F53E50EE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = honeyswing/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7E1D4B002FBC38490007DF94 /* HoneyLiDARDemoModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyLiDARDemoModule.m; sourceTree = "<group>"; };
+		7E1D4B022FBC384B0007DF94 /* HoneyLiDARDemoModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyLiDARDemoModule.swift; sourceTree = "<group>"; };
+		7E1D4B042FBC385E0007DF94 /* HoneyLiDARDemoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyLiDARDemoViewController.swift; sourceTree = "<group>"; };
+		7E1D4B062FBC39CD0007DF94 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
 		7E6141E22F86DE070080471E /* hand_landmarker.task */ = {isa = PBXFileReference; lastKnownFileType = file; path = hand_landmarker.task; sourceTree = "<group>"; };
 		7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = HoneyVisionCameraHandPlugin.m; sourceTree = "<group>"; };
 		7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoneyVisionCameraHandPlugin.swift; sourceTree = "<group>"; };
@@ -49,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7E1D4B072FBC39CD0007DF94 /* ARKit.framework in Frameworks */,
 				8F468D0330C2111E54A01786 /* libPods-honeyswing.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -74,6 +83,7 @@
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				7E1D4B062FBC39CD0007DF94 /* ARKit.framework */,
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				3C1BE52308CCFE4C83E062F7 /* libPods-honeyswing.a */,
 			);
@@ -100,6 +110,9 @@
 			isa = PBXGroup;
 			children = (
 				7E6141E22F86DE070080471E /* hand_landmarker.task */,
+				7E1D4B022FBC384B0007DF94 /* HoneyLiDARDemoModule.swift */,
+				7E1D4B042FBC385E0007DF94 /* HoneyLiDARDemoViewController.swift */,
+				7E1D4B002FBC38490007DF94 /* HoneyLiDARDemoModule.m */,
 				7ED75E8D2F832FD000A0156A /* HoneyVisionCameraHandPlugin.m */,
 				7ED75E8E2F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift */,
 				7ED75E8F2F832FD000A0156A /* HoneyVisionCameraPosePlugin.m */,
@@ -376,11 +389,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
+				7E1D4B052FBC385E0007DF94 /* HoneyLiDARDemoViewController.swift in Sources */,
+				7E1D4B012FBC38490007DF94 /* HoneyLiDARDemoModule.m in Sources */,
 				7ED75E912F832FD000A0156A /* HoneyVisionCameraHandPlugin.m in Sources */,
 				7ED75E922F832FD000A0156A /* HoneyVisionCameraHandPlugin.swift in Sources */,
 				7ED75E932F832FD000A0156A /* HoneyVisionCameraPosePlugin.m in Sources */,
 				7ED75E942F832FD000A0156A /* HoneyVisionCameraPosePlugin.swift in Sources */,
 				554008F6766037C8849D682E /* ExpoModulesProvider.swift in Sources */,
+				7E1D4B032FBC384B0007DF94 /* HoneyLiDARDemoModule.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -392,6 +408,7 @@
 			baseConfigurationReference = 26402064769C53E50166721A /* Pods-honeyswing.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = honeyswing/honeyswing.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -432,6 +449,7 @@
 			baseConfigurationReference = 5FFB1FE821DAC8360EAA640B /* Pods-honeyswing.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = honeyswing/honeyswing.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";

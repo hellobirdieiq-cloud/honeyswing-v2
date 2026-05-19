@@ -23,7 +23,7 @@ final class HoneyLiDARDemoViewController: UIViewController {
   // EXTERNAL ASSUMPTION — tunable for demo
   private static let legendRefreshHz: Double = 5.0
   // EXTERNAL ASSUMPTION — tunable for demo
-  private static let minHighConfidenceLevel: UInt8 = 2
+  private static let minHighConfidenceLevel: UInt8 = 1
   // EXTERNAL ASSUMPTION — tunable for demo: upsample factor from 256x192 native
   private static let upsampleScale: CGFloat = 4.0
 
