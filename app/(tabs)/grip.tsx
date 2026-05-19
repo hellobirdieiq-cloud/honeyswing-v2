@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { GOLD } from '../../lib/colors';
+import { presentLiDARDemo } from '../../lib/lidarDemo';
 
 export default function GripScreen() {
   const router = useRouter();
@@ -28,6 +29,13 @@ export default function GripScreen() {
           onPress={() => Alert.alert('Coming soon', 'RTMPose support is not available yet.')}
         >
           <Text style={styles.btnText}>RTM</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.btn}
+          activeOpacity={0.8}
+          onPress={() => { presentLiDARDemo(); }}
+        >
+          <Text style={styles.btnText}>LiDAR Demo</Text>
         </TouchableOpacity>
       </View>
     </View>
