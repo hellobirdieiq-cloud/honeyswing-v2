@@ -20,6 +20,10 @@ export default function TabLayout() {
         title: 'History',
         tabBarIcon: ({ color, size }) => <Ionicons name="time-outline" size={size} color={color} />,
       }} />
+      <Tabs.Screen name="grip" options={{
+        title: 'Grip',
+        tabBarIcon: ({ color, size }) => <Ionicons name="hand-right-outline" size={size} color={color} />,
+      }} />
       <Tabs.Screen name="settings" options={{
         title: 'Settings',
         tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
