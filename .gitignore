@@ -40,3 +40,7 @@ expo-env.d.ts
 # @end expo-cli.venv/
 .venv/
 .env.*
+
+# CNG refactor: ios/ is prebuild-generated. Keep only the lockfile tracked.
+ios/*
+!ios/Podfile.lock
