@@ -36,6 +36,24 @@ class HoneyVisionAppleHandPlugin: NSObject {
     (.littleTip, "littleTip"),
   ]
 
+  /// Map UIImage.Orientation -> CGImagePropertyOrientation so VNImageRequestHandler
+  /// analyzes the image in the same frame the user sees (honoring EXIF rotation).
+  /// Without this, .cgImage exposes the raw sensor buffer and Vision defaults to .up,
+  /// producing coords ~90° offset from the displayed (EXIF-rotated) photo.
+  private static func cgOrientation(from uiOrientation: UIImage.Orientation) -> CGImagePropertyOrientation {
+    switch uiOrientation {
+    case .up:            return .up
+    case .down:          return .down
+    case .left:          return .left
+    case .right:         return .right
+    case .upMirrored:    return .upMirrored
+    case .downMirrored:  return .downMirrored
+    case .leftMirrored:  return .leftMirrored
+    case .rightMirrored: return .rightMirrored
+    @unknown default:    return .up
+    }
+  }
+
   @objc(detectAppleHandInPhoto:resolver:rejecter:)
   func detectAppleHandInPhoto(_ photoUri: NSString,
                               resolver resolve: @escaping RCTPromiseResolveBlock,
@@ -57,7 +75,8 @@ class HoneyVisionAppleHandPlugin: NSObject {
       let request = VNDetectHumanHandPoseRequest()
       request.maximumHandCount = 2
 
-      let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+      let orientation = Self.cgOrientation(from: uiImage.imageOrientation)
+      let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
       do {
         try handler.perform([request])
       } catch {
