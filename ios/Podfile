@@ -22,7 +22,6 @@ prepare_react_native_project!
 
 target 'honeyswing' do
   use_expo_modules!
-  pod 'MediaPipeTasksVision', '~> 0.10.9'
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
@@ -54,11 +53,75 @@ target 'honeyswing' do
   )
 
   post_install do |installer|
+    # Clerk: Resolve SPM packages synchronously during pod install
+    # This ensures packages are downloaded before the user opens Xcode
+    # We wait until the end of post_install to ensure workspace is fully written
+    at_exit do
+      workspace_path = File.join(__dir__, 'honeyswing.xcworkspace')
+      if File.exist?(workspace_path)
+        puts ""
+        puts "📦 [Clerk] Resolving Swift Package dependencies..."
+        puts "   This may take a minute on first run..."
+        # Use backticks to capture output and check exit status
+        output = `xcodebuild -resolvePackageDependencies -workspace "#{workspace_path}" -scheme "honeyswing" 2>&1`
+        if $?.success?
+          puts "✅ [Clerk] Swift Package dependencies resolved successfully"
+        else
+          puts "⚠️  [Clerk] SPM resolution output:"
+          puts output.lines.last(10).join
+        end
+        puts ""
+      end
+    end
+
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    mediapipe_libs = %w[MediaPipeTasksCommon MediaPipeTasksVision]
+    mediapipe_search_paths = mediapipe_libs.map { |n| %Q("$(PODS_XCFRAMEWORKS_BUILD_DIR)/#{n}") }.join(' ')
+    installer.pods_project.targets.each do |t|
+      next unless t.name == 'Pods-honeyswing'
+      t.build_configurations.each do |config|
+        next unless config.base_configuration_reference
+        xcconfig_path = config.base_configuration_reference.real_path
+        text = File.read(xcconfig_path)
+
+        # 1. -l → -framework (existing behavior).
+        # CocoaPods emits -lMediaPipeTasksCommon (static-lib syntax) but the pod ships
+        # an .xcframework, so the linker needs -framework.
+        mediapipe_libs.each do |name|
+          text = text.gsub(%Q(-l"#{name}"), %Q(-framework "#{name}"))
+        end
+
+        # 2. Append extracted-slice search paths if missing.
+        # CocoaPods writes "${PODS_ROOT}/<pod>/frameworks" (the .xcframework wrapper),
+        # but `-framework` needs the extracted .framework under PODS_XCFRAMEWORKS_BUILD_DIR.
+        needs_append = mediapipe_libs.any? { |n| !text.include?(%Q("$(PODS_XCFRAMEWORKS_BUILD_DIR)/#{n}")) }
+        if needs_append
+          pre_append_text = text
+          text = text.sub(
+            /^(FRAMEWORK_SEARCH_PATHS = \$\(inherited\))/,
+            "\\1 #{mediapipe_search_paths}"
+          )
+          # Fail loud if the line shape changed and the sub didn't actually inject.
+          # Without this, a future CocoaPods that re-shapes the FRAMEWORK_SEARCH_PATHS line
+          # would silently skip the append while the -l→-framework rewrite still succeeds,
+          # reproducing the exact "ld: framework 'MediaPipeTasksCommon' not found" failure
+          # this hook exists to prevent.
+          if text == pre_append_text
+            raise "[honeyswing post_install] Failed to append MediaPipe extracted-slice paths to " \
+                  "FRAMEWORK_SEARCH_PATHS in #{xcconfig_path}. Inspect the FRAMEWORK_SEARCH_PATHS " \
+                  "line — its shape may have changed in a CocoaPods upgrade. Expected it to start " \
+                  "with: FRAMEWORK_SEARCH_PATHS = $(inherited)"
+          end
+        end
+
+        File.write(xcconfig_path, text)
+      end
+    end
   end
 end

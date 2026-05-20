@@ -9,6 +9,28 @@ PODS:
     - GoogleUtilities/Environment (~> 8.0)
     - GoogleUtilities/UserDefaults (~> 8.0)
     - PromisesObjC (~> 2.4)
+  - ClerkExpo (3.2.8):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - ClerkGoogleSignIn (3.2.8):
     - GoogleSignIn (~> 9.0)
     - hermes-engine
@@ -355,9 +377,9 @@ PODS:
   - libwebp/sharpyuv (1.5.0)
   - libwebp/webp (1.5.0):
     - libwebp/sharpyuv
-  - MediaPipeTasksCommon (0.10.21)
-  - MediaPipeTasksVision (0.10.21):
-    - MediaPipeTasksCommon (= 0.10.21)
+  - MediaPipeTasksCommon (0.10.33)
+  - MediaPipeTasksVision (0.10.33):
+    - MediaPipeTasksCommon (= 0.10.33)
   - PromisesObjC (2.4.0)
   - PurchasesHybridCommon (17.55.1):
     - RevenueCat (= 5.67.1)
@@ -2386,6 +2408,7 @@ PODS:
   - Yoga (0.0.0)
 
 DEPENDENCIES:
+  - "ClerkExpo (from `../node_modules/@clerk/expo/ios`)"
   - "ClerkGoogleSignIn (from `../node_modules/@clerk/expo/ios`)"
   - EASClient (from `../node_modules/expo-eas-client/ios`)
   - EXConstants (from `../node_modules/expo-constants/ios`)
@@ -2513,6 +2536,8 @@ SPEC REPOS:
     - SDWebImageWebPCoder
 
 EXTERNAL SOURCES:
+  ClerkExpo:
+    :path: "../node_modules/@clerk/expo/ios"
   ClerkGoogleSignIn:
     :path: "../node_modules/@clerk/expo/ios"
   EASClient:
@@ -2728,6 +2753,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   AppAuth: 1c1a8afa7e12f2ec3a294d9882dfa5ab7d3cb063
   AppCheckCore: cc8fd0a3a230ddd401f326489c99990b013f0c4f
+  ClerkExpo: deb24bcda8d398d05486f27b4e2edccecac60204
   ClerkGoogleSignIn: 096bfe6f51a1501be44dbfb8cfbbce9130bed9be
   EASClient: 40dd9e740684782610c49becab2643782ea1a20c
   EXConstants: fce59a631a06c4151602843667f7cfe35f81e271
@@ -2763,8 +2789,8 @@ SPEC CHECKSUMS:
   GTMSessionFetcher: 5aea5ba6bd522a239e236100971f10cb71b96ab6
   hermes-engine: 9f4dfe93326146a1c99eb535b1cb0b857a3cd172
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
-  MediaPipeTasksCommon: 6cfa29170d4900f04d250ad95ec058f14a741f38
-  MediaPipeTasksVision: 7b1c0f5a5820e87e9d96926f5e65d8cd3744fac2
+  MediaPipeTasksCommon: 912f7942cc3aa057bb406af435aaea4c1959255a
+  MediaPipeTasksVision: 2df54e614f029da790f442c8b330a37c841a422f
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   PurchasesHybridCommon: ecd9d7c586287625f1225b8de5e24c1021502270
   RCTDeprecation: 943572d4be82d480a48f4884f670135ae30bf990
@@ -2847,6 +2873,6 @@ SPEC CHECKSUMS:
   VisionCamera: 0044a94f7489f19e19d5938e97dfc36f4784af3c
   Yoga: 5934998fbeaef7845dbf698f698518695ab4cd1a
 
-PODFILE CHECKSUM: d2723b94b4155674f04926d5d711deb6a708db6a
+PODFILE CHECKSUM: 338fc628f37fcfb5f1eb388cdb14c12057858507
 
 COCOAPODS: 1.16.2

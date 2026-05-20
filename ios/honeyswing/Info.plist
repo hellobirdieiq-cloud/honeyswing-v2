@@ -53,6 +53,8 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>HoneySwing uses the camera to record and analyze your golf swing.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>HoneySwing does not use your location. This message may appear because of underlying system components.</string>
     <key>NSMotionUsageDescription</key>
@@ -74,6 +76,11 @@
     <key>UIStatusBarStyle</key>
     <string>UIStatusBarStyleDefault</string>
     <key>UISupportedInterfaceOrientations</key>
+    <array>
+      <string>UIInterfaceOrientationPortrait</string>
+      <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
       <string>UIInterfaceOrientationPortrait</string>
       <string>UIInterfaceOrientationPortraitUpsideDown</string>
