@@ -1,6 +1,25 @@
-const { withXcodeProject, IOSConfig } = require("@expo/config-plugins");
+const { withXcodeProject, withDangerousMod, IOSConfig } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
+
+const MEDIAPIPE_LINK_FIX_MARKER = "# withHoneyNative: MediaPipeTasks link fix";
+
+// Injected verbatim into ios/Podfile inside `post_install do |installer|`.
+// Rewrites the Pods-honeyswing xcconfigs so vendored xcframeworks that
+// CocoaPods emits as `-l"X"` are linked as `-framework "X"` instead —
+// otherwise ld fails with "library 'MediaPipeTasksCommon' not found".
+const MEDIAPIPE_LINK_FIX_BLOCK = `
+    ${MEDIAPIPE_LINK_FIX_MARKER}
+    ['Pods-honeyswing.debug.xcconfig', 'Pods-honeyswing.release.xcconfig'].each do |xcconfig_name|
+      xcconfig_path = File.join(__dir__, 'Pods', 'Target Support Files', 'Pods-honeyswing', xcconfig_name)
+      next unless File.exist?(xcconfig_path)
+      xcconfig_contents = File.read(xcconfig_path)
+      %w[MediaPipeTasksCommon MediaPipeTasksVision].each do |lib|
+        xcconfig_contents = xcconfig_contents.gsub(%Q(-l"#{lib}"), %Q(-framework "#{lib}"))
+      end
+      File.write(xcconfig_path, xcconfig_contents)
+    end
+`;
 
 const SOURCE_FILES = [
   "HoneyLiDARDemoModule.m",
@@ -10,6 +29,10 @@ const SOURCE_FILES = [
   "HoneyVisionCameraHandPlugin.swift",
   "HoneyVisionCameraPosePlugin.m",
   "HoneyVisionCameraPosePlugin.swift",
+  "HoneyVisionAppleHandPlugin.m",
+  "HoneyVisionAppleHandPlugin.swift",
+  "HoneyMediaPipeOneShotPlugin.m",
+  "HoneyMediaPipeOneShotPlugin.swift",
 ];
 
 const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task"];
@@ -82,6 +105,7 @@ const withHoneyNative = (config) => {
         "FRAMEWORK_SEARCH_PATHS",
         [
           '"$(inherited)"',
+          '"$(PODS_XCFRAMEWORKS_BUILD_DIR)/MediaPipeTasksCommon"',
           '"$(PODS_XCFRAMEWORKS_BUILD_DIR)/MediaPipeTasksVision"',
         ],
         build,
@@ -93,4 +117,35 @@ const withHoneyNative = (config) => {
   });
 };
 
-module.exports = withHoneyNative;
+const withMediaPipeLinkFix = (config) => {
+  return withDangerousMod(config, [
+    "ios",
+    (config) => {
+      const podfilePath = path.join(config.modRequest.platformProjectRoot, "Podfile");
+      if (!fs.existsSync(podfilePath)) {
+        throw new Error(`[withHoneyNative] Podfile not found at ${podfilePath}`);
+      }
+      let contents = fs.readFileSync(podfilePath, "utf8");
+      if (contents.includes(MEDIAPIPE_LINK_FIX_MARKER)) {
+        return config;
+      }
+      if (!contents.includes("react_native_post_install(")) {
+        throw new Error(
+          "[withHoneyNative] Expected `react_native_post_install(` call not found in ios/Podfile — cannot inject MediaPipeTasks link fix"
+        );
+      }
+      // Anchor on the end of the react_native_post_install(...) call so the
+      // xcconfig rewrite runs AFTER react_native_post_install regenerates the
+      // Pods-honeyswing target-support xcconfigs. Anchoring earlier in
+      // post_install gets clobbered by that regeneration.
+      contents = contents.replace(
+        /react_native_post_install\([\s\S]*?\n    \)/,
+        (match) => `${match}${MEDIAPIPE_LINK_FIX_BLOCK}`
+      );
+      fs.writeFileSync(podfilePath, contents);
+      return config;
+    },
+  ]);
+};
+
+module.exports = (config) => withMediaPipeLinkFix(withHoneyNative(config));
