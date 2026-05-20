@@ -12,7 +12,7 @@ export default function GripScreen() {
         <TouchableOpacity
           style={styles.btn}
           activeOpacity={0.8}
-          onPress={() => Alert.alert('Coming soon', 'Apple Vision Hand Pose support is not available yet.')}
+          onPress={() => router.push('/grip/apple-vision-capture' as Href)}
         >
           <Text style={styles.btnText}>Vision</Text>
         </TouchableOpacity>
