@@ -37,6 +37,13 @@ export default function GripScreen() {
         >
           <Text style={styles.btnText}>LiDAR Demo</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.btn}
+          activeOpacity={0.8}
+          onPress={() => router.push('/grip/outline-test' as Href)}
+        >
+          <Text style={styles.btnText}>Outline test</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

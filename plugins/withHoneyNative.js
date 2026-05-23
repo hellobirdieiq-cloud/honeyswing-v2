@@ -33,9 +33,11 @@ const SOURCE_FILES = [
   "HoneyVisionAppleHandPlugin.swift",
   "HoneyMediaPipeOneShotPlugin.m",
   "HoneyMediaPipeOneShotPlugin.swift",
+  "HoneyHandSegmenterPlugin.m",
+  "HoneyHandSegmenterPlugin.swift",
 ];
 
-const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task"];
+const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task", "selfie_segmenter.tflite"];
 
 // Explicit link required — Swift auto-linking for Vision proved unreliable
 // in this build config; was repeatedly lost on prebuild --clean before this
