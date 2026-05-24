@@ -39,6 +39,8 @@ const SOURCE_FILES = [
 
 const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task", "selfie_segmenter.tflite"];
 
+const RESOURCE_DIRS = ["rtmw_l_256x192.mlpackage"];
+
 // Explicit link required — Swift auto-linking for Vision proved unreliable
 // in this build config; was repeatedly lost on prebuild --clean before this
 // plugin existed. ARKit is needed by HoneyLiDARDemoViewController.
@@ -62,6 +64,13 @@ const withHoneyNative = (config) => {
       }
     }
 
+    for (const dirName of RESOURCE_DIRS) {
+      const src = path.join(sourceDir, dirName);
+      if (!fs.existsSync(src) || !fs.statSync(src).isDirectory()) {
+        throw new Error(`[withHoneyNative] Missing canonical source directory: ${src}`);
+      }
+    }
+
     fs.mkdirSync(destDir, { recursive: true });
 
     for (const fileName of SOURCE_FILES) {
@@ -79,6 +88,19 @@ const withHoneyNative = (config) => {
     for (const fileName of RESOURCE_FILES) {
       fs.copyFileSync(path.join(sourceDir, fileName), path.join(destDir, fileName));
       const relativePath = `${projectName}/${fileName}`;
+      if (!project.hasFile(relativePath)) {
+        IOSConfig.XcodeUtils.addResourceFileToGroup({
+          filepath: relativePath,
+          groupName: projectName,
+          isBuildFile: true,
+          project,
+        });
+      }
+    }
+
+    for (const dirName of RESOURCE_DIRS) {
+      fs.cpSync(path.join(sourceDir, dirName), path.join(destDir, dirName), { recursive: true });
+      const relativePath = `${projectName}/${dirName}`;
       if (!project.hasFile(relativePath)) {
         IOSConfig.XcodeUtils.addResourceFileToGroup({
           filepath: relativePath,
