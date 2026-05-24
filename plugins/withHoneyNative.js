@@ -35,6 +35,8 @@ const SOURCE_FILES = [
   "HoneyMediaPipeOneShotPlugin.swift",
   "HoneyHandSegmenterPlugin.m",
   "HoneyHandSegmenterPlugin.swift",
+  "HoneyRTMWModule.m",
+  "HoneyRTMWModule.swift",
 ];
 
 const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task", "selfie_segmenter.tflite"];
@@ -44,7 +46,7 @@ const RESOURCE_DIRS = ["rtmw_l_256x192.mlpackage"];
 // Explicit link required — Swift auto-linking for Vision proved unreliable
 // in this build config; was repeatedly lost on prebuild --clean before this
 // plugin existed. ARKit is needed by HoneyLiDARDemoViewController.
-const FRAMEWORKS = ["Vision.framework", "ARKit.framework"];
+const FRAMEWORKS = ["Vision.framework", "ARKit.framework", "CoreML.framework"];
 
 const withHoneyNative = (config) => {
   return withXcodeProject(config, (config) => {

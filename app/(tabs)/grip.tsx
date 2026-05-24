@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { GOLD } from '../../lib/colors';
 import { presentLiDARDemo } from '../../lib/lidarDemo';
+import { probeRTMWLoad } from '../../lib/rtmwProbe';
 
 export default function GripScreen() {
   const router = useRouter();
@@ -26,7 +27,10 @@ export default function GripScreen() {
         <TouchableOpacity
           style={styles.btn}
           activeOpacity={0.8}
-          onPress={() => Alert.alert('Coming soon', 'RTMPose support is not available yet.')}
+          onPress={async () => {
+            const r = await probeRTMWLoad();
+            Alert.alert(r.ok ? 'RTMW probe: LOADED' : 'RTMW probe: FAILED', r.detail);
+          }}
         >
           <Text style={styles.btnText}>RTM</Text>
         </TouchableOpacity>
