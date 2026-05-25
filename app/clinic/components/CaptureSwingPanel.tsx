@@ -10,15 +10,12 @@ import {
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor, runAtTargetFps } from 'react-native-vision-camera';
-import { Worklets } from 'react-native-worklets-core';
-import { honeyPoseDetect } from '../../../modules/vision-camera-pose/src';
+import { Camera, useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
 import SkeletonOverlay, { type Landmark } from '../../../components/SkeletonOverlay';
 import CameraGuidance from '../../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../../lib/cameraGuidance';
 import { useTiltCapture } from '../../../lib/useTiltCapture';
 import { useSwingCapture } from '../../../lib/useSwingCapture';
-import { usePoseFrameHandler } from '../../../lib/usePoseFrameHandler';
 import { GOLD } from '../../../lib/colors';
 import { styles } from '../clinicStyles';
 
@@ -77,15 +74,7 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
-  const fpsFrameCount = useSharedValue(0);
-  const fpsWindowStartTs = useSharedValue(0);
   const actualFpsRef = useRef(0);
-  const updateActualFpsJSRef = useRef<any>(null);
-  if (updateActualFpsJSRef.current === null) {
-    updateActualFpsJSRef.current = Worklets.createRunOnJS((v: number) => {
-      actualFpsRef.current = v;
-    });
-  }
 
   const onSwingPersistedCb = useCallback(
     (id: string | null) => {
@@ -122,48 +111,9 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
     onSwingPersisted: onSwingPersistedCb,
   });
 
-  const { appendPoseFrame } = usePoseFrameHandler({
-    skeletonUpdateRef,
-    capturePhaseRef,
-    bufferPoseFrame,
-    smoothedSepRef,
-    frameAspectRef,
-    setFrameAspectState,
-    setGuidanceColor,
-    setGuidanceLabel,
-  });
-
   const animatedCameraProps = useAnimatedProps(() => ({
     zoom: zoom.value,
   }));
-
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      'worklet';
-      if (fpsWindowStartTs.value === 0) {
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-      fpsFrameCount.value += 1;
-      if (fpsFrameCount.value >= 30) {
-        const elapsedSec = (frame.timestamp - fpsWindowStartTs.value) / 1e3;
-        const actualFps = elapsedSec > 0 ? fpsFrameCount.value / elapsedSec : 0;
-        updateActualFpsJSRef.current(actualFps);
-        fpsFrameCount.value = 0;
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-
-      runAtTargetFps(30, () => {
-        'worklet';
-        const lms = honeyPoseDetect(frame);
-        const detected = Array.isArray(lms) && lms.length > 0;
-        if (detected) {
-          const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
-          appendPoseFrame(lms, frame.timestamp, frame.width, frame.height, aspect);
-        }
-      });
-    },
-    [appendPoseFrame, fpsFrameCount, fpsWindowStartTs]
-  );
 
   useEffect(() => {
     let mounted = true;
@@ -235,7 +185,6 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
               photo={false}
               video={true}
               audio={false}
-              frameProcessor={frameProcessor}
               onInitialized={() => setCameraReady(true)}
             />
             <LiveSkeleton

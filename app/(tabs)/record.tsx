@@ -6,9 +6,8 @@ import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
-import { Camera, useCameraDevice, useCameraFormat, useFrameProcessor } from 'react-native-vision-camera';
-import { Worklets } from 'react-native-worklets-core';
-import { honeyPoseDetect } from '../../modules/vision-camera-pose/src';
+import { Camera, useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
+import { CAPTURE_FPS, CAPTURE_WIDTH, CAPTURE_HEIGHT } from '@/lib/cameraFormat';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
@@ -28,7 +27,6 @@ import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
-import { usePoseFrameHandler } from '../../lib/usePoseFrameHandler';
 import { clinicSessionActive } from '@/lib/clinic/clinicSessionStore';
 import { GOLD } from '../../lib/colors';
 import { styles } from './recordStyles';
@@ -87,7 +85,7 @@ export default function RecordTab() {
   const device = useCameraDevice('back');
 
   const format = useCameraFormat(device, [
-    { fps: 120, videoResolution: { width: 1280, height: 720 } },
+    { fps: CAPTURE_FPS, videoResolution: { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT } },
   ]);
   const targetFps = Math.min(format?.maxFps ?? 30, 120);
   const skipInterval = 1;
@@ -113,18 +111,8 @@ export default function RecordTab() {
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
-  const frameSkipCounter = useSharedValue(0);
 
-  // Diagnostic: measure delivered fps over a 30-frame rolling window from the worklet.
-  const fpsFrameCount = useSharedValue(0);
-  const fpsWindowStartTs = useSharedValue(0);
   const actualFpsRef = useRef(0);
-  const updateActualFpsJSRef = useRef<any>(null);
-  if (updateActualFpsJSRef.current === null) {
-    updateActualFpsJSRef.current = Worklets.createRunOnJS((v: number) => {
-      actualFpsRef.current = v;
-    });
-  }
 
   // ─── Swing capture hook ─────────────────────────────────────────────────────
 
@@ -151,23 +139,12 @@ export default function RecordTab() {
     hasPermission,
     hasDevice: !!device,
     cameraReady,
-    onBeginRecording: () => { frameSkipCounter.value = 0; },
+    onBeginRecording: () => {},
     actualFpsRef,
     targetFps,
   });
 
   // ─── Pose frame handler ──────────────────────────────────────────────────────
-
-  const { appendPoseFrame } = usePoseFrameHandler({
-    skeletonUpdateRef,
-    capturePhaseRef,
-    bufferPoseFrame,
-    smoothedSepRef,
-    frameAspectRef,
-    setFrameAspectState,
-    setGuidanceColor,
-    setGuidanceLabel,
-  });
 
   // ─── Frame processor ─────────────────────────────────────────────────────────
 
@@ -184,38 +161,6 @@ export default function RecordTab() {
   const animatedCameraProps = useAnimatedProps(() => ({
     zoom: zoom.value,
   }));
-
-  const frameProcessor = useFrameProcessor(
-    (frame) => {
-      'worklet';
-      frameSkipCounter.value = frameSkipCounter.value + 1;
-
-      // Diagnostic fps measurement — counts every delivered frame, before the skip gate.
-      if (fpsWindowStartTs.value === 0) {
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-      fpsFrameCount.value += 1;
-      if (fpsFrameCount.value >= 30) {
-        const elapsedSec = (frame.timestamp - fpsWindowStartTs.value) / 1e3;
-        const actualFps = elapsedSec > 0 ? fpsFrameCount.value / elapsedSec : 0;
-        console.log('[HoneySwing] actualFps', actualFps.toFixed(1), 'over', fpsFrameCount.value, 'frames');
-        updateActualFpsJSRef.current(actualFps);
-        fpsFrameCount.value = 0;
-        fpsWindowStartTs.value = frame.timestamp;
-      }
-
-      if (frameSkipCounter.value % skipInterval !== 0) return;
-
-      const landmarks = honeyPoseDetect(frame);
-      const detected = Array.isArray(landmarks) && landmarks.length > 0;
-
-      if (detected) {
-        const aspect = frame.height > 0 && frame.width > 0 ? frame.height / frame.width : 0;
-        appendPoseFrame(landmarks, frame.timestamp, frame.width, frame.height, aspect);
-      }
-    },
-    [appendPoseFrame, skipInterval, frameSkipCounter, fpsFrameCount, fpsWindowStartTs]
-  );
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -369,7 +314,6 @@ export default function RecordTab() {
             photo={false}
             video={true}
             audio={false}
-            frameProcessor={frameProcessor}
             onInitialized={() => setCameraReady(true)}
           />
           <LiveSkeleton
