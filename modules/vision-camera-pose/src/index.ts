@@ -1,5 +1,6 @@
 import { VisionCameraProxy, type Frame } from 'react-native-vision-camera';
 import { NativeModules } from 'react-native';
+export * from './rtmw';
 
 const plugin = VisionCameraProxy.initFrameProcessorPlugin('honeyPoseDetect', {});
 

@@ -37,6 +37,10 @@ const SOURCE_FILES = [
   "HoneyHandSegmenterPlugin.swift",
   "HoneyRTMWModule.m",
   "HoneyRTMWModule.swift",
+  "HoneyRtmwOneShotPlugin.m",
+  "HoneyRtmwOneShotPlugin.swift",
+  "HoneyAppleVisionBodyConfirmPlugin.m",
+  "HoneyAppleVisionBodyConfirmPlugin.swift",
 ];
 
 const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task", "selfie_segmenter.tflite"];
