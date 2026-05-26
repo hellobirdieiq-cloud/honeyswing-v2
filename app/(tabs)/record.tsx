@@ -87,7 +87,7 @@ export default function RecordTab() {
   const format = useCameraFormat(device, [
     { fps: CAPTURE_FPS, videoResolution: { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT } },
   ]);
-  const targetFps = Math.min(format?.maxFps ?? 30, 120);
+  const targetFps = Math.min(format?.maxFps ?? 30, CAPTURE_FPS);
   const skipInterval = 1;
 
   const loggedDeviceIdRef = useRef<string | null>(null);

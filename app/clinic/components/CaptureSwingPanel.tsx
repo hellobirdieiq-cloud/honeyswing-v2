@@ -11,6 +11,7 @@ import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter } from 'expo-router';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
+import { CAPTURE_FPS, CAPTURE_WIDTH, CAPTURE_HEIGHT } from '@/lib/cameraFormat';
 import SkeletonOverlay, { type Landmark } from '../../../components/SkeletonOverlay';
 import CameraGuidance from '../../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../../lib/cameraGuidance';
@@ -69,9 +70,9 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
 
   const device = useCameraDevice('back');
   const format = useCameraFormat(device, [
-    { fps: 120, videoResolution: { width: 1280, height: 720 } },
+    { fps: CAPTURE_FPS, videoResolution: { width: CAPTURE_WIDTH, height: CAPTURE_HEIGHT } },
   ]);
-  const targetFps = Math.min(format?.maxFps ?? 30, 120);
+  const targetFps = Math.min(format?.maxFps ?? 30, CAPTURE_FPS);
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const actualFpsRef = useRef(0);
