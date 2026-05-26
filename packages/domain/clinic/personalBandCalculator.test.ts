@@ -142,8 +142,8 @@ group('isWithinBand: true within 1 SD, false outside 2 SD');
   let band = safeCall('seed band', () => createPersonalBand('kid-1', 'spineAngle'));
   if (band) {
     band = safeCall('append 10', () => appendSample(band as PersonalBand, 10));
-    band = band && safeCall('append 20', () => appendSample(band, 20));
-    band = band && safeCall('append 30', () => appendSample(band, 30));
+    band = band && safeCall('append 20', () => appendSample(band as PersonalBand, 20));
+    band = band && safeCall('append 30', () => appendSample(band as PersonalBand, 30));
   }
   if (band) {
     const inside = safeCall('isWithinBand(25) default tolerance',
@@ -161,7 +161,7 @@ group('archiveSession appends to sessionHistory');
   let band = safeCall('seed band', () => createPersonalBand('kid-1', 'spineAngle'));
   if (band) {
     band = safeCall('append 10', () => appendSample(band as PersonalBand, 10));
-    band = band && safeCall('append 20', () => appendSample(band, 20));
+    band = band && safeCall('append 20', () => appendSample(band as PersonalBand, 20));
   }
   if (band) {
     const recordedAt = 1700000000000;
