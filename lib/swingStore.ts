@@ -12,16 +12,20 @@
  */
 
 import type { PoseFrame } from '../packages/pose/PoseTypes';
+import type { GolfAngles } from '../packages/domain/swing/angles';
+import type { SwingTempo } from '../packages/domain/swing/tempoAnalysis';
+import type { DetectedPhase, SwingTrailPoint } from '../packages/domain/swing/phaseDetection';
+import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 
 // Lazy require for ./supabase — that module transitively loads @clerk/expo
 // which can't run under the plain tsx test runner. Matches lib/eventBus.ts:21.
 declare function require(id: string): unknown;
 
 // ---------------------------------------------------------------------------
-// Record types — mirror the live public.swings default projection (R5).
-// Columns excluded from v1: motion_frames, trail_points, angles, tempo,
-// phases, feedback, analysis_tier, video_url. Add opt-in
-// accessors only when a consumer needs them.
+// Record types — mirror the live public.swings projection.
+// Columns excluded: motion_frames (fetch separately via getSwingMotionFrames),
+// feedback, analysis_tier, video_url. Add opt-in accessors only when a
+// consumer needs them.
 // ---------------------------------------------------------------------------
 
 export type SwingRecord = {
@@ -46,6 +50,16 @@ export type SwingRecord = {
   video_storage_path: string | null;
   video_uploaded_at: string | null;
   swing_debug: Record<string, unknown> | null;
+  camera_angle_valid: boolean | null;
+  angles: GolfAngles | null;
+  tempo: SwingTempo | null;
+  phases: DetectedPhase[] | null;
+  trail_points: SwingTrailPoint[] | null;
+  // Indexed access keeps SwingRecord's value shape pinned to AnalysisResult's
+  // inline type — single source of truth, persistSwing.ts:216 writes the field
+  // straight through with no transformation.
+  metric_confidences: NonNullable<AnalysisResult['metricConfidences']> | null;
+  category_scores: Record<string, number | null> | null;
 };
 
 export type GripHistoryRecord = {
@@ -93,7 +107,8 @@ const SWING_RECORD_COLUMNS =
   'id, user_id, created_at, score, honey_boom, frame_count, duration_ms, ' +
   'pose_success_rate, capture_validity, phase_source, failure_reason, ' +
   'backswing_ms, downswing_ms, tempo_ratio, impact_frame_index, app_version, ' +
-  'coach_name, analysis_version, video_storage_path, video_uploaded_at, swing_debug';
+  'coach_name, analysis_version, video_storage_path, video_uploaded_at, swing_debug, ' +
+  'camera_angle_valid, angles, tempo, phases, trail_points, metric_confidences, category_scores';
 
 const GRIP_HISTORY_COLUMNS =
   'id, created_at, ' +

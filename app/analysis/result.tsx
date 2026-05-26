@@ -8,12 +8,13 @@ import {
   getCurrentSwingMotion,
   getCurrentSwingAnalysis,
   getCurrentSwingVideoUri,
+  getCurrentSwingId,
   computeFocus,
   saveFocus,
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getUser, supabase } from '../../lib/supabase';
-import { getSwingById, getSwingMotionFrames } from '../../lib/swingStore';
+import { getSwingById, getSwingMotionFrames, type SwingRecord } from '../../lib/swingStore';
 import { GOLD } from '../../lib/colors';
 import {
   analyzePoseSequence,
@@ -61,6 +62,61 @@ const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'follow_through', label: 'Finish' },
 ];
 
+// Reconstruct an AnalysisResult from a persisted SwingRecord — used by the
+// history-tap path where the in-memory store doesn't hold the tapped swing.
+// `swingConfidence` and `cameraAngleResult` are NOT persisted today; safe
+// defaults (matching the empty-sequence shape at analysisPipeline.ts:515-527)
+// gate coaching tips off via the confidence threshold at result.tsx :290.
+// Follow-up: persist swingConfidence + cameraAngleResult for full-fidelity
+// tips on historical swings. Re-analyzing motion_frames is NOT a fix —
+// persistSwing.ts:191-199 stores only the average gravity vector, so
+// applyTiltCorrection rejects (insufficient_samples) on replay and the
+// re-analyzed score diverges from the persisted one.
+function reconstructAnalysisFromRecord(record: SwingRecord): AnalysisResult {
+  return {
+    score: record.score,
+    honeyBoom: record.honey_boom ?? false,
+    cameraAngleValid: record.camera_angle_valid ?? false,
+    swingConfidence: {
+      overall: 0,
+      tier: 'low',
+      components: {
+        jointVisibility: 0,
+        cameraAngle: 0,
+        phaseDetection: 0,
+        frameCoverage: 0,
+      },
+    },
+    cameraAngleResult: {
+      angle: 'unknown',
+      shoulderSpread: 0,
+      hipSpread: 0,
+      avgSpread: 0,
+      footIndexNorm: null,
+      weights: {
+        spineAngle: 0,
+        leftElbowAngle: 0,
+        rightElbowAngle: 0,
+        leftKneeAngle: 0,
+        rightKneeAngle: 0,
+        hipSpreadDelta: 0,
+        shoulderTilt: 0,
+        tempo: 0,
+      },
+    },
+    angles: record.angles ?? undefined,
+    tempo: record.tempo ?? null,
+    phases: record.phases ?? undefined,
+    trail: record.trail_points ?? undefined,
+    metricConfidences: record.metric_confidences ?? undefined,
+    // swing_debug omitted: DB column is a superset (persistSwing.ts:229-246
+    // spreads extra debug keys), not a clean FrameSelectionDebug. Sole
+    // consumer (scoring_breakdown tip build) is gated off by the
+    // low-confidence default above.
+    // aggregate omitted: explicitly NOT persisted per analysisPipeline.ts:104.
+  };
+}
+
 export default function ResultScreen() {
   const router = useRouter();
   const { swingId } = useLocalSearchParams<{ swingId?: string }>();
@@ -68,6 +124,14 @@ export default function ResultScreen() {
   const motion = getCurrentSwingMotion();
   const storedAnalysis = getCurrentSwingAnalysis();
   const videoUri = getCurrentSwingVideoUri();
+  const liveSwingId = getCurrentSwingId();
+  // "live" means: the in-memory store holds the swing being viewed. True when
+  // either (a) URL carries no swingId AND in-memory has data (live capture
+  // path where persist returned no id), or (b) URL swingId matches the
+  // in-memory id (live capture path with successful persist). History-tap
+  // navigation falls through to false because the tapped swingId won't match.
+  const isLiveSwing = motion !== null && (!swingId || swingId === liveSwingId);
+  const [swingRecord, setSwingRecord] = useState<SwingRecord | null>(null);
   const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
@@ -80,18 +144,19 @@ export default function ResultScreen() {
 
   const effectiveMotion = useMemo(
     () =>
-      motion ??
-      (historicalFrames
-        ? {
-            frames: historicalFrames,
-            recordedAt: 0,
-            // EXTERNAL ASSUMPTION: source='live-camera' for historical frames.
-            // Verified no consumer branches on this value (only assigned to
-            // sequence.source).
-            source: 'live-camera' as const,
-          }
-        : null),
-    [motion, historicalFrames],
+      isLiveSwing
+        ? motion
+        : historicalFrames
+          ? {
+              frames: historicalFrames,
+              recordedAt: 0,
+              // EXTERNAL ASSUMPTION: source='live-camera' for historical frames.
+              // Verified no consumer branches on this value (only assigned to
+              // sequence.source).
+              source: 'live-camera' as const,
+            }
+          : null,
+    [isLiveSwing, motion, historicalFrames],
   );
 
   useEffect(() => {
@@ -144,23 +209,21 @@ export default function ResultScreen() {
   useEffect(() => {
     if (!swingId) return;
     getSwingById(swingId).then((swing) => {
-      const gc = swing?.swing_debug?.grip_cloud as GripClassification | undefined;
+      if (!swing) return;
+      setSwingRecord(swing);
+      const gc = swing.swing_debug?.grip_cloud as GripClassification | undefined;
       if (gc && !gc.analysis_failed) setGripCloud(gc);
     });
   }, [swingId]);
 
   useEffect(() => {
-    if (!swingId || motion) return;
+    if (!swingId || isLiveSwing) return;
     setFramesLoading(true);
     getSwingMotionFrames(swingId)
       .then((frames) => setHistoricalFrames(frames))
       .catch((err) => console.error('[HoneySwing]', err))
       .finally(() => setFramesLoading(false));
-    // motion intentionally NOT in deps — effect runs once on mount. If
-    // motion populates after mount, effectiveMotion picks it up via
-    // derivation above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [swingId]);
+  }, [swingId, isLiveSwing]);
 
   const classification: CaptureClassification | null = useMemo(
     () => (effectiveMotion ? classifyCapture(effectiveMotion.frames) : null),
@@ -183,11 +246,19 @@ export default function ResultScreen() {
 
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
     if (isLeftHanded === null) return null;
+    if (!isLiveSwing) return null;
     if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
     return analyzePoseSequence(sequence, isLeftHanded);
-  }, [sequence, classification, storedAnalysis, isLeftHanded]);
+  }, [sequence, classification, storedAnalysis, isLiveSwing, isLeftHanded]);
 
-  const analysis: AnalysisResult | null = storedAnalysis ?? fallbackAnalysis;
+  const reconstructedAnalysis: AnalysisResult | null = useMemo(
+    () => (swingRecord && !isLiveSwing ? reconstructAnalysisFromRecord(swingRecord) : null),
+    [swingRecord, isLiveSwing],
+  );
+
+  const analysis: AnalysisResult | null = isLiveSwing
+    ? (storedAnalysis ?? fallbackAnalysis)
+    : reconstructedAnalysis;
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
@@ -360,7 +431,7 @@ export default function ResultScreen() {
       </View>
 
       <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
-        {!effectiveMotion && !storedAnalysis ? (
+        {!effectiveMotion && !analysis ? (
           framesLoading ? (
             <ActivityIndicator color={GOLD} style={{ marginTop: 40 }} />
           ) : (

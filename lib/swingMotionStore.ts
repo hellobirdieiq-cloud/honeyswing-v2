@@ -13,6 +13,7 @@ export type LiveSwingMotionData = {
 let currentMotion: LiveSwingMotionData | null = null;
 let currentAnalysis: AnalysisResult | null = null;
 let currentVideoUri: string | null = null;
+let currentSwingId: string | null = null;
 
 export function setCurrentSwingMotion(data: LiveSwingMotionData): void {
   currentMotion = data;
@@ -26,6 +27,7 @@ export function clearCurrentSwingMotion(): void {
   currentMotion = null;
   currentAnalysis = null;
   currentVideoUri = null;
+  currentSwingId = null;
 }
 
 export function setCurrentSwingVideoUri(uri: string | null): void {
@@ -46,6 +48,14 @@ export function getCurrentSwingAnalysis(): AnalysisResult | null {
 
 export function clearCurrentSwingAnalysis(): void {
   currentAnalysis = null;
+}
+
+export function setCurrentSwingId(id: string | null): void {
+  currentSwingId = id;
+}
+
+export function getCurrentSwingId(): string | null {
+  return currentSwingId;
 }
 
 // --- Today's Focus persistence ---

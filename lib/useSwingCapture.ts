@@ -9,6 +9,7 @@ import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
   setCurrentSwingAnalysis,
+  setCurrentSwingId,
   setCurrentSwingMotion,
   setCurrentSwingVideoUri,
 } from './swingMotionStore';
@@ -305,6 +306,7 @@ export function useSwingCapture({
             gravityReadingsRef.current,
           ).then((swingId) => {
             if (swingId) {
+              setCurrentSwingId(swingId);
               console.log('[persistSwing] saved', { swingId, frames: poseFrames.length });
             } else {
               console.warn('[persistSwing] skipped (no user)', { frames: poseFrames.length });
