@@ -12,6 +12,8 @@ export type RtmwFrame = {
   timestampMs: number;
   keypoints: RtmwKeypoint[];
   extractionMs: number;
+  frameWidth: number;
+  frameHeight: number;
 };
 
 export type BoundingBox = {

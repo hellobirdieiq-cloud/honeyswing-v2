@@ -12,11 +12,14 @@ export type ExtractResult = {
 /**
  * Extract RTMW pose frames from a recorded video clip.
  *
- * EXTERNAL ASSUMPTION (RULE 42) — `captureFps` and `analyzerDecimation` are
- * externally supplied by the caller, sourced from `lib/cameraFormat.ts`.
- * This module does NOT import those constants directly so callers control
- * the assumed source frame rate per recording (a device that falls back
- * below 240 fps yields a different effective decimation rate).
+ * EXTERNAL ASSUMPTION (RULE 42) — `captureFps`, `analyzerDecimation`,
+ * `fallbackWidth`, and `fallbackHeight` are externally supplied by the
+ * caller, sourced from `lib/cameraFormat.ts`. This module does NOT import
+ * those constants directly so callers control the assumed source frame
+ * rate per recording (a device that falls back below 240 fps yields a
+ * different effective decimation rate). The fallback dims are defensive
+ * only — used iff native returns 0 for a frame's dimensions (should be
+ * unreachable, since copyCGImage success implies non-zero size).
  *
  * Failure shape:
  *   - zero rtmw frames           → { poseFrames: [], rtmw: [], failure: null }
@@ -29,15 +32,20 @@ export type ExtractResult = {
 export async function extractPoseFromVideo(
   videoUri: string,
   clipDurationMs: number,
-  videoWidth: number,
-  videoHeight: number,
+  fallbackWidth: number,
+  fallbackHeight: number,
   captureFps: number,
   analyzerDecimation: number,
 ): Promise<ExtractResult> {
   const step = analyzerDecimation * (1000 / captureFps);
   const upperBound = Math.floor(clipDurationMs / step);
   const timestamps: number[] = [];
-  for (let i = 0; i <= upperBound; i++) {
+  // Bound is `<` not `<=`: the final i*step lands past the last decodable PTS,
+  // and HoneyRtmwOneShotPlugin's AVAssetImageGenerator uses .zero tolerance so
+  // copyCGImage throws and rejects the whole batch. Deferred deeper fix if
+  // failures ever appear at non-final timestamps: relax that tolerance to
+  // CMTime(value:1,timescale:480) in HoneyRtmwOneShotPlugin.swift:63-64.
+  for (let i = 0; i < upperBound; i++) {
     timestamps.push(i * step);
   }
 
@@ -53,11 +61,15 @@ export async function extractPoseFromVideo(
     return { poseFrames: [], rtmw: [], failure: 'no-person' };
   }
 
+  if (rtmwFrames.some((f) => f.frameWidth === 0 || f.frameHeight === 0)) {
+    console.warn('[HoneySwing][extract] native frameWidth/Height was 0 — using fallback');
+  }
+
   const rtmw: Rtmw133Frame[] = rtmwFrames.map((f) => ({
     timestampMs: f.timestampMs,
     keypoints: f.keypoints,
-    frameWidth: videoWidth,
-    frameHeight: videoHeight,
+    frameWidth: f.frameWidth > 0 ? f.frameWidth : fallbackWidth,
+    frameHeight: f.frameHeight > 0 ? f.frameHeight : fallbackHeight,
     extractionMs: f.extractionMs,
   }));
 

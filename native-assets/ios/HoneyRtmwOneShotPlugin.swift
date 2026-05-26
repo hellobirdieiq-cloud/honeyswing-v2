@@ -137,6 +137,8 @@ class HoneyRtmwOneShotPlugin: NSObject {
             "timestampMs": tsMs,
             "keypoints": keypoints,
             "extractionMs": extractionMs,
+            "frameWidth": origWidth,
+            "frameHeight": origHeight,
           ])
         } catch {
           DispatchQueue.main.async {

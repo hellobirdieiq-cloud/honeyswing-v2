@@ -23,7 +23,7 @@ import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-
 import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
 import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
-import { CAPTURE_FPS, ANALYZER_DECIMATION } from './cameraFormat';
+import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -210,14 +210,14 @@ export function useSwingCapture({
         let analysisMs = 0;
 
         try {
-          // EXTERNAL ASSUMPTION — 15s pipeline timeout. Tune after device timing (rev 7 §12 backlog).
-          const EXTRACTION_TIMEOUT_MS = 15000;
+          // EXTERNAL ASSUMPTION — 45s pipeline timeout. Covers observed worst-case extraction (~30s on a 5s clip) plus margin; revisit if clip length grows. Not a measured ceiling.
+          const EXTRACTION_TIMEOUT_MS = 45000;
           const result = await Promise.race([
             extractPoseFromVideo(
               video.path,
               video.duration * 1000,
-              video.width,
-              video.height,
+              CAPTURE_WIDTH,
+              CAPTURE_HEIGHT,
               CAPTURE_FPS,
               ANALYZER_DECIMATION,
             ),
