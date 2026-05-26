@@ -318,8 +318,8 @@ export function useSwingCapture({
           });
 
           // Fire-and-forget uploads off the resolved swingId. MUST run after
-          // swingIdPromiseRef is assigned (above); the today's :303 chain at the
-          // old source position would see null and no-op.
+          // swingIdPromiseRef is assigned (above) — otherwise this .then chain
+          // would see null and no-op.
           swingIdPromiseRef.current?.then((swingId) => {
             if (!swingId) return;
             uploadSwingVideo(swingId, video.path)
