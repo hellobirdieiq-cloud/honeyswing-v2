@@ -47,7 +47,6 @@ interface UseSwingCaptureOptions {
   hasDevice: boolean;
   cameraReady: boolean;
   onBeginRecording: () => void;
-  actualFpsRef?: React.MutableRefObject<number>;
   targetFps?: number;
   onSwingPersisted?: (swingId: string | null) => void;
   skipResultNavigation?: boolean;
@@ -68,7 +67,6 @@ export function useSwingCapture({
   hasDevice,
   cameraReady,
   onBeginRecording,
-  actualFpsRef,
   targetFps,
   onSwingPersisted,
   skipResultNavigation = false,
@@ -290,7 +288,6 @@ export function useSwingCapture({
 
           const classification = classifyCapture(poseFrames);
           const captureFrameStats = getCaptureFrameStats();
-          const actualFps = actualFpsRef?.current ?? 0;
           swingIdPromiseRef.current = persistSwing(
             poseFrames,
             analysis,
@@ -301,7 +298,6 @@ export function useSwingCapture({
             },
             nativeGripResult,
             captureFrameStats,
-            actualFps,
             targetFps ?? null,
             gravityReadingsRef.current,
           ).then((swingId) => {

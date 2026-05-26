@@ -75,7 +75,6 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const targetFps = Math.min(format?.maxFps ?? 30, CAPTURE_FPS);
 
   const zoom = useSharedValue(device?.minZoom ?? 1);
-  const actualFpsRef = useRef(0);
 
   const onSwingPersistedCb = useCallback(
     (id: string | null) => {
@@ -105,7 +104,6 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
     hasDevice: !!device,
     cameraReady,
     onBeginRecording: () => {},
-    actualFpsRef,
     targetFps,
     skipResultNavigation: true,
     onSwingPersisted: onSwingPersistedCb,

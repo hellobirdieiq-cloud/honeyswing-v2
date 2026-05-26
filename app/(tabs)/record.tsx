@@ -112,8 +112,6 @@ export default function RecordTab() {
   const zoom = useSharedValue(device?.minZoom ?? 1);
   const zoomAtPinchStart = useSharedValue(device?.minZoom ?? 1);
 
-  const actualFpsRef = useRef(0);
-
   // ─── Swing capture hook ─────────────────────────────────────────────────────
 
   const {
@@ -138,7 +136,6 @@ export default function RecordTab() {
     hasDevice: !!device,
     cameraReady,
     onBeginRecording: () => {},
-    actualFpsRef,
     targetFps,
   });
 
