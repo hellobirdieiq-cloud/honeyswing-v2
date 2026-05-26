@@ -162,6 +162,7 @@ export async function persistSwing(
   requestedFps?: number | null,
   gravityReadings?: GravityReading[],
   playerProfileId?: string | null,
+  captureFps?: number | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -240,6 +241,7 @@ export async function persistSwing(
       grip_cloud: cloudGrip ?? null,
       fps_estimate: calcFpsEstimate(frames),
       fps_requested: requestedFps ?? null,
+      fps_capture_measured: captureFps ?? null,
       capture_frame_stats: captureFrameStats ?? null,
     }) as unknown as Json,
   };

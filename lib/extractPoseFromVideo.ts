@@ -7,6 +7,7 @@ export type ExtractResult = {
   poseFrames: PoseFrame[];
   rtmw: Rtmw133Frame[];
   failure: 'no-person' | null;
+  captureFps?: number | null;
 };
 
 /**
@@ -50,15 +51,16 @@ export async function extractPoseFromVideo(
   }
 
   const rtmwFrames = await extractRtmw(videoUri, timestamps);
+  const measuredCaptureFps = rtmwFrames[0]?.captureFps ?? null;
 
   if (rtmwFrames.length === 0) {
-    return { poseFrames: [], rtmw: [], failure: null };
+    return { poseFrames: [], rtmw: [], failure: null, captureFps: measuredCaptureFps };
   }
 
   const middleTimestamp = clipDurationMs / 2;
   const bodyConfirm = await confirmBodyAtVideo(videoUri, middleTimestamp);
   if (!bodyConfirm.humanPresent) {
-    return { poseFrames: [], rtmw: [], failure: 'no-person' };
+    return { poseFrames: [], rtmw: [], failure: 'no-person', captureFps: measuredCaptureFps };
   }
 
   if (rtmwFrames.some((f) => f.frameWidth === 0 || f.frameHeight === 0)) {
@@ -83,5 +85,5 @@ export async function extractPoseFromVideo(
 
   const poseFrames: PoseFrame[] = rtmw.map(rtmwToPoseFrame);
 
-  return { poseFrames, rtmw, failure: null };
+  return { poseFrames, rtmw, failure: null, captureFps: measuredCaptureFps };
 }

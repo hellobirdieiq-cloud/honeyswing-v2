@@ -58,6 +58,18 @@ class HoneyRtmwOneShotPlugin: NSObject {
       }
 
       let asset = AVURLAsset(url: url)
+
+      // TEMP DIAGNOSTIC — read AVAssetTrack.nominalFrameRate to measure
+      // achieved capture FPS vs the requested 240. Optional .first being nil
+      // is the sole read-failure signal; a real 0.0 reading is diagnostic
+      // data and must reach JS, so do NOT collapse it with `> 0`.
+      let captureFpsValue: Any
+      if let track = asset.tracks(withMediaType: .video).first {
+        captureFpsValue = NSNumber(value: track.nominalFrameRate)
+      } else {
+        captureFpsValue = NSNull()
+      }
+
       let generator = AVAssetImageGenerator(asset: asset)
       generator.appliesPreferredTrackTransform = true
       generator.requestedTimeToleranceBefore = .zero
@@ -139,6 +151,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
             "extractionMs": extractionMs,
             "frameWidth": origWidth,
             "frameHeight": origHeight,
+            "captureFps": captureFpsValue,
           ])
         } catch {
           DispatchQueue.main.async {
