@@ -92,7 +92,6 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
     updateCapturePhase,
     capturePhaseRef,
     clearTimers,
-    bufferPoseFrame,
   } = useSwingCapture({
     cameraRef,
     router: navRouter,
@@ -158,8 +157,9 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
   const isComplete = capturePhase === 'complete';
+  const isProcessing = capturePhase === 'processing';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete;
+  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete && !isProcessing;
 
   return (
     <View style={{ flex: 1 }}>

@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
-import type { PoseFrame, PoseSequence } from '../packages/pose/PoseTypes';
+import type { PoseSequence } from '../packages/pose/PoseTypes';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
@@ -12,29 +12,26 @@ import {
   setCurrentSwingMotion,
   setCurrentSwingVideoUri,
 } from './swingMotionStore';
-import {
-  analyzePoseSequence,
-} from '../packages/domain/swing/analysisPipeline';
+import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
 import { persistSwing } from './persistSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
-import { classifyCapture, isGoodFrame } from './captureValidity';
+import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
 import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
+import { extractPoseFromVideo } from './extractPoseFromVideo';
+import { persistPoseFull } from './persistPoseFull';
+import { CAPTURE_FPS, ANALYZER_DECIMATION } from './cameraFormat';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-export const MAX_BUFFERED_POSE_FRAMES = 600;
-const MIN_FRAMES_FOR_ANALYSIS = 6;
 const CAPTURE_WINDOW_MS = 4000;
-
-const MIN_GOOD_FRAMES = 4;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'complete' | 'error' | 'weak';
+export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
 interface UseSwingCaptureOptions {
   cameraRef: React.RefObject<Camera | null>;
@@ -78,16 +75,17 @@ export function useSwingCapture({
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const motionFramesRef = useRef<PoseFrame[]>([]);
   const capturePhaseRef = useRef<CapturePhase>('idle');
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const analysisReadyRef = useRef(false);
   const videoUriRef = useRef<'pending' | null | string>('pending');
   const navigatedRef = useRef(false);
-  const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swingIdPromiseRef = useRef<Promise<string | null> | null>(null);
   const isFinalizingRef = useRef(false);
+  const gravityReadingsRef = useRef<GravityReading[]>([]);
+  const isLeftHandedRef = useRef<boolean>(false);
+  const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
@@ -107,16 +105,9 @@ export function useSwingCapture({
       clearTimeout(countdownRef.current);
       countdownRef.current = null;
     }
-    if (safetyTimeoutRef.current) {
-      clearTimeout(safetyTimeoutRef.current);
-      safetyTimeoutRef.current = null;
-    }
-  }
-
-  function bufferPoseFrame(poseFrame: PoseFrame) {
-    motionFramesRef.current.push(poseFrame);
-    if (motionFramesRef.current.length > MAX_BUFFERED_POSE_FRAMES) {
-      motionFramesRef.current = motionFramesRef.current.slice(-MAX_BUFFERED_POSE_FRAMES);
+    if (recordingStopFallbackTimerRef.current) {
+      clearTimeout(recordingStopFallbackTimerRef.current);
+      recordingStopFallbackTimerRef.current = null;
     }
   }
 
@@ -137,10 +128,6 @@ export function useSwingCapture({
     if (videoUriRef.current === 'pending') return;
     if (navigatedRef.current) return;
     navigatedRef.current = true;
-    if (safetyTimeoutRef.current) {
-      clearTimeout(safetyTimeoutRef.current);
-      safetyTimeoutRef.current = null;
-    }
     setCurrentSwingVideoUri(videoUriRef.current);
 
     let swingId: string | null = null;
@@ -156,133 +143,46 @@ export function useSwingCapture({
     router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
 
+  function handleCaptureFailure(reason: string) {
+    const stats = getCaptureFrameStats();
+    AsyncStorage.setItem(
+      'lastFailedCaptureStats',
+      JSON.stringify({
+        reason,
+        totalCallbacks: stats.total_callbacks,
+        nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
+        timestamp: Date.now(),
+      }),
+    ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
+
+    clearCurrentSwingMotion();
+    clearCurrentSwingAnalysis();
+    clearTimers();
+    updateCapturePhase('error');
+    captureTimeoutRef.current = setTimeout(() => updateCapturePhase('idle'), 2000);
+  }
+
   async function finalizeCapture() {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
 
     clearTimers();
     stopTiltCapture();
-    const gravityReadings = getTiltReadings();
+    gravityReadingsRef.current = getTiltReadings();
+    isLeftHandedRef.current = await getActiveProfileHandedness();
     cameraRef.current?.stopRecording();
 
-    const frames = [...motionFramesRef.current];
-
-    if (frames.length < MIN_FRAMES_FOR_ANALYSIS) {
-      const stats = getCaptureFrameStats();
-      AsyncStorage.setItem(
-        'lastFailedCaptureStats',
-        JSON.stringify({
-          totalCallbacks: stats.total_callbacks,
-          nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
-          timestamp: Date.now(),
-        })
-      ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
-      clearCurrentSwingMotion();
-      clearCurrentSwingAnalysis();
-      updateCapturePhase('error');
-      captureTimeoutRef.current = setTimeout(() => updateCapturePhase('idle'), 2000);
-      return;
-    }
-
-    const goodFrameCount = frames.filter(isGoodFrame).length;
-    if (goodFrameCount < MIN_GOOD_FRAMES) {
-      const stats = getCaptureFrameStats();
-      AsyncStorage.setItem(
-        'lastWeakCaptureStats',
-        JSON.stringify({
-          totalCallbacks: stats.total_callbacks,
-          nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
-          timestamp: Date.now(),
-        })
-      ).catch((err) => console.error('[HoneySwing] lastWeakCaptureStats write:', err));
-      clearCurrentSwingMotion();
-      clearCurrentSwingAnalysis();
-      updateCapturePhase('weak');
-      return;
-    }
-
-    const sequence: PoseSequence = {
-      frames,
-      source: 'live-camera',
-      metadata: {
-        durationMs:
-          frames.length > 1 ? frames[frames.length - 1].timestampMs - frames[0].timestampMs : 0,
-      },
-    };
-
-    const isLeftHanded = await getActiveProfileHandedness();
-    const analysis = analyzePoseSequence(sequence, isLeftHanded, gravityReadings);
-
-    // Grip estimation — awaited with 500ms timeout, result passed to persistSwing
-    let nativeGripResult: Record<string, unknown>[] | null = null;
-    try {
-      const addressPhase = analysis.phases?.find(p => p.phase === 'address');
-      if (addressPhase && addressPhase.index < frames.length) {
-        const frame = frames[addressPhase.index];
-        const leadWrist = isLeftHanded ? frame.joints.rightWrist : frame.joints.leftWrist;
-        if (leadWrist) {
-          nativeGripResult = await Promise.race([
-            classifyGripFrames({
-              timestamps: [addressPhase.timestamp],
-              wristX: [leadWrist.x],
-              wristY: [leadWrist.y],
-            }),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
-          ]);
-          console.log('[GripEstimation]', JSON.stringify(nativeGripResult));
-        }
-      }
-    } catch (e) {
-      console.warn('[GripEstimation] Error:', e);
-    } finally {
-      try { await releaseGripBuffer(); } catch {}
-    }
-
-    setCurrentSwingMotion({
-      frames,
-      recordedAt: Date.now(),
-      source: 'live-camera',
-    });
-    setCurrentSwingAnalysis(analysis);
-
-    updateCapturePhase('complete');
-
-    const classification = classifyCapture(frames);
-    const captureFrameStats = getCaptureFrameStats();
-    const actualFps = actualFpsRef?.current ?? 0;
-    swingIdPromiseRef.current = persistSwing(frames, analysis, classification, {
-      camera_angle_at_start: guidanceSnapshotRef.current.separation,
-      camera_guidance_color: guidanceSnapshotRef.current.color,
-    }, nativeGripResult, captureFrameStats, actualFps, targetFps ?? null, gravityReadings).then((swingId) => {
-      if (swingId) {
-        console.log('[persistSwing] ✅ saved', { swingId, frames: frames.length });
-      } else {
-        console.warn('[persistSwing] ⚠️ skipped (no user)', { frames: frames.length });
-      }
-      return swingId;
-    }).catch((err) => {
-      console.error('[persistSwing] ❌ FAILED', {
-        error: err.message,
-        frames: frames.length,
-        hasUser: true,
-        classification: classification?.validity ?? 'unknown',
-      });
-      return null;
-    });
-
-    analysisReadyRef.current = true;
-    safetyTimeoutRef.current = setTimeout(() => {
-      videoUriRef.current = null;
-      tryNavigate();
-    }, 3000);
-    tryNavigate();
+    // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
+    // 1500ms gives ~3x headroom. Not measured.
+    recordingStopFallbackTimerRef.current = setTimeout(() => {
+      handleCaptureFailure('recording-stop-fallback');
+    }, 1500);
   }
 
   function beginRecording() {
     NativeModules.HoneyGripBridge?.resetPoseState?.();
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
-    motionFramesRef.current = [];
     analysisReadyRef.current = false;
     videoUriRef.current = 'pending';
     navigatedRef.current = false;
@@ -298,14 +198,156 @@ export function useSwingCapture({
     startTiltCapture();
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
-      onRecordingFinished: (video) => {
+      onRecordingFinished: async (video) => {
+        if (recordingStopFallbackTimerRef.current) {
+          clearTimeout(recordingStopFallbackTimerRef.current);
+          recordingStopFallbackTimerRef.current = null;
+        }
         videoUriRef.current = video.path;
-        swingIdPromiseRef.current?.then((swingId) => {
-          if (swingId) uploadSwingVideo(swingId, video.path).catch((err) => console.error('[HoneySwing]', err));
-        }).catch((err) => console.error('[HoneySwing]', err));
-        tryNavigate();
+        updateCapturePhase('processing');
+
+        let extractionMs = 0;
+        let analysisMs = 0;
+
+        try {
+          // EXTERNAL ASSUMPTION — 15s pipeline timeout. Tune after device timing (rev 7 §12 backlog).
+          const EXTRACTION_TIMEOUT_MS = 15000;
+          const result = await Promise.race([
+            extractPoseFromVideo(
+              video.path,
+              video.duration * 1000,
+              video.width,
+              video.height,
+              CAPTURE_FPS,
+              ANALYZER_DECIMATION,
+            ),
+            new Promise<never>((_, rej) =>
+              setTimeout(() => rej(new Error('extraction-timeout')), EXTRACTION_TIMEOUT_MS),
+            ),
+          ]);
+
+          extractionMs = result.rtmw.reduce((acc, f) => acc + (f.extractionMs ?? 0), 0);
+
+          if (result.failure === 'no-person') {
+            handleCaptureFailure('no-person');
+            return;
+          }
+          if (result.rtmw.length === 0) {
+            handleCaptureFailure('zero-frames');
+            return;
+          }
+
+          const { poseFrames, rtmw } = result;
+          const sequence: PoseSequence = {
+            frames: poseFrames,
+            source: 'rtmw-l-2d-v1',
+            metadata: { fps: CAPTURE_FPS, durationMs: video.duration * 1000 },
+          };
+          const t0 = Date.now();
+          const analysis = analyzePoseSequence(
+            sequence,
+            isLeftHandedRef.current,
+            gravityReadingsRef.current,
+          );
+          analysisMs = Date.now() - t0;
+
+          if (analysis.swing_debug?.fallback_gate != null) {
+            handleCaptureFailure('no-swing');
+            return;
+          }
+
+          console.log('[HoneySwing] extractionMs', extractionMs, 'analysisMs', analysisMs);
+
+          // Grip estimation — preserves the previous contract for persistSwing's nativeGripResult.
+          let nativeGripResult: Record<string, unknown>[] | null = null;
+          try {
+            const addressPhase = analysis.phases?.find((p) => p.phase === 'address');
+            if (addressPhase && addressPhase.index < poseFrames.length) {
+              const frame = poseFrames[addressPhase.index];
+              const leadWrist = isLeftHandedRef.current ? frame.joints.rightWrist : frame.joints.leftWrist;
+              if (leadWrist) {
+                nativeGripResult = await Promise.race([
+                  classifyGripFrames({
+                    timestamps: [addressPhase.timestamp],
+                    wristX: [leadWrist.x],
+                    wristY: [leadWrist.y],
+                  }),
+                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+                ]);
+                console.log('[GripEstimation]', JSON.stringify(nativeGripResult));
+              }
+            }
+          } catch (e) {
+            console.warn('[GripEstimation] Error:', e);
+          } finally {
+            try { await releaseGripBuffer(); } catch {}
+          }
+
+          setCurrentSwingMotion({ frames: poseFrames, recordedAt: Date.now(), source: 'live-camera' });
+          setCurrentSwingAnalysis(analysis);
+          updateCapturePhase('complete');
+
+          const classification = classifyCapture(poseFrames);
+          const captureFrameStats = getCaptureFrameStats();
+          const actualFps = actualFpsRef?.current ?? 0;
+          swingIdPromiseRef.current = persistSwing(
+            poseFrames,
+            analysis,
+            classification,
+            {
+              camera_angle_at_start: guidanceSnapshotRef.current.separation,
+              camera_guidance_color: guidanceSnapshotRef.current.color,
+            },
+            nativeGripResult,
+            captureFrameStats,
+            actualFps,
+            targetFps ?? null,
+            gravityReadingsRef.current,
+          ).then((swingId) => {
+            if (swingId) {
+              console.log('[persistSwing] saved', { swingId, frames: poseFrames.length });
+            } else {
+              console.warn('[persistSwing] skipped (no user)', { frames: poseFrames.length });
+            }
+            return swingId;
+          }).catch((err) => {
+            console.error('[persistSwing] FAILED', {
+              error: err.message,
+              frames: poseFrames.length,
+              classification: classification?.validity ?? 'unknown',
+            });
+            return null;
+          });
+
+          // Fire-and-forget uploads off the resolved swingId. MUST run after
+          // swingIdPromiseRef is assigned (above); the today's :303 chain at the
+          // old source position would see null and no-op.
+          swingIdPromiseRef.current?.then((swingId) => {
+            if (!swingId) return;
+            uploadSwingVideo(swingId, video.path)
+              .catch((e) => console.warn('[HoneySwing] uploadSwingVideo failed', e));
+            persistPoseFull(swingId, rtmw)
+              .catch((e) => console.warn('[HoneySwing] persistPoseFull failed', e));
+          });
+
+          analysisReadyRef.current = true;
+          tryNavigate();
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('trail timestamp not found in frames')) {
+            // detectFaceOnPhases invariant breach (phaseDetectionFaceOn.ts:410) —
+            // dev telemetry; user-facing path is the same as any other extract failure.
+            console.warn('[HoneySwing] phase detection invariant breach (dev telemetry):', msg);
+          } else {
+            console.warn('[HoneySwing] extract-or-analyze threw:', msg);
+          }
+          handleCaptureFailure('extract-or-analyze-threw');
+        }
       },
-      onRecordingError: (e) => console.error('REC ERR:', e),
+      onRecordingError: (e) => {
+        console.error('[HoneySwing] REC ERR:', e);
+        handleCaptureFailure('recording-error');
+      },
     });
 
     updateCapturePhase('capturing');
@@ -351,9 +393,7 @@ export function useSwingCapture({
     startInstantCapture,
     finalizeCapture,
     updateCapturePhase,
-    motionFramesRef,
     capturePhaseRef,
     clearTimers,
-    bufferPoseFrame,
   };
 }

@@ -123,10 +123,8 @@ export default function RecordTab() {
     startInstantCapture,
     finalizeCapture,
     updateCapturePhase,
-    motionFramesRef,
     capturePhaseRef,
     clearTimers,
-    bufferPoseFrame,
   } = useSwingCapture({
     cameraRef,
     router,
@@ -210,7 +208,6 @@ export default function RecordTab() {
   useEffect(() => {
     let mounted = true;
 
-    motionFramesRef.current = [];
     if (!clinicSessionActive()) {
       clearCurrentSwingMotion();
       clearCurrentSwingAnalysis();
@@ -252,7 +249,7 @@ export default function RecordTab() {
       mounted = false;
       clearTimers();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- motionFramesRef is a ref object (stable; .current is intentionally not tracked); clearTimers is defined inline in useSwingCapture and would cause infinite loop if tracked
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clearTimers is defined inline in useSwingCapture and would cause infinite loop if tracked
   }, [router]);
 
   // Fallback banner: show after 5s if camera hasn't initialized
@@ -288,8 +285,9 @@ export default function RecordTab() {
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
   const isComplete = capturePhase === 'complete';
+  const isProcessing = capturePhase === 'processing';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete;
+  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete && !isProcessing;
 
   return (
     <GestureHandlerRootView
