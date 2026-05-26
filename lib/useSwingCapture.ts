@@ -302,6 +302,8 @@ export function useSwingCapture({
             gravityReadingsRef.current,
             undefined,
             result.captureFps ?? null,
+            result.videoDurationMs ?? null,
+            result.videoFrameCount ?? null,
           ).then((swingId) => {
             if (swingId) {
               setCurrentSwingId(swingId);

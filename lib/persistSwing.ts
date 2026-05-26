@@ -163,6 +163,8 @@ export async function persistSwing(
   gravityReadings?: GravityReading[],
   playerProfileId?: string | null,
   captureFps?: number | null,
+  videoDurationMs?: number | null,
+  videoFrameCount?: number | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -242,6 +244,8 @@ export async function persistSwing(
       fps_estimate: calcFpsEstimate(frames),
       fps_requested: requestedFps ?? null,
       fps_capture_measured: captureFps ?? null,
+      video_duration_ms: videoDurationMs ?? null,
+      video_frame_count: videoFrameCount ?? null,
       capture_frame_stats: captureFrameStats ?? null,
     }) as unknown as Json,
   };

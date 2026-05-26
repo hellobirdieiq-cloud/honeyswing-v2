@@ -63,11 +63,48 @@ class HoneyRtmwOneShotPlugin: NSObject {
       // achieved capture FPS vs the requested 240. Optional .first being nil
       // is the sole read-failure signal; a real 0.0 reading is diagnostic
       // data and must reach JS, so do NOT collapse it with `> 0`.
+      //
+      // Also read the video track's true duration (timeRange.duration) and
+      // a true encoded frame count (AVAssetReader passthrough walk). These
+      // two together let Supabase compute frames/duration as a check on
+      // nominalFrameRate. NSNull on read failure; a real 0 propagates.
       let captureFpsValue: Any
+      let videoDurationMsValue: Any
+      let videoFrameCountValue: Any
       if let track = asset.tracks(withMediaType: .video).first {
         captureFpsValue = NSNumber(value: track.nominalFrameRate)
+
+        let seconds = CMTimeGetSeconds(track.timeRange.duration)
+        if seconds.isNaN || seconds < 0 {
+          videoDurationMsValue = NSNull()
+        } else {
+          videoDurationMsValue = NSNumber(value: seconds * 1000.0)
+        }
+
+        var frameCountResult: Any = NSNull()
+        do {
+          let reader = try AVAssetReader(asset: asset)
+          let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+          if reader.canAdd(output) {
+            reader.add(output)
+            if reader.startReading() {
+              var count = 0
+              while let _ = output.copyNextSampleBuffer() {
+                count += 1
+              }
+              if reader.status == .completed {
+                frameCountResult = NSNumber(value: count)
+              }
+            }
+          }
+        } catch {
+          // initializer threw — keep NSNull
+        }
+        videoFrameCountValue = frameCountResult
       } else {
         captureFpsValue = NSNull()
+        videoDurationMsValue = NSNull()
+        videoFrameCountValue = NSNull()
       }
 
       let generator = AVAssetImageGenerator(asset: asset)
@@ -152,6 +189,8 @@ class HoneyRtmwOneShotPlugin: NSObject {
             "frameWidth": origWidth,
             "frameHeight": origHeight,
             "captureFps": captureFpsValue,
+            "videoDurationMs": videoDurationMsValue,
+            "videoFrameCount": videoFrameCountValue,
           ])
         } catch {
           DispatchQueue.main.async {

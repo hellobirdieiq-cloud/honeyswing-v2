@@ -15,6 +15,8 @@ export type RtmwFrame = {
   frameWidth: number;
   frameHeight: number;
   captureFps?: number | null;
+  videoDurationMs?: number | null;
+  videoFrameCount?: number | null;
 };
 
 export type BoundingBox = {
