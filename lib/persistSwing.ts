@@ -165,6 +165,7 @@ export async function persistSwing(
   captureFps?: number | null,
   videoDurationMs?: number | null,
   videoFrameCount?: number | null,
+  extractionTotalMs?: number | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -246,6 +247,7 @@ export async function persistSwing(
       fps_capture_measured: captureFps ?? null,
       video_duration_ms: videoDurationMs ?? null,
       video_frame_count: videoFrameCount ?? null,
+      extraction_total_ms: extractionTotalMs ?? null,
       capture_frame_stats: captureFrameStats ?? null,
     }) as unknown as Json,
   };

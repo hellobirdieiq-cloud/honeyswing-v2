@@ -304,6 +304,7 @@ export function useSwingCapture({
             result.captureFps ?? null,
             result.videoDurationMs ?? null,
             result.videoFrameCount ?? null,
+            result.extractionTotalMs ?? null,
           ).then((swingId) => {
             if (swingId) {
               setCurrentSwingId(swingId);
