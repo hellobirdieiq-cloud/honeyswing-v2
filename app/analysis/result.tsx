@@ -62,6 +62,14 @@ const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'follow_through', label: 'Finish' },
 ];
 
+const NO_DATA_FAILURE_REASONS = new Set([
+  'no-person',
+  'zero-frames',
+  'recording-stop-fallback',
+  'recording-error',
+  'extract-or-analyze-threw',
+]);
+
 // Reconstruct an AnalysisResult from a persisted SwingRecord — used by the
 // history-tap path where the in-memory store doesn't hold the tapped swing.
 // `swingConfidence` and `cameraAngleResult` are NOT persisted today; safe
@@ -225,6 +233,16 @@ export default function ResultScreen() {
       .finally(() => setFramesLoading(false));
   }, [swingId, isLiveSwing]);
 
+  useEffect(() => {
+    const reason = swingRecord?.failure_reason;
+    if (reason && NO_DATA_FAILURE_REASONS.has(reason)) {
+      router.replace({
+        pathname: '/analysis/no-swing',
+        params: { reason, swingId: swingRecord.id },
+      } as Href);
+    }
+  }, [swingRecord, router]);
+
   const classification: CaptureClassification | null = useMemo(
     () => (effectiveMotion ? classifyCapture(effectiveMotion.frames) : null),
     [effectiveMotion],
@@ -259,6 +277,12 @@ export default function ResultScreen() {
   const analysis: AnalysisResult | null = isLiveSwing
     ? (storedAnalysis ?? fallbackAnalysis)
     : reconstructedAnalysis;
+  const partialReason: string | null =
+    analysis?.swing_debug?.fallback_gate != null
+      ? String(analysis.swing_debug.fallback_gate)
+      : swingRecord?.failure_reason === 'no-swing'
+        ? swingRecord.failure_reason
+        : null;
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
@@ -453,6 +477,14 @@ export default function ResultScreen() {
           </View>
         ) : (
           <>
+            {partialReason && (
+              <View style={styles.partialBanner}>
+                <Text style={styles.partialBannerTitle}>
+                  We couldn&apos;t fully read this swing — score is approximate.
+                </Text>
+                <Text style={styles.partialBannerSub}>Reason: {partialReason}</Text>
+              </View>
+            )}
             {/* 1. Score */}
             <View style={styles.scoreCard}>
               <Text style={[styles.score, { color: scoreColor }]}>

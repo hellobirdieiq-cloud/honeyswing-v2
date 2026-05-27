@@ -331,4 +331,23 @@ export const styles = StyleSheet.create({
     marginLeft: 2,
   },
 
+  partialBanner: {
+    backgroundColor: 'rgba(200, 169, 81, 0.12)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  partialBannerTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  partialBannerSub: {
+    color: '#999',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
 });

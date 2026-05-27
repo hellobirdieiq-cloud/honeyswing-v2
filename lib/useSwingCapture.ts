@@ -15,6 +15,7 @@ import {
 } from './swingMotionStore';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
 import { persistSwing } from './persistSwing';
+import { persistFailedSwing } from './persistFailedSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
 import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
@@ -155,11 +156,38 @@ export function useSwingCapture({
       }),
     ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
 
-    clearCurrentSwingMotion();
-    clearCurrentSwingAnalysis();
     clearTimers();
-    updateCapturePhase('error');
-    captureTimeoutRef.current = setTimeout(() => updateCapturePhase('idle'), 2000);
+    updateCapturePhase('processing');
+
+    swingIdPromiseRef.current = persistFailedSwing(reason, {
+      captureFrameStats: stats,
+      targetFps: targetFps ?? null,
+      cameraGuidance: {
+        camera_angle_at_start: guidanceSnapshotRef.current.separation,
+        camera_guidance_color: guidanceSnapshotRef.current.color,
+      },
+      gravityReadings: gravityReadingsRef.current,
+    }).catch((err) => {
+      console.error('[persistFailedSwing] FAILED', err);
+      return null;
+    });
+
+    analysisReadyRef.current = true;
+    videoUriRef.current = null;
+    updateCapturePhase('complete');
+
+    swingIdPromiseRef.current.then((swingId) => {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
+      if (skipResultNavigation) {
+        onSwingPersisted?.(swingId);
+        return;
+      }
+      router.push({
+        pathname: '/analysis/no-swing',
+        params: { reason, ...(swingId ? { swingId } : {}) },
+      } as Href);
+    });
   }
 
   async function finalizeCapture() {
@@ -251,10 +279,10 @@ export function useSwingCapture({
           );
           analysisMs = Date.now() - t0;
 
-          if (analysis.swing_debug?.fallback_gate != null) {
-            handleCaptureFailure('no-swing');
-            return;
-          }
+          const fallbackGateReason =
+            analysis.swing_debug?.fallback_gate != null
+              ? 'no-swing'
+              : null;
 
           console.log('[HoneySwing] extractionMs', extractionMs, 'analysisMs', analysisMs);
 
@@ -287,7 +315,14 @@ export function useSwingCapture({
           setCurrentSwingAnalysis(analysis);
           updateCapturePhase('complete');
 
-          const classification = classifyCapture(poseFrames);
+          const baseClassification = classifyCapture(poseFrames);
+          const classification = fallbackGateReason
+            ? {
+                ...baseClassification,
+                validity: 'partial' as const,
+                reason: 'no-swing',
+              }
+            : baseClassification;
           const captureFrameStats = getCaptureFrameStats();
           swingIdPromiseRef.current = persistSwing(
             poseFrames,

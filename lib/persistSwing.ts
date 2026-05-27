@@ -254,8 +254,11 @@ export async function persistSwing(
 
   const { data, error } = await supabase.from('swings').insert(row).select('id').single();
 
-  // Always increment local count for anonymous limit tracking, even on DB error
-  await incrementLocalSwingCount();
+  // Real swings count toward the anonymous limit; stub rows (failure
+  // persists with empty frames) do NOT — they aren't swings.
+  if (frames.length > 0) {
+    await incrementLocalSwingCount();
+  }
 
   if (error) {
     console.error('[HoneySwing] persistSwing DB error:', error.message);
@@ -265,6 +268,12 @@ export async function persistSwing(
   console.log('[HoneySwing] Swing persisted, frames:', frames.length);
 
   const swingId = data?.id ?? null;
+
+  // SCR-PERSIST-ALL-SWINGS: stub rows skip downstream side effects.
+  // The row exists in DB for analytics, but clinic store / event bus /
+  // session counter are reserved for real swings (frames.length > 0).
+  if (frames.length === 0) return swingId;
+
   if (swingId) {
     const session = getCurrentClinicSession();
     const baseRecord: SwingRecord = {
