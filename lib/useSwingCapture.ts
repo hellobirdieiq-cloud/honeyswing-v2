@@ -24,6 +24,7 @@ import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-
 import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
 import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
+import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -322,6 +323,13 @@ export function useSwingCapture({
             return null;
           });
 
+          // Snapshot drift inputs before the .then so the closure captures by
+          // value — keeps the Phase 8 sensor independent of any future
+          // result-scope refactor.
+          const driftFrameCount = result.videoFrameCount;
+          const driftDurationMs = result.videoDurationMs;
+          const driftFailure = result.failure;
+
           // Fire-and-forget uploads off the resolved swingId. MUST run after
           // swingIdPromiseRef is assigned (above) — otherwise this .then chain
           // would see null and no-op.
@@ -331,6 +339,14 @@ export function useSwingCapture({
               .catch((e) => console.warn('[HoneySwing] uploadSwingVideo failed', e));
             persistPoseFull(swingId, rtmw)
               .catch((e) => console.warn('[HoneySwing] persistPoseFull failed', e));
+            if (
+              !driftFailure &&
+              typeof driftFrameCount === 'number' &&
+              typeof driftDurationMs === 'number'
+            ) {
+              recordDriftEvent(swingId, driftFrameCount, driftDurationMs, CAPTURE_FPS)
+                .catch((e) => console.warn('[HoneySwing] recordDriftEvent failed', e));
+            }
           });
 
           analysisReadyRef.current = true;
