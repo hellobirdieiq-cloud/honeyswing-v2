@@ -521,7 +521,7 @@ export default function Tab1LiveView(): React.ReactElement {
                 >
                   <Text
                     style={{
-                      color: active ? '#000' : '#FFF',
+                      color: active ? '#1A0E00' : '#FFF',
                       fontSize: 12,
                       fontWeight: '700',
                       textTransform: 'uppercase',
@@ -553,7 +553,7 @@ export default function Tab1LiveView(): React.ReactElement {
             <Text
               style={{
                 color:
-                  setupIssuesExpanded || selectedSetupIssues.length > 0 ? '#000' : '#FFF',
+                  setupIssuesExpanded || selectedSetupIssues.length > 0 ? '#1A0E00' : '#FFF',
                 fontSize: 12,
                 fontWeight: '700',
                 textTransform: 'uppercase',
@@ -604,7 +604,7 @@ export default function Tab1LiveView(): React.ReactElement {
                         >
                           <Text
                             style={{
-                              color: active ? '#000' : '#FFF',
+                              color: active ? '#1A0E00' : '#FFF',
                               fontSize: 12,
                               fontWeight: '700',
                               textTransform: 'uppercase',
@@ -854,7 +854,7 @@ function PhaseChipRow({ labels, activeIndex, onSelect }: PhaseChipRowProps): Rea
           >
             <Text
               style={{
-                color: active ? '#000000' : '#FFFFFF',
+                color: active ? '#1A0E00' : '#FFFFFF',
                 fontSize: 12,
                 fontWeight: '700',
                 letterSpacing: 0.5,

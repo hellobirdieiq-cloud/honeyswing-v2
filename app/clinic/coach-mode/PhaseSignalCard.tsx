@@ -200,7 +200,7 @@ function SignalChart({ result, detectedFrame }: SignalChartProps): React.ReactEl
               y1={y}
               x2={CHART_W}
               y2={y}
-              stroke={isWatch ? '#5BE07A' : '#F5A623'}
+              stroke={isWatch ? '#5BE07A' : '#FF6B00'}
               strokeWidth={1.5}
               strokeDasharray={isWatch ? '4 4' : undefined}
             />

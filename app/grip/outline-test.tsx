@@ -412,7 +412,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(245, 166, 35, 0.2)',
+    borderColor: 'rgba(255, 107, 0, 0.2)',
     alignItems: 'center',
   },
   methodBtnActive: {
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(245, 166, 35, 0.2)',
+    borderColor: 'rgba(255, 107, 0, 0.2)',
     alignItems: 'center',
   },
   opacityBtnActive: {

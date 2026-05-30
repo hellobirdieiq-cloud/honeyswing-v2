@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   ctaText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 18,
     fontWeight: '700',
   },

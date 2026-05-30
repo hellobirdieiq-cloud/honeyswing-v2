@@ -448,7 +448,7 @@ export default function SettingsScreen() {
             }}
             style={{ marginTop: 10, backgroundColor: newPlayerName.trim() === '' ? '#333' : GOLD, paddingVertical: 12, borderRadius: 8, alignItems: 'center', opacity: newPlayerName.trim() === '' ? 0.5 : 1 }}
           >
-            <Text style={{ color: newPlayerName.trim() === '' ? '#666' : '#000', fontSize: 15, fontWeight: '600' }}>Add</Text>
+            <Text style={{ color: newPlayerName.trim() === '' ? '#666' : '#1A0E00', fontSize: 15, fontWeight: '600' }}>Add</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   signInText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 15,
     fontWeight: '700',
   },

@@ -72,7 +72,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#000', // recordStyles.ts:7
+    color: '#1A0E00', // recordStyles.ts:7
     fontSize: 16,
     fontWeight: '700',
   },

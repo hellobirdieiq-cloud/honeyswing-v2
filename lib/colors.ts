@@ -1,1 +1,1 @@
-export const GOLD = '#F5A623';
+export const GOLD = '#FF6B00';

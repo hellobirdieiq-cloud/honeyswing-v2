@@ -315,7 +315,7 @@ export default function GripCaptureScreen() {
         <View style={styles.overlay}>
           <View style={styles.previewButtons}>
             <TouchableOpacity style={[styles.btn, styles.btnSecondary]} onPress={handleRetake}>
-              <Text style={styles.btnText}>Retake</Text>
+              <Text style={[styles.btnText, styles.btnTextSecondary]}>Retake</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.btn, submitting && styles.btnDisabled]}
@@ -512,7 +512,7 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
   },
   captureBtnDisabled: { opacity: 0.4 },
-  captureBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  captureBtnText: { color: '#1A0E00', fontSize: 18, fontWeight: '700' },
   countdownContainer: {
     position: 'absolute',
     top: 0,
@@ -552,7 +552,8 @@ const styles = StyleSheet.create({
   },
   btnSecondary: { backgroundColor: '#555' },
   btnDisabled: { opacity: 0.4 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnText: { color: '#1A0E00', fontSize: 16, fontWeight: '600' },
+  btnTextSecondary: { color: '#fff' },
   hintPill: {
     backgroundColor: 'rgba(0,0,0,0.45)',
     paddingHorizontal: 16,

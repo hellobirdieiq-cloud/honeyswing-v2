@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     backgroundColor: GOLD,
   },
   captureBtnDisabled: { opacity: 0.4 },
-  captureBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  captureBtnText: { color: '#1A0E00', fontSize: 18, fontWeight: '700' },
   countdownContainer: {
     position: 'absolute',
     top: 0,
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: GOLD,
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnText: { color: '#1A0E00', fontSize: 16, fontWeight: '600' },
   hintPill: {
     backgroundColor: 'rgba(0,0,0,0.45)',
     paddingHorizontal: 16,

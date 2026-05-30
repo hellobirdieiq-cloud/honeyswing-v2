@@ -128,7 +128,7 @@ export const styles = StyleSheet.create({
     opacity: 0.5,
   },
   recordButtonText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 20,
     fontWeight: '700',
   },
@@ -188,7 +188,7 @@ export const styles = StyleSheet.create({
     borderRadius: 24,
   },
   retryButtonText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 17,
     fontWeight: '700',
   },

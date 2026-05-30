@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   planBadgeText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   subscribeText: {
-    color: '#111',
+    color: '#1A0E00',
     fontSize: 20,
     fontWeight: '700',
   },

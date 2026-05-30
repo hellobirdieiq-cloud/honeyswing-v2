@@ -146,7 +146,7 @@ export default function Tab3DrillDown(): React.ReactElement {
               >
                 <Text
                   style={{
-                    color: isSelected ? '#000' : '#FFFFFF',
+                    color: isSelected ? '#1A0E00' : '#FFFFFF',
                     fontSize: 13,
                     fontWeight: '700',
                   }}
@@ -197,7 +197,7 @@ export default function Tab3DrillDown(): React.ReactElement {
                   <Text
                     numberOfLines={1}
                     style={{
-                      color: isSelected ? '#000' : '#FFFFFF',
+                      color: isSelected ? '#1A0E00' : '#FFFFFF',
                       fontSize: 10,
                       fontWeight: '700',
                       letterSpacing: 0.5,
