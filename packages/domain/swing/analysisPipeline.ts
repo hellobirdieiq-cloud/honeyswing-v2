@@ -1,5 +1,6 @@
 import { JointName, PoseFrame } from "../../pose/PoseTypes";
 import { PoseSequence } from "../../pose/PoseTypes";
+import { vetoAndInterpolateKeypoints, type UntrustedMap } from "./keypointVeto";
 import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle, detectCameraAngleEarly } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
@@ -63,6 +64,7 @@ export type FrameSelectionDebug = {
   visibility_weighting?: VisibilityWeightingResult;
   implausible_frame_filter?: ImplausibleFrameDebug;
   z_trace?: ZTraceDebug;
+  keypoint_veto?: UntrustedMap | null;
   phase_rules?: PhaseRuleDebug;
   camera_angle_pre?: CameraAngle;
   lead_wrist_hinge?: LeadWristHinge | null;
@@ -504,8 +506,31 @@ export function analyzePoseSequence(
   isLeftHanded = false,
   gravityReadings: GravityReading[] = [],
   addressFrameIdx?: number,
+  opts?: { skipVeto?: boolean },
 ): AnalysisResult {
-  const canonical = toCanonicalSequence(sequence, isLeftHanded);
+  // Layer 1 — velocity-veto + interpolation pre-clean. Operates on the raw
+  // normalized frames (matches /tmp/veto_analysis.md threshold derivation, which
+  // is canonical-invariant since the transform only mirrors x). Phase detection
+  // logic is untouched; it simply consumes cleaner keypoints. untrustedMap is a
+  // diagnostic surface for later layers — NOT fed into phase detection here.
+  //
+  // skipVeto bypasses the pass entirely, reproducing the exact pre-L1 path
+  // (canonical = toCanonicalSequence(sequence, isLeftHanded)). It exists ONLY
+  // for veto-validate.ts test #1 (true veto-vs-no-veto comparison) — no
+  // production/app call site passes it.
+  let canonical: PoseSequence;
+  let untrustedMap: UntrustedMap | null;
+  if (opts?.skipVeto) {
+    canonical = toCanonicalSequence(sequence, isLeftHanded);
+    untrustedMap = null;
+  } else {
+    const veto = vetoAndInterpolateKeypoints(sequence.frames);
+    canonical = toCanonicalSequence(
+      { ...sequence, frames: veto.cleanedFrames },
+      isLeftHanded,
+    );
+    untrustedMap = veto.untrustedMap;
+  }
 
   if (!canonical.frames || canonical.frames.length === 0) {
     return {
@@ -686,6 +711,7 @@ export function analyzePoseSequence(
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
       z_trace: computeZTrace(canonical.frames, phases),
+      keypoint_veto: untrustedMap,
       phase_rules: ruleDebug,
       camera_angle_pre: earlyAngle.angle,
       lead_wrist_hinge: leadWristHinge,
