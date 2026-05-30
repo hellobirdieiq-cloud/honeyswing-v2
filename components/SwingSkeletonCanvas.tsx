@@ -149,7 +149,7 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     const hipY0 = (lh.y + rh.y) / 2;
     const anchorX = width / 2;
     const anchorY = height * 0.40;
-    const tx = (x: number) => anchorX + (x - hipX0) * hScale;
+    const tx = (x: number) => anchorX - (x - hipX0) * hScale;
     const ty = (y: number) => anchorY + (y - hipY0) * scale;
     return { tx, ty };
   }, [frames, width, height]);
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   speedTextActive: {
-    color: '#111',
+    color: '#1A0E00',
   },
   playButton: {
     marginLeft: 8,
