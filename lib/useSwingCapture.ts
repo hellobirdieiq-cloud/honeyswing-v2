@@ -87,6 +87,7 @@ export function useSwingCapture({
   const gravityReadingsRef = useRef<GravityReading[]>([]);
   const isLeftHandedRef = useRef<boolean>(false);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
@@ -198,7 +199,7 @@ export function useSwingCapture({
     stopTiltCapture();
     gravityReadingsRef.current = getTiltReadings();
     isLeftHandedRef.current = await getActiveProfileHandedness();
-    cameraRef.current?.stopRecording();
+    cameraRef.current?.stopRecording()?.catch(() => {});
 
     // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
     // 1500ms gives ~3x headroom. Not measured.
@@ -404,6 +405,7 @@ export function useSwingCapture({
       },
     });
 
+    recordingStartedAtRef.current = Date.now();
     updateCapturePhase('capturing');
     goPlayer.play();
 

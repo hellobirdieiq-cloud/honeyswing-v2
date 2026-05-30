@@ -102,7 +102,10 @@ export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
 
 // ── Tempo sanity thresholds (single location, easy to tune) ──────────
 // Minimum phase duration in ms — anything shorter is noise, not a real swing segment
-export const TEMPO_MIN_PHASE_MS = 200;
+// EXTERNAL ASSUMPTION: value chosen from N=2 developer swings (cleared 166ms and
+// 233ms downswings); not validated against real user data — revisit once real user
+// swings exist. A fast human downswing is ~150–250ms.
+export const TEMPO_MIN_PHASE_MS = 120;
 // Plausible tempo ratio band — real swings span a wide range. The traffic-light
 // scoring in scoring.ts assigns red below 1.5 / above 5.0, so the trust gate
 // must allow those ratios through; only truly inverted or broken values are rejected.
