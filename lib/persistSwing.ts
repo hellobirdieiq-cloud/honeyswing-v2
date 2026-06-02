@@ -18,7 +18,7 @@ import type { PhaseTag } from '../packages/domain/clinic/enums';
 import { isGoodFrame, type CaptureClassification } from './captureValidity';
 import { getCoachCode } from './coachCode';
 import { getIsLeftHanded } from './handedness';
-import { getActiveProfileId } from './playerProfiles';
+import { getPrimaryProfile } from './playerProfiles';
 import { getFrequencyDebugInfo } from './tipFrequency';
 import { positiveReinforcementEngine } from './positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
@@ -181,7 +181,7 @@ export async function persistSwing(
   const profileId = authUserId;
 
   const resolvedPlayerProfileId =
-    playerProfileId !== undefined ? playerProfileId : await getActiveProfileId();
+    playerProfileId !== undefined ? playerProfileId : ((await getPrimaryProfile())?.id ?? null);
 
   const cloudGrip = getGripClassification();
 

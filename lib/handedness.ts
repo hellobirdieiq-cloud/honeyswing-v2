@@ -12,8 +12,8 @@ export async function setIsLeftHanded(value: boolean): Promise<void> {
 
 export async function getActiveProfileHandedness(): Promise<boolean> {
   try {
-    const { getActiveProfile } = await import('./playerProfiles');
-    const profile = await getActiveProfile();
+    const { getPrimaryProfile } = await import('./playerProfiles');
+    const profile = await getPrimaryProfile();
     if (profile !== null) return profile.isLeftHanded;
   } catch {}
   return getIsLeftHanded();

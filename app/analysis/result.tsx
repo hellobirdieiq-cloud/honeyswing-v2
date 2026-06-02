@@ -29,7 +29,7 @@ import {
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
 import { getIsLeftHanded } from '../../lib/handedness';
-import { getActiveProfile, type PlayerProfile } from '../../lib/playerProfiles';
+import { getPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
 import { getCoachCode } from '../../lib/coachCode';
 import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
@@ -168,7 +168,7 @@ export default function ResultScreen() {
   );
 
   useEffect(() => {
-    getActiveProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
+    getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
   }, []);
 
   const player = useVideoPlayer(videoUri, (p) => {

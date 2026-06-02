@@ -16,5 +16,4 @@ export const STORAGE_KEYS = {
   ageTier: 'honeyswing:ageTier',
   eventQueue: 'honeyswing:eventQueue',
   playerProfiles: 'honeyswing:playerProfiles',
-  activeProfileId: 'honeyswing:activeProfileId',
 } as const;
