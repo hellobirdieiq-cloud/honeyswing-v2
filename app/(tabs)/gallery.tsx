@@ -26,6 +26,11 @@ const PAGE_SIZE = 8;
 const COLUMNS = 2;
 const H_PADDING = 16;
 const GAP = 12;
+// SwingArtCard wraps its square art box in a `card` View with marginTop 24 +
+// marginBottom 12. Each cell reserves that chrome so its height is fixed and
+// identical to the placeholder's, regardless of render state (prevents the
+// collapse that detached the hearts).
+const CARD_CHROME = 36;
 
 type LoadState =
   | { kind: 'loading' }
@@ -246,15 +251,19 @@ const GalleryCell = React.memo(function GalleryCell({
     [router, swingId],
   );
 
-  // The art and the heart are SIBLINGS under a plain View — not nested — so a
-  // heart tap never bubbles to the art's navigation onPress.
+  // SwingArtCard returns null for sub-6-frame / degenerate swings, so gate on
+  // frame count up front rather than relying on its null (which used to collapse
+  // the cell and detach the heart).
+  const hasArt = !!entry && entry.frames.length >= 6;
+
+  // The cell is a FIXED-SIZE box (width × width + card chrome). Every state —
+  // art, loading, no-art — renders inside it, so the footprint never collapses
+  // and the absolutely-positioned heart is always anchored to a bounded parent.
+  // Art and heart are SIBLINGS (not nested) so a heart tap never navigates.
   return (
-    <View style={{ width }}>
+    <View style={{ width, height: width + CARD_CHROME }}>
       <TouchableOpacity activeOpacity={0.8} onPress={onPress}>
-        {entry ? (
-          // SwingArtCard supplies its own square art box; we drop its label in
-          // the grid. It self-guards <6 frames → null (cell then collapses, the
-          // same "no art" outcome as a sub-gate capture on the result screen).
+        {entry && entry.frames.length >= 6 ? (
           <SwingArtCard
             frames={entry.frames}
             phases={entry.phases ?? []}
@@ -262,10 +271,11 @@ const GalleryCell = React.memo(function GalleryCell({
             showLabel={false}
           />
         ) : (
+          // Loading or not enough frames for art — keep the bounded footprint.
           <View style={[styles.cellPlaceholder, { width, height: width }]} />
         )}
       </TouchableOpacity>
-      {entry && (
+      {hasArt && (
         <TouchableOpacity
           style={styles.heartButton}
           onPress={onToggleFavorite}
@@ -328,6 +338,7 @@ const styles = StyleSheet.create({
   columnWrapper: {
     gap: GAP,
     marginBottom: GAP,
+    alignItems: 'flex-start',
   },
   cellPlaceholder: {
     borderRadius: 16,
