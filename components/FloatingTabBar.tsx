@@ -79,7 +79,7 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
       </View>
 
       <TouchableOpacity
-        style={[styles.centerButton, { bottom: paddingBottom + 27 }]}
+        style={[styles.centerButton, { bottom: paddingBottom + 24 }]}
         onPress={onCenterPress}
         disabled={isProcessing}
         activeOpacity={0.85}
@@ -140,19 +140,19 @@ const styles = StyleSheet.create({
   centerButton: {
     position: 'absolute',
     alignSelf: 'center',
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: GOLD,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 6,
     borderColor: '#000',
-    shadowColor: GOLD,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 12,
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 6,
   },
   stopSquare: {
     width: 24,
