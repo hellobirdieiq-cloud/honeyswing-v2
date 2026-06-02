@@ -122,9 +122,12 @@ interface Props {
   frames: PoseFrame[];
   phases: DetectedPhase[];
   width: number;
+  /** Show the "Your Swing" caption above the art. Default true. The gallery
+   *  grid passes false so the label isn't repeated across every cell. */
+  showLabel?: boolean;
 }
 
-export default function SwingArtCard({ frames, phases, width }: Props) {
+export default function SwingArtCard({ frames, phases, width, showLabel = true }: Props) {
   const size = width;
   const pad = size * 0.03;
 
@@ -225,7 +228,7 @@ export default function SwingArtCard({ frames, phases, width }: Props) {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Your Swing</Text>
+      {showLabel && <Text style={styles.title}>Your Swing</Text>}
       <View style={[styles.artContainer, { width: size, height: size }]}>
         <Svg width={size} height={size}>
           <Defs>

@@ -234,6 +234,7 @@ export type Database = {
           honey_boom: boolean | null
           id: string
           impact_frame_index: number | null
+          is_favorite: boolean
           metric_confidences: Json | null
           motion_frames: Json | null
           phase_source: string | null
@@ -273,6 +274,7 @@ export type Database = {
           honey_boom?: boolean | null
           id?: string
           impact_frame_index?: number | null
+          is_favorite?: boolean
           metric_confidences?: Json | null
           motion_frames?: Json | null
           phase_source?: string | null
@@ -312,6 +314,7 @@ export type Database = {
           honey_boom?: boolean | null
           id?: string
           impact_frame_index?: number | null
+          is_favorite?: boolean
           metric_confidences?: Json | null
           motion_frames?: Json | null
           phase_source?: string | null

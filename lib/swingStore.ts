@@ -75,6 +75,7 @@ export type SwingHistoryRecord = {
   tempo_ratio: number | null;
   score: number | null;
   player_profile_id: string | null;
+  is_favorite: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -115,7 +116,7 @@ const GRIP_HISTORY_COLUMNS =
   'grip_overall:swing_debug->grip_cloud->>overall, ' +
   'grip_failed:swing_debug->grip_cloud->>analysis_failed';
 
-const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id';
+const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id, is_favorite';
 
 type SupabaseError = { message: string };
 type SupabaseResult<T> = { data: T; error: SupabaseError | null };
@@ -125,6 +126,7 @@ type SupabaseResult<T> = { data: T; error: SupabaseError | null };
 type QueryChain = {
   select(cols: string): QueryChain;
   eq(col: string, val: string): QueryChain;
+  in(col: string, vals: readonly string[]): QueryChain;
   gte(col: string, val: string): QueryChain;
   not(col: string, op: 'is', val: null): QueryChain;
   or(filters: string): QueryChain;
@@ -271,6 +273,62 @@ export async function getSwingMotionFrames(
     );
   } catch {
     return null;
+  }
+}
+
+/**
+ * Per-swing render inputs for the Swing Art gallery: the raw pose frames plus
+ * the persisted phases (drives SwingArtCard's optional impact-highlight accent).
+ */
+export type SwingMotionEntry = {
+  frames: PoseFrame[];
+  phases: DetectedPhase[] | null;
+};
+
+/**
+ * Batch variant of getSwingMotionFrames — fetches motion_frames + phases for
+ * many swings in one query, keyed by id. Skips rows with null motion_frames
+ * (e.g. failed-capture stubs) so callers can treat "absent from map" as
+ * "no art available". Direct Supabase call (bypasses the adapter, like
+ * getSwingMotionFrames). Returns an empty map on empty input or DB error
+ * (logged). Does not throw. RLS scopes results to the caller's own swings.
+ */
+export async function getSwingMotionFramesBatch(
+  ids: string[],
+): Promise<Map<string, SwingMotionEntry>> {
+  const out = new Map<string, SwingMotionEntry>();
+  if (ids.length === 0) return out;
+  try {
+    const mod = require('./supabase') as {
+      supabase: { from(table: string): QueryChain };
+    };
+    const { data, error } = await mod.supabase
+      .from('swings')
+      .select('id, motion_frames, phases')
+      .in('id', ids);
+    if (error) {
+      console.error(
+        '[HoneySwing] swingStore getSwingMotionFramesBatch error:',
+        error.message,
+      );
+      return out;
+    }
+    // EXTERNAL ASSUMPTION: motion_frames JSON matches PoseFrame[] shape — same
+    // unvalidated assumption as getSwingMotionFrames.
+    const rows =
+      (data as Array<{
+        id: string;
+        motion_frames: PoseFrame[] | null;
+        phases: DetectedPhase[] | null;
+      }> | null) ?? [];
+    for (const row of rows) {
+      if (row.motion_frames) {
+        out.set(row.id, { frames: row.motion_frames, phases: row.phases ?? null });
+      }
+    }
+    return out;
+  } catch {
+    return out;
   }
 }
 
