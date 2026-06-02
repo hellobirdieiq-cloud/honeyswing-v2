@@ -325,8 +325,8 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   filterButtonActive: {
-    backgroundColor: `${GOLD}26`,
-    borderColor: GOLD,
+    backgroundColor: '#fff',
+    borderColor: '#fff',
   },
   filterText: {
     color: '#999',
@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   filterTextActive: {
-    color: GOLD,
+    color: '#1a1a1a',
   },
   listContent: {
     paddingTop: 8,
