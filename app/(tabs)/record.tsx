@@ -4,6 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowD
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
 import { Camera, useCameraDevice, useCameraFormat } from 'react-native-vision-camera';
@@ -14,13 +15,6 @@ import {
   loadFocus,
   type FocusData,
 } from '../../lib/swingMotionStore';
-import {
-  getProfiles,
-  getActiveProfile,
-  setActiveProfileId,
-  getDisplayName,
-  type PlayerProfile,
-} from '../../lib/playerProfiles';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
@@ -29,6 +23,13 @@ import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
 import { clinicSessionActive } from '@/lib/clinic/clinicSessionStore';
 import { GOLD } from '../../lib/colors';
+import {
+  registerShutter,
+  clearShutter,
+  registerStop,
+  clearStop,
+  setRecording,
+} from '../../lib/shutterStore';
 import { styles } from './recordStyles';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
@@ -79,8 +80,7 @@ export default function RecordTab() {
   const [guidanceColor, setGuidanceColor] = useState<CameraGuidanceColor | null>(null);
   const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
 
-  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
-  const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
+  const [captureMode, setCaptureMode] = useState<'instant' | 'countdown'>('instant');
   // Camera device/format selection
   const device = useCameraDevice('back');
 
@@ -139,6 +139,17 @@ export default function RecordTab() {
     targetFps,
   });
 
+  // Live refs so the tab-bar-registered shutter/stop closures always re-read the
+  // current hook fns (never a stale mount-time capture). See shutter focus-effect below.
+  const startInstantRef = useRef(startInstantCapture);
+  startInstantRef.current = startInstantCapture;
+  const startCountdownRef = useRef(startCountdownCapture);
+  startCountdownRef.current = startCountdownCapture;
+  const finalizeRef = useRef(finalizeCapture);
+  finalizeRef.current = finalizeCapture;
+  const captureModeRef = useRef(captureMode);
+  captureModeRef.current = captureMode;
+
   // ─── Pose frame handler ──────────────────────────────────────────────────────
 
   // ─── Frame processor ─────────────────────────────────────────────────────────
@@ -180,15 +191,6 @@ export default function RecordTab() {
           setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
         }
       }).catch((err) => console.error('[HoneySwing]', err));
-
-      (async () => {
-        try {
-          const ps = await getProfiles();
-          const active = await getActiveProfile();
-          setProfiles(ps);
-          setActiveProfile(active);
-        } catch (err) { console.error('[HoneySwing]', err); }
-      })();
       // eslint-disable-next-line react-hooks/exhaustive-deps -- capturePhaseRef is a ref object (stable; .current is intentionally not tracked); updateCapturePhase is defined inline in useSwingCapture and would cause infinite loop if tracked
     }, [router])
   );
@@ -199,6 +201,32 @@ export default function RecordTab() {
       return () => {
         setIsCameraActive(false);
       };
+    }, [])
+  );
+
+  // Single writer of the tab bar's isRecording boolean — kept in lockstep with the
+  // capturePhase source of truth (capturePhase === 'capturing').
+  useEffect(() => {
+    setRecording(capturePhase === 'capturing');
+  }, [capturePhase]);
+
+  // Register the center-button shutter/stop handlers on focus, clear on blur.
+  // The closures call the live refs so they re-read current hook fns at fire time.
+  useFocusEffect(
+    useCallback(() => {
+      registerShutter(() => {
+        if (capturePhaseRef.current !== 'idle') return;
+        setShowTips(false);
+        if (captureModeRef.current === 'countdown') startCountdownRef.current();
+        else startInstantRef.current();
+      });
+      registerStop(() => { finalizeRef.current(); });
+      return () => {
+        clearShutter();
+        clearStop();
+        setRecording(false);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- closures call refs (.current is live) + stable setShowTips setter; register strictly once per focus
     }, [])
   );
 
@@ -278,13 +306,9 @@ export default function RecordTab() {
 
   const showCamera = hasPermission === true && device != null;
   const isCountdown = capturePhase === 'countdown';
-  const isCapturing = capturePhase === 'capturing';
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
-  const isComplete = capturePhase === 'complete';
-  const isProcessing = capturePhase === 'processing';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
-  const canRecord = cameraReady && !isCapturing && !isWeak && !isCountdown && !isError && !isComplete && !isProcessing;
 
   return (
     <GestureHandlerRootView
@@ -373,14 +397,6 @@ export default function RecordTab() {
             <ActivityIndicator size="small" color={GOLD} />
             <Text style={styles.recordingText}>Preparing camera...</Text>
           </View>
-        ) : isCapturing ? (
-          <TouchableOpacity
-            style={styles.stopButton}
-            onPress={finalizeCapture}
-            activeOpacity={0.7}
-          >
-            <View style={styles.stopIcon} />
-          </TouchableOpacity>
         ) : isWeak ? (
           <View style={styles.weakCaptureContainer}>
             <Text style={styles.weakCaptureText}>
@@ -403,93 +419,37 @@ export default function RecordTab() {
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>Didn&apos;t catch that — give it another go</Text>
           </View>
-        ) : (
-          <View style={styles.recordButtonRow}>
-            <TouchableOpacity
-              style={[styles.countdownButton, !canRecord && styles.recordButtonDisabled]}
-              onPress={() => { setShowTips(false); startCountdownCapture(); }}
-              disabled={!canRecord}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.countdownButtonText}>3-2-1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.recordButton, !canRecord && styles.recordButtonDisabled]}
-              onPress={() => { setShowTips(false); startInstantCapture(); }}
-              disabled={!canRecord}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.recordButtonText}>Record Now</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.playerChipButton,
-                profiles.length === 0 && styles.playerChipButtonAddBorder,
-              ]}
-              onPress={() => {
-                if (profiles.length === 0) {
-                  router.push('/(tabs)/settings' as Href);
-                } else if (profiles.length === 1) {
-                  // not tappable
-                } else if (profiles.length === 2 && activeProfile) {
-                  const idx = profiles.findIndex((p) => p.id === activeProfile.id);
-                  const next = profiles[(idx + 1) % profiles.length];
-                  setActiveProfileId(next.id);
-                  setActiveProfile(next);
-                } else {
-                  Alert.alert(
-                    'Switch player',
-                    undefined,
-                    [
-                      ...profiles.map((p) => ({
-                        text: getDisplayName(p),
-                        onPress: () => {
-                          setActiveProfileId(p.id);
-                          setActiveProfile(p);
-                        },
-                      })),
-                      {
-                        text: 'Add Player',
-                        style: 'destructive' as const,
-                        onPress: () => router.push('/(tabs)/settings' as Href),
-                      },
-                      { text: 'Cancel', style: 'cancel' as const },
-                    ],
-                  );
-                }
-              }}
-              disabled={profiles.length === 1}
-              activeOpacity={profiles.length === 1 ? 1 : 0.7}
-            >
-              <Text style={styles.playerChipText}>
-                {profiles.length === 0
-                  ? 'Add Player'
-                  : profiles.length === 1
-                  ? getDisplayName(profiles[0])
-                  : profiles.length === 2
-                  ? getDisplayName(activeProfile ?? profiles[0])
-                  : `${getDisplayName(activeProfile ?? profiles[0])} ▾`}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {/* TEMP debug button — read AsyncStorage capture-stats slots */}
-        {__DEV__ && (
-          <TouchableOpacity
-            onPress={handleDebugStats}
-            style={{
-              marginTop: 16,
-              paddingVertical: 6,
-              paddingHorizontal: 12,
-              backgroundColor: 'rgba(0,0,0,0.5)',
-              borderRadius: 12,
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
-          </TouchableOpacity>
-        )}
+        ) : null}
       </View>
+
+      {/* Instant ↔ Countdown toggle — sets what the center shutter button fires */}
+      {capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={styles.modeToggle}
+          onPress={() => setCaptureMode((m) => (m === 'instant' ? 'countdown' : 'instant'))}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={captureMode === 'countdown' ? 'timer-outline' : 'flash-outline'}
+            size={16}
+            color={GOLD}
+          />
+          <Text style={styles.modeToggleText}>
+            {captureMode === 'countdown' ? '3·2·1' : 'Instant'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* TEMP debug button — read AsyncStorage capture-stats slots */}
+      {__DEV__ && (
+        <TouchableOpacity
+          onPress={handleDebugStats}
+          style={{ position: 'absolute', top: 60, right: 16, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12 }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
+        </TouchableOpacity>
+      )}
 
     </GestureHandlerRootView>
   );
