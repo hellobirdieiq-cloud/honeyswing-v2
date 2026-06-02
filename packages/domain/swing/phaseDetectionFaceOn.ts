@@ -128,57 +128,58 @@ function detectFaceOnSwingStart(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4 — impact (hand/foot x crossing with foot locked at address)
+// Phase 4 — impact: speed-banded lead-wrist (leftWrist) Y-arc-bottom.
+// Validated via scripts/testLeadWristImpact.ts (T=0.90: +9 recoveries on
+// impact_search_bounds, 1 regression). Replaces the prior trail-hand (rightWrist)
+// X-rise-vs-footRef heuristic, which keyed off the wrong hand/axis for face-on.
 // ---------------------------------------------------------------------------
+
+const IMPACT_SPEED_LOOKBACK = 3; // frames; 2D leftWrist displacement window
+const IMPACT_PEAK_PERCENTILE = 0.95; // robust max (ignores a single noisy spike)
+const IMPACT_BAND_THRESHOLD = 0.9; // band = speed >= threshold * peak
 
 function detectFaceOnImpact(
   frames: PoseFrame[],
   msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
-  // Foot reference locked at address window (frames 0..N).
-  const footFrames = Math.min(A.impact.footRefFrames, frames.length);
-  const footSamples: number[] = [];
-  for (let i = 0; i < footFrames; i++) {
-    const h = frames[i].joints.leftHeel;
-    const a = frames[i].joints.leftAnkle;
-    if (h && a) footSamples.push((h.x + a.x) / 2);
+  // 2D leftWrist (lead hand) speed with k-frame lookback; speed[0..k-1]=0, and 0
+  // when either frame's joint is missing. (Mirrors testLeadWristImpact.leadWristSpeed.)
+  const n = frames.length;
+  if (n === 0) return { frame: null, reliability: null };
+  const speed = new Array<number>(n).fill(0);
+  for (let f = IMPACT_SPEED_LOOKBACK; f < n; f++) {
+    const a = frames[f - IMPACT_SPEED_LOOKBACK].joints.leftWrist;
+    const b = frames[f].joints.leftWrist;
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    speed[f] = Math.sqrt(dx * dx + dy * dy);
   }
-  if (footSamples.length === 0) return { frame: null, reliability: null };
-  const footRef = footSamples.reduce((s, v) => s + v, 0) / footSamples.length;
 
-  // hand_avg per frame = (trailWrist.x + trailThumb.x) / 2 (canonical R-side).
-  const handAvg: (number | null)[] = frames.map((f) => {
-    const w = f.joints.rightWrist;
-    const t = f.joints.rightThumb;
-    if (!w) return null;
-    if (!t) return w.x; // thumb often missing; fall back to wrist only.
-    return (w.x + t.x) / 2;
-  });
+  // Robust peak = 95th-percentile speed (sort asc, index floor(0.95*n)).
+  // (Mirrors testLeadWristImpact.robustPeak.)
+  const sorted = [...speed].sort((a, b) => a - b);
+  const peak = sorted[Math.min(Math.floor(IMPACT_PEAK_PERCENTILE * n), n - 1)];
+  if (!(peak > 0)) return { frame: null, reliability: null };
 
-  const sustainFrames = Math.max(1, msToFrames(A.impact.riseSustainMs, msPerFrame));
-  let activeStreak = 0;
-
-  for (let F = A.impact.riseLookbackFrames; F < frames.length; F++) {
-    const here = handAvg[F];
-    const prev = handAvg[F - A.impact.riseLookbackFrames];
-    if (here == null || prev == null) {
-      activeStreak = 0;
-      continue;
-    }
-    const riseRate = here - prev;
-    if (riseRate > A.impact.riseRateThreshold) {
-      activeStreak += 1;
-    } else {
-      activeStreak = 0;
-    }
-    const riseActive = activeStreak >= sustainFrames;
-    if (riseActive && here >= footRef) {
-      const lagFrames = msToFrames(A.impact.lagCorrectionMs, msPerFrame);
-      const impactFrame = Math.max(0, F - lagFrames);
-      return { frame: impactFrame, reliability: "high" };
+  // Impact = the band frame (speed >= threshold*peak) with MAX leftWrist.y. y is
+  // top-down 0..1, so arc bottom = max y. Restricting the search to the high-speed
+  // band keeps it out of the slow address/finish regions where a global max lands.
+  // (Mirrors testLeadWristImpact.bandedArcBottom.)
+  const floor = IMPACT_BAND_THRESHOLD * peak;
+  let bestIdx: number | null = null;
+  let bestY = -Infinity;
+  for (let f = 0; f < n; f++) {
+    if (speed[f] < floor) continue;
+    const y = frames[f].joints.leftWrist?.y;
+    if (y == null) continue;
+    if (y > bestY) {
+      bestY = y;
+      bestIdx = f;
     }
   }
-  return { frame: null, reliability: "low" };
+  if (bestIdx == null) return { frame: null, reliability: null };
+  return { frame: bestIdx, reliability: "medium" };
 }
 
 // ---------------------------------------------------------------------------
@@ -327,6 +328,14 @@ export function detectFaceOnPhases(input: {
   canonical: PoseSequence;
   trail: SwingTrailPoint[];
   msPerFrame: number;
+  /**
+   * External candidate impact frame (test seam). When provided, replaces the
+   * internal detectFaceOnImpact and flows through the real downstream
+   * top/finish/gates/assembly. Production passes none → identical path. Must be a
+   * valid in-array frame index [0, frames.length-1]; out-of-array yields a clean
+   * impact_search_bounds gate. Used by scripts/testLeadWristImpact.ts.
+   */
+  impactOverride?: number;
 }): {
   phases: DetectedPhase[];
   fallbackGate: FallbackGate | null;
@@ -362,24 +371,51 @@ export function detectFaceOnPhases(input: {
   const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
   reliability.takeaway = "medium";
 
-  // Phase 4 — impact (no dependency on top)
-  const impact = detectFaceOnImpact(frames, msPerFrame);
-  assumptionsUsed.push("faceOn.impact");
-  if (impact.frame == null) {
-    return {
-      phases: [],
-      fallbackGate: "impact_search_bounds",
-      ruleDebug: {
-        detector: "face_on",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
-    };
+  // Phase 4 — impact (no dependency on top). impactOverride lets an external
+  // candidate (e.g. lead-wrist Y-arc-bottom) replace the internal detector and flow
+  // through the real downstream top/finish/gates/assembly. Production passes none.
+  let impactIdx: number;
+  if (input.impactOverride != null) {
+    // Required range [0, frames.length-1]: detectFaceOnTop's search bound
+    // `to = impactIdx - toOffset` indexes frames[F] for F <= to <= impactIdx, so an
+    // out-of-ARRAY override would read past the array (frames[F].joints on undefined).
+    // Out-of-ORDER but in-array values are safe — the existing top_search_bounds /
+    // temporal_inversion gates handle them.
+    if (input.impactOverride < 0 || input.impactOverride > frames.length - 1) {
+      return {
+        phases: [],
+        fallbackGate: "impact_search_bounds",
+        ruleDebug: {
+          detector: "face_on",
+          swing_start_frame: swingStart.frame,
+          true_address_frame: null,
+          reliability,
+          external_assumptions_used: assumptionsUsed,
+        },
+      };
+    }
+    impactIdx = input.impactOverride;
+    reliability.impact = "medium"; // external candidate, not internal high/low
+    assumptionsUsed.push("faceOn.impact:override");
+  } else {
+    const impact = detectFaceOnImpact(frames, msPerFrame);
+    assumptionsUsed.push("faceOn.impact");
+    if (impact.frame == null) {
+      return {
+        phases: [],
+        fallbackGate: "impact_search_bounds",
+        ruleDebug: {
+          detector: "face_on",
+          swing_start_frame: swingStart.frame,
+          true_address_frame: null,
+          reliability,
+          external_assumptions_used: assumptionsUsed,
+        },
+      };
+    }
+    impactIdx = impact.frame;
+    reliability.impact = impact.reliability ?? "medium";
   }
-  const impactIdx = impact.frame;
-  reliability.impact = impact.reliability ?? "medium";
 
   // Phase 3 — top (uses swing_start and impact for search bounds)
   const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
