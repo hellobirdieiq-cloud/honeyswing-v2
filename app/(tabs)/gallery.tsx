@@ -71,9 +71,14 @@ export default function GalleryScreen() {
     }, []),
   );
 
-  const rows = state.kind === 'ready' ? state.rows : [];
-  // Favorites filter is purely local — is_favorite already rides along in the
-  // SWING_HISTORY_COLUMNS list query, so no extra fetch.
+  const allRows = state.kind === 'ready' ? state.rows : [];
+  // Art gallery: only swings that produced renderable art. frame_count >= 6
+  // exactly mirrors SwingArtCard's primary guard (SwingArtCard.tsx:135) and also
+  // drops failed-capture stubs (frame_count 0). No frame loading — frame_count
+  // rides along in the SWING_HISTORY_COLUMNS list query. Kept gallery-only so the
+  // History/Progress tab (shared getSwingHistory) still lists every swing.
+  const rows = allRows.filter((r) => (r.frame_count ?? 0) >= 6);
+  // Favorites filter is purely local — is_favorite already rides along too.
   const filteredRows = filter === 'favorites' ? rows.filter((r) => r.is_favorite) : rows;
   const visibleRows = filteredRows.slice(0, visibleCount);
 
@@ -98,8 +103,8 @@ export default function GalleryScreen() {
   // filtered window here (not via filteredRows) to keep deps primitive/stable.
   useEffect(() => {
     if (state.kind !== 'ready') return;
-    const base =
-      filter === 'favorites' ? state.rows.filter((r) => r.is_favorite) : state.rows;
+    const artRows = state.rows.filter((r) => (r.frame_count ?? 0) >= 6);
+    const base = filter === 'favorites' ? artRows.filter((r) => r.is_favorite) : artRows;
     loadFramesFor(base.slice(0, visibleCount));
   }, [state, filter, visibleCount, loadFramesFor]);
 
@@ -147,7 +152,7 @@ export default function GalleryScreen() {
       <Text style={styles.title}>Swing Art</Text>
       {rows.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyBody}>No swings recorded yet.</Text>
+          <Text style={styles.emptyBody}>No swing art yet.</Text>
         </View>
       ) : (
         <>
