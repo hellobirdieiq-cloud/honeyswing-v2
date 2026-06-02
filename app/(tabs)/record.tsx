@@ -305,6 +305,10 @@ export default function RecordTab() {
   }
 
   const showCamera = hasPermission === true && device != null;
+  // Pause the live session (without unmounting → no black-flash remount) once
+  // the clip is captured: extraction runs off the saved file, so the live feed
+  // is pure waste during processing. See useSwingCapture.ts:235-236,244-256.
+  const isProcessing = capturePhase === 'processing';
   const isCountdown = capturePhase === 'countdown';
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
@@ -325,7 +329,7 @@ export default function RecordTab() {
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
             device={device}
-            isActive={isCameraActive}
+            isActive={isCameraActive && !isProcessing}
             animatedProps={animatedCameraProps}
             format={format}
             fps={targetFps}
