@@ -52,10 +52,6 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
 });
 
-/** Session counter for framing tips — show for first 3 record-screen visits only. */
-const TIP_MAX_SESSIONS = 3;
-let tipSessionsSeen = 0;
-
 export default function RecordTab() {
   const router = useRouter();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
@@ -67,7 +63,6 @@ export default function RecordTab() {
   const [cameraReady, setCameraReady] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showCameraHint, setShowCameraHint] = useState(false);
-  const [showTips, setShowTips] = useState(() => tipSessionsSeen < TIP_MAX_SESSIONS);
   const [focus, setFocus] = useState<FocusData | null>(null);
   const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
   const frameAspectRef = useRef(0);
@@ -193,10 +188,6 @@ export default function RecordTab() {
 
       loadFocus().then((nextFocus) => {
         setFocus(nextFocus);
-        if (!nextFocus) {
-          tipSessionsSeen += 1;
-          setShowTips(tipSessionsSeen <= TIP_MAX_SESSIONS);
-        }
       }).catch((err) => console.error('[HoneySwing]', err));
       // eslint-disable-next-line react-hooks/exhaustive-deps -- capturePhaseRef is a ref object (stable; .current is intentionally not tracked); updateCapturePhase is defined inline in useSwingCapture and would cause infinite loop if tracked
     }, [router])
@@ -254,7 +245,6 @@ export default function RecordTab() {
     useCallback(() => {
       registerShutter(() => {
         if (capturePhaseRef.current !== 'idle') return;
-        setShowTips(false);
         if (captureModeRef.current === 'countdown') startCountdownRef.current();
         else startInstantRef.current();
       });
@@ -270,7 +260,7 @@ export default function RecordTab() {
         }
         processingShownAtRef.current = null;
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- closures call refs (.current is live) + stable setShowTips setter; register strictly once per focus
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- closures call refs (.current is live); register strictly once per focus
     }, [])
   );
 
@@ -408,27 +398,6 @@ export default function RecordTab() {
             {hasPermission === false ? 'Camera permission denied' : 'Starting camera...'}
           </Text>
         </View>
-      )}
-
-      {/* Today's Focus card or framing tips — both gated on idle + cameraReady */}
-      {capturePhase === 'idle' && cameraReady && (
-        /* focus ? (
-          <View style={styles.focusCard}>
-            <Text style={styles.focusTitle}>Today&apos;s Focus</Text>
-            <Text style={styles.focusLabel}>{focus.label}</Text>
-            <Text style={styles.focusCue}>{focus.cue}</Text>
-          </View>
-        ) : */ (showTips ? (
-          <TouchableOpacity
-            style={styles.tipsOverlay}
-            onPress={() => setShowTips(false)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.tipText}>Step back so your full body is visible</Text>
-            <Text style={styles.tipTextSecondary}>Face the camera</Text>
-            <Text style={styles.tipDismiss}>Tap to dismiss</Text>
-          </TouchableOpacity>
-        ) : null)
       )}
 
       {/* Countdown overlay */}
