@@ -10,6 +10,7 @@
 let shutterHandler: (() => void) | null = null;
 let stopHandler: (() => void) | null = null;
 let isRecording = false;
+let isProcessing = false;
 
 const listeners = new Set<() => void>();
 
@@ -49,6 +50,14 @@ export function setRecording(value: boolean): void {
   listeners.forEach((l) => l());
 }
 
+// ─── Processing boolean (single writer: record.tsx phase-sync effect) ────────
+
+export function setProcessing(value: boolean): void {
+  if (isProcessing === value) return;
+  isProcessing = value;
+  listeners.forEach((l) => l());
+}
+
 // ─── useSyncExternalStore plumbing ───────────────────────────────────────────
 
 export function subscribe(listener: () => void): () => void {
@@ -60,4 +69,8 @@ export function subscribe(listener: () => void): () => void {
 
 export function getRecordingSnapshot(): boolean {
   return isRecording;
+}
+
+export function getProcessingSnapshot(): boolean {
+  return isProcessing;
 }

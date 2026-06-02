@@ -29,6 +29,7 @@ import {
   registerStop,
   clearStop,
   setRecording,
+  setProcessing,
 } from '../../lib/shutterStore';
 import { styles } from './recordStyles';
 
@@ -74,6 +75,12 @@ export default function RecordTab() {
 
   const cameraRef = useRef<Camera>(null);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
+
+  // Min-display guard for the tab-bar processing spinner — keeps it visible
+  // ≥ MIN_PROCESSING_MS so the near-instant failure path (processing→complete)
+  // never flashes it. Purely presentational; does not touch the capture pipeline.
+  const processingShownAtRef = useRef<number | null>(null);
+  const processingClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Camera guidance (Task 13) — EMA-smoothed shoulder separation
   const smoothedSepRef = useRef<number | null>(null);
@@ -204,10 +211,41 @@ export default function RecordTab() {
     }, [])
   );
 
-  // Single writer of the tab bar's isRecording boolean — kept in lockstep with the
-  // capturePhase source of truth (capturePhase === 'capturing').
+  // Single writer of the tab bar's isRecording/isProcessing booleans — kept in
+  // lockstep with the capturePhase source of truth.
+  const MIN_PROCESSING_MS = 400;
   useEffect(() => {
     setRecording(capturePhase === 'capturing');
+
+    if (capturePhase === 'processing') {
+      if (processingClearTimerRef.current) {
+        clearTimeout(processingClearTimerRef.current);
+        processingClearTimerRef.current = null;
+      }
+      processingShownAtRef.current = Date.now();
+      setProcessing(true);
+      return;
+    }
+
+    // Leaving processing — hold the spinner for the remainder of MIN_PROCESSING_MS
+    // so a near-instant processing→complete (failure path) doesn't flash it.
+    const shownAt = processingShownAtRef.current;
+    if (shownAt == null) {
+      setProcessing(false);
+      return;
+    }
+    const remaining = MIN_PROCESSING_MS - (Date.now() - shownAt);
+    if (remaining <= 0) {
+      setProcessing(false);
+      processingShownAtRef.current = null;
+      return;
+    }
+    if (processingClearTimerRef.current) clearTimeout(processingClearTimerRef.current);
+    processingClearTimerRef.current = setTimeout(() => {
+      setProcessing(false);
+      processingClearTimerRef.current = null;
+      processingShownAtRef.current = null;
+    }, remaining);
   }, [capturePhase]);
 
   // Register the center-button shutter/stop handlers on focus, clear on blur.
@@ -225,6 +263,12 @@ export default function RecordTab() {
         clearShutter();
         clearStop();
         setRecording(false);
+        setProcessing(false);
+        if (processingClearTimerRef.current) {
+          clearTimeout(processingClearTimerRef.current);
+          processingClearTimerRef.current = null;
+        }
+        processingShownAtRef.current = null;
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps -- closures call refs (.current is live) + stable setShowTips setter; register strictly once per focus
     }, [])

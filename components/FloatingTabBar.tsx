@@ -1,5 +1,5 @@
 import React, { useSyncExternalStore } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { GOLD } from '../lib/colors';
@@ -8,6 +8,7 @@ import {
   fireStop,
   subscribe,
   getRecordingSnapshot,
+  getProcessingSnapshot,
 } from '../lib/shutterStore';
 
 const INACTIVE = '#8A8A8E';
@@ -19,6 +20,7 @@ const RIGHT_PILLS = ['gallery', 'settings'];
 
 export default function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   const isRecording = useSyncExternalStore(subscribe, getRecordingSnapshot);
+  const isProcessing = useSyncExternalStore(subscribe, getProcessingSnapshot);
   const activeName = state.routes[state.index]?.name;
   const paddingBottom = Math.max(insets.bottom, 12);
 
@@ -55,6 +57,7 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
   }
 
   const onCenterPress = () => {
+    if (isProcessing) return; // inert during analysis — spinner is showing
     if (activeName === 'record') {
       if (isRecording) fireStop();
       else fireShutter();
@@ -65,6 +68,10 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
 
   return (
     <View style={[styles.wrap, { paddingBottom }]} pointerEvents="box-none">
+      {isProcessing && (
+        <Text style={styles.processingCaption}>Analyzing swing…</Text>
+      )}
+
       <View style={styles.pillBar}>
         {LEFT_PILLS.map(renderPill)}
         <View style={styles.centerSpacer} />
@@ -74,11 +81,20 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
       <TouchableOpacity
         style={[styles.centerButton, { bottom: paddingBottom + 27 }]}
         onPress={onCenterPress}
+        disabled={isProcessing}
         activeOpacity={0.85}
         accessibilityRole="button"
-        accessibilityLabel={isRecording ? 'Stop recording' : 'Record swing'}
+        accessibilityLabel={
+          isProcessing ? 'Analyzing swing' : isRecording ? 'Stop recording' : 'Record swing'
+        }
       >
-        {isRecording ? <View style={styles.stopSquare} /> : <Ionicons name="videocam" size={30} color="#fff" />}
+        {isProcessing ? (
+          <ActivityIndicator color="#fff" />
+        ) : isRecording ? (
+          <View style={styles.stopSquare} />
+        ) : (
+          <Ionicons name="videocam" size={30} color="#fff" />
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -143,5 +159,14 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 6,
     backgroundColor: '#fff',
+  },
+  processingCaption: {
+    color: '#C8C8CE',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    // Clears the elevated center button (which rises above the pill bar) plus
+    // its drop shadow, so the caption never clips against the button.
+    marginBottom: 72,
   },
 });
