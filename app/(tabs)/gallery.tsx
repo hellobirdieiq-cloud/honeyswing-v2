@@ -171,7 +171,6 @@ export default function GalleryScreen() {
               initialNumToRender={PAGE_SIZE}
               maxToRenderPerBatch={PAGE_SIZE}
               windowSize={5}
-              removeClippedSubviews
             />
           )}
         </>
