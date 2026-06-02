@@ -156,7 +156,7 @@ export default function GalleryScreen() {
         </View>
       ) : (
         <>
-          <View style={styles.filterRow}>
+          <View style={styles.filterSegmentControl}>
             <FilterButton label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
             <FilterButton
               label="Favorites"
@@ -202,9 +202,9 @@ function FilterButton({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      style={[styles.filterButton, active && styles.filterButtonActive]}
+      style={[styles.filterSegment, active && styles.filterSegmentActive]}
     >
-      <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
+      <Text style={[styles.filterSegmentText, active && styles.filterSegmentTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -312,28 +312,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 8,
   },
-  filterRow: {
+  filterSegmentControl: {
     flexDirection: 'row',
-    gap: 8,
-    paddingVertical: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    padding: 3,
+    marginVertical: 8,
   },
-  filterButton: {
+  filterSegment: {
     paddingVertical: 6,
     paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#333',
+    borderRadius: 17,
   },
-  filterButtonActive: {
+  filterSegmentActive: {
     backgroundColor: '#fff',
-    borderColor: '#fff',
   },
-  filterText: {
-    color: '#999',
+  filterSegmentText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
   },
-  filterTextActive: {
+  filterSegmentTextActive: {
     color: '#1a1a1a',
   },
   listContent: {
