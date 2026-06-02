@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -322,22 +321,6 @@ export default function RecordTab() {
 
   // ─── Derived state ──────────────────────────────────────────────────────────
 
-  // TEMP debug: read AsyncStorage capture-stats slots populated by useSwingCapture.
-  async function handleDebugStats() {
-    try {
-      const [failed, weak] = await Promise.all([
-        AsyncStorage.getItem('lastFailedCaptureStats'),
-        AsyncStorage.getItem('lastWeakCaptureStats'),
-      ]);
-      Alert.alert(
-        'Capture Stats',
-        `lastFailedCaptureStats:\n${failed ?? '(none)'}\n\nlastWeakCaptureStats:\n${weak ?? '(none)'}`
-      );
-    } catch (err) {
-      Alert.alert('Capture Stats', 'Read error: ' + String(err));
-    }
-  }
-
   const showCamera = hasPermission === true && device != null;
   // Pause the live session (without unmounting → no black-flash remount) once
   // the clip is captured: extraction runs off the saved file, so the live feed
@@ -454,17 +437,6 @@ export default function RecordTab() {
           <Text style={styles.modeToggleText}>
             {captureMode === 'countdown' ? '3·2·1' : 'Instant'}
           </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* TEMP debug button — read AsyncStorage capture-stats slots */}
-      {__DEV__ && (
-        <TouchableOpacity
-          onPress={handleDebugStats}
-          style={{ position: 'absolute', top: 60, right: 16, paddingVertical: 6, paddingHorizontal: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12 }}
-          activeOpacity={0.7}
-        >
-          <Text style={{ color: '#fff', fontSize: 12 }}>Debug Stats</Text>
         </TouchableOpacity>
       )}
 
