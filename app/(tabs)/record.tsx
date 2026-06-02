@@ -422,22 +422,33 @@ export default function RecordTab() {
         ) : null}
       </View>
 
-      {/* Instant ↔ Countdown toggle — sets what the center shutter button fires */}
+      {/* Capture-mode segmented control — sets what the center shutter button fires */}
       {capturePhase === 'idle' && cameraReady && (
-        <TouchableOpacity
-          style={styles.modeToggle}
-          onPress={() => setCaptureMode((m) => (m === 'instant' ? 'countdown' : 'instant'))}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={captureMode === 'countdown' ? 'timer-outline' : 'flash-outline'}
-            size={16}
-            color={GOLD}
-          />
-          <Text style={styles.modeToggleText}>
-            {captureMode === 'countdown' ? '3·2·1' : 'Instant'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.modeSegmentControl}>
+          <TouchableOpacity
+            style={[styles.modeSegment, captureMode === 'instant' && styles.modeSegmentActive]}
+            onPress={() => setCaptureMode('instant')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="flash-outline"
+              size={14}
+              color={captureMode === 'instant' ? '#1a1a1a' : 'rgba(255,255,255,0.5)'}
+            />
+            <Text style={[styles.modeSegmentText, captureMode === 'instant' && styles.modeSegmentTextActive]}>
+              Instant
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeSegment, captureMode === 'countdown' && styles.modeSegmentActive]}
+            onPress={() => setCaptureMode('countdown')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modeSegmentText, captureMode === 'countdown' && styles.modeSegmentTextActive]}>
+              3·2·1
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
 
     </GestureHandlerRootView>

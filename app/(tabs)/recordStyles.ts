@@ -82,24 +82,33 @@ export const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  modeToggle: {
+  modeSegmentControl: {
     position: 'absolute',
     top: 60,
     left: 16,
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: `${GOLD}4D`,
+    padding: 3,
   },
-  modeToggleText: {
-    color: '#fff',
+  modeSegment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 17,
+  },
+  modeSegmentActive: {
+    backgroundColor: '#fff',
+  },
+  modeSegmentText: {
     fontSize: 13,
     fontWeight: '700',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  modeSegmentTextActive: {
+    color: '#1a1a1a',
   },
   recordingIndicator: {
     flexDirection: 'row',
