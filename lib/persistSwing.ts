@@ -17,7 +17,7 @@ import type {
 import type { PhaseTag } from '../packages/domain/clinic/enums';
 import { isGoodFrame, type CaptureClassification } from './captureValidity';
 import { getCoachCode } from './coachCode';
-import { getIsLeftHanded } from './handedness';
+import { getActiveProfileHandedness } from './handedness';
 import { getPrimaryProfile } from './playerProfiles';
 import { getFrequencyDebugInfo } from './tipFrequency';
 import { positiveReinforcementEngine } from './positiveReinforcement';
@@ -186,7 +186,7 @@ export async function persistSwing(
   const cloudGrip = getGripClassification();
 
   const coachCode = await getCoachCode();
-  const isLeftHanded = await getIsLeftHanded();
+  const isLeftHanded = await getActiveProfileHandedness();
   const ageTier = await getAgeTier();
 
   const enrichedFrames = enrichFramesWithVelocity(frames);

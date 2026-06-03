@@ -31,6 +31,7 @@ declare function require(id: string): unknown;
 export type SwingRecord = {
   id: string;
   user_id: string;
+  player_profile_id: string | null;
   created_at: string;
   score: number | null;
   honey_boom: boolean;
@@ -106,7 +107,7 @@ export type SwingStoreAdapter = {
 };
 
 const SWING_RECORD_COLUMNS =
-  'id, user_id, created_at, score, honey_boom, frame_count, duration_ms, ' +
+  'id, user_id, player_profile_id, created_at, score, honey_boom, frame_count, duration_ms, ' +
   'pose_success_rate, capture_validity, phase_source, failure_reason, ' +
   'backswing_ms, downswing_ms, tempo_ratio, impact_frame_index, app_version, ' +
   'coach_name, analysis_version, video_storage_path, video_uploaded_at, swing_debug, ' +

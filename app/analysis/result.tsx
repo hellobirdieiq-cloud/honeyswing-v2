@@ -28,8 +28,9 @@ import {
 } from '../../packages/domain/swing/tempoAnalysis';
 import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
-import { getIsLeftHanded } from '../../lib/handedness';
-import { getPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
+import { getActiveProfileHandedness } from '../../lib/handedness';
+import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
+import { resolveHeaderProfile } from '../../lib/headerIdentity';
 import { getCoachCode } from '../../lib/coachCode';
 import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
@@ -140,6 +141,8 @@ export default function ResultScreen() {
   // navigation falls through to false because the tapped swingId won't match.
   const isLiveSwing = motion !== null && (!swingId || swingId === liveSwingId);
   const [swingRecord, setSwingRecord] = useState<SwingRecord | null>(null);
+  const [recordLoaded, setRecordLoaded] = useState(false);
+  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
@@ -169,6 +172,7 @@ export default function ResultScreen() {
 
   useEffect(() => {
     getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
+    getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
   }, []);
 
   const player = useVideoPlayer(videoUri, (p) => {
@@ -201,7 +205,7 @@ export default function ResultScreen() {
   }, [videoSectionY]);
 
   useEffect(() => {
-    getIsLeftHanded().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
+    getActiveProfileHandedness().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
     getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
 
     // Check swing limit after this swing was persisted
@@ -216,12 +220,16 @@ export default function ResultScreen() {
 
   useEffect(() => {
     if (!swingId) return;
-    getSwingById(swingId).then((swing) => {
-      if (!swing) return;
-      setSwingRecord(swing);
-      const gc = swing.swing_debug?.grip_cloud as GripClassification | undefined;
-      if (gc && !gc.analysis_failed) setGripCloud(gc);
-    });
+    setRecordLoaded(false);
+    getSwingById(swingId)
+      .then((swing) => {
+        if (!swing) return;
+        setSwingRecord(swing);
+        const gc = swing.swing_debug?.grip_cloud as GripClassification | undefined;
+        if (gc && !gc.analysis_failed) setGripCloud(gc);
+      })
+      .catch((err) => console.error('[HoneySwing]', err))
+      .finally(() => setRecordLoaded(true));
   }, [swingId]);
 
   useEffect(() => {
@@ -437,6 +445,16 @@ export default function ResultScreen() {
   const skeletonW = screenW - 48;
   const skeletonH = Math.round(skeletonW * 0.85);
 
+  // Header identity: the viewed swing's OWN attribution governs (not the current
+  // primary). Live swing belongs to the current primary, so its pre-load fallback
+  // is activeProfile; the history path must not flash another kid's name pre-load.
+  const headerProfile = resolveHeaderProfile(
+    swingRecord,
+    profiles,
+    isLiveSwing ? activeProfile : null,
+    recordLoaded,
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* 1. Header */}
@@ -449,7 +467,7 @@ export default function ResultScreen() {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {activeProfile?.name ? `${activeProfile.name}'s Swing` : 'Your Swing'}
+          {headerProfile?.name ? `${headerProfile.name}'s Swing` : 'Your Swing'}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
