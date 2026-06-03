@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +22,13 @@ import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
 import { clinicSessionActive } from '@/lib/clinic/clinicSessionStore';
 import { GOLD } from '../../lib/colors';
+import {
+  getProfiles,
+  getPrimaryProfile,
+  setPrimaryProfile,
+  getDisplayName,
+  type PlayerProfile,
+} from '../../lib/playerProfiles';
 import {
   registerShutter,
   clearShutter,
@@ -82,6 +89,29 @@ export default function RecordTab() {
   const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
 
   const [captureMode, setCaptureMode] = useState<'instant' | 'countdown'>('instant');
+
+  // Active-kid chip — second UI entry point to the SAME primary-profile switch
+  // (setPrimaryProfile / getPrimaryProfile) that Settings + swing attribution use.
+  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
+  const [primaryId, setPrimaryId] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const refreshProfiles = useCallback(async () => {
+    const all = await getProfiles();
+    const primary = await getPrimaryProfile();
+    setProfiles(all);
+    setPrimaryId(primary?.id ?? null);
+  }, []);
+
+  const handleSelectKid = useCallback(
+    async (id: string) => {
+      await setPrimaryProfile(id); // same canonical switch as Settings + #148 read path
+      await refreshProfiles();
+      setPickerOpen(false);
+    },
+    [refreshProfiles]
+  );
+
   // Camera device/format selection
   const device = useCameraDevice('back');
 
@@ -188,8 +218,12 @@ export default function RecordTab() {
       loadFocus().then((nextFocus) => {
         setFocus(nextFocus);
       }).catch((err) => console.error('[HoneySwing]', err));
+
+      // Re-read profiles/primary on focus so a switch made in Settings reflects here
+      // (playerProfiles is stateless — no subscription mechanism).
+      refreshProfiles().catch((err) => console.error('[HoneySwing]', err));
       // eslint-disable-next-line react-hooks/exhaustive-deps -- capturePhaseRef is a ref object (stable; .current is intentionally not tracked); updateCapturePhase is defined inline in useSwingCapture and would cause infinite loop if tracked
-    }, [router])
+    }, [router, refreshProfiles])
   );
 
   useFocusEffect(
@@ -450,6 +484,49 @@ export default function RecordTab() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Active-kid chip (top-right) — shows who the next swing is attributed to;
+          tap to switch the primary profile. Mirrors the top-left mode toggle's style. */}
+      {capturePhase === 'idle' && cameraReady && profiles.length > 0 && (
+        <TouchableOpacity
+          style={styles.kidChip}
+          onPress={() => setPickerOpen(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="person" size={13} color={GOLD} />
+          <Text style={styles.kidChipText} numberOfLines={1}>
+            {getDisplayName(profiles.find((p) => p.id === primaryId) ?? profiles[0])}
+          </Text>
+          <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+        </TouchableOpacity>
+      )}
+
+      {/* Kid picker dropdown — selecting routes through setPrimaryProfile (same switch as Settings). */}
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <Pressable style={styles.kidPickerBackdrop} onPress={() => setPickerOpen(false)}>
+          <View style={styles.kidPickerCard}>
+            {profiles.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                style={styles.kidPickerRow}
+                onPress={() => handleSelectKid(p.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.kidPickerDot, { color: p.id === primaryId ? GOLD : 'transparent' }]}>
+                  ●
+                </Text>
+                <Text style={styles.kidPickerName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.kidPickerHand}>{p.isLeftHanded ? 'L' : 'R'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
     </GestureHandlerRootView>
   );

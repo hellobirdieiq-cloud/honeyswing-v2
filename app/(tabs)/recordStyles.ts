@@ -110,6 +110,58 @@ export const styles = StyleSheet.create({
   modeSegmentTextActive: {
     color: '#1a1a1a',
   },
+  // Active-kid chip (top-right) — mirrors modeSegmentControl's dark pill for balance.
+  kidChip: {
+    position: 'absolute',
+    top: 60,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    maxWidth: 160,
+  },
+  kidChipText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  kidPickerBackdrop: {
+    flex: 1,
+  },
+  kidPickerCard: {
+    position: 'absolute',
+    top: 100,
+    right: 16,
+    minWidth: 160,
+    backgroundColor: 'rgba(20,20,20,0.96)',
+    borderRadius: 14,
+    paddingVertical: 4,
+  },
+  kidPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  kidPickerDot: {
+    fontSize: 12,
+    width: 12,
+  },
+  kidPickerName: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  kidPickerHand: {
+    color: '#999',
+    fontSize: 12,
+  },
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
