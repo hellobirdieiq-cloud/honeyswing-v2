@@ -1,4 +1,6 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, getUserId } from './supabase';
+import { ensureProfile } from './ensureProfile';
 import { incrementLocalSwingCount } from './swingLimit';
 import type { Database, Json } from './database.types';
 import type { PoseFrame, NormalizedJoint, JointName } from '../packages/pose/PoseTypes';
@@ -28,7 +30,35 @@ import { getGripClassification } from './gripStore';
 import { emit as emitEvent } from './eventBus';
 import type { CaptureFrameStats } from './usePoseFrameHandler';
 
-const APP_VERSION = '1.9.8';
+const APP_VERSION = '1.10.0';
+
+type InsertFailClass =
+  | 'fk_missing_profile'
+  | 'rls_denied'
+  | 'constraint'
+  | 'network'
+  | 'unknown';
+
+/**
+ * Classify a swings-insert failure so persist_swing telemetry distinguishes a
+ * wiring bug (missing profiles row / RLS) from a genuine network failure.
+ * A returned PostgrestError carries a Postgres code; a thrown error (fetch
+ * reject) has none and is treated as network.
+ */
+function classifyInsertError(
+  insertError: PostgrestError | null,
+  thrown: unknown,
+): InsertFailClass {
+  if (insertError) {
+    const code = insertError.code;
+    if (code === '23503') return 'fk_missing_profile';
+    if (code === '42501') return 'rls_denied';
+    if (code && code.startsWith('23')) return 'constraint';
+    return 'unknown';
+  }
+  if (thrown) return 'network';
+  return 'unknown';
+}
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {
@@ -252,7 +282,34 @@ export async function persistSwing(
     }) as unknown as Json,
   };
 
-  const { data, error } = await supabase.from('swings').insert(row).select('id').single();
+  let data: { id: string } | null = null;
+  let insertError: PostgrestError | null = null;
+  let thrown: unknown = null;
+  try {
+    const res = await supabase.from('swings').insert(row).select('id').single();
+    data = res.data;
+    insertError = res.error;
+  } catch (err) {
+    thrown = err;
+  }
+
+  // #9 self-heal: the swings.user_id -> profiles.id FK rejects the insert with
+  // code 23503 when this session never got a profiles row (failed/raced
+  // ensureProfile at sign-in). Create the row and retry exactly once — no loop.
+  if (insertError?.code === '23503') {
+    const healed = await ensureProfile(profileId);
+    if (healed) {
+      thrown = null;
+      try {
+        const res = await supabase.from('swings').insert(row).select('id').single();
+        data = res.data;
+        insertError = res.error;
+      } catch (err) {
+        insertError = null;
+        thrown = err;
+      }
+    }
+  }
 
   // Real swings count toward the anonymous limit; stub rows (failure
   // persists with empty frames) do NOT — they aren't swings.
@@ -260,9 +317,25 @@ export async function persistSwing(
     await incrementLocalSwingCount();
   }
 
-  if (error) {
-    console.error('[HoneySwing] persistSwing DB error:', error.message);
-    throw new Error(`persistSwing failed: ${error.message}`);
+  if (insertError || thrown) {
+    const failClass = classifyInsertError(insertError, thrown);
+    const message =
+      insertError?.message ??
+      (thrown instanceof Error ? thrown.message : String(thrown));
+    // Queryable telemetry (drains to public.events via the offline-capable
+    // event bus) so FK/RLS/network failure rates are visible across users.
+    emitEvent('error.captured', {
+      scope: 'persist_swing',
+      message,
+      context: {
+        code: insertError?.code ?? null,
+        classification: failClass,
+        captureValidity: classification?.validity ?? null,
+        frameCount: frames.length,
+      },
+    });
+    console.error('[HoneySwing] persistSwing DB error:', message);
+    throw new Error(`persistSwing failed: ${message}`);
   }
 
   console.log('[HoneySwing] Swing persisted, frames:', frames.length);

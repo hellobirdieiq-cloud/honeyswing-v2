@@ -23,17 +23,42 @@ export async function uploadSwingVideo(swingId: string, videoPath: string): Prom
 
     const arrayBuffer = decode(base64);
 
-    const { error: uploadError } = await supabase.storage
-      .from('swing-videos')
-      .upload(storagePath, arrayBuffer, {
-        contentType: 'video/quicktime',
-        upsert: false,
-      });
+    // Bounded retry: the previous fire-and-forget upload dropped ~8.5% of
+    // videos on transient failures with no second chance. Retry within the
+    // call; an already-exists error means a prior attempt landed (success).
+    const MAX_ATTEMPTS = 3;
+    let uploaded = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const { error: uploadError } = await supabase.storage
+        .from('swing-videos')
+        .upload(storagePath, arrayBuffer, {
+          contentType: 'video/quicktime',
+          upsert: false,
+        });
 
-    if (uploadError) {
-      console.error('[HoneySwing] uploadSwingVideo upload failed:', JSON.stringify(uploadError, null, 2));
-      return;
+      if (!uploadError) {
+        uploaded = true;
+        break;
+      }
+
+      const msg = uploadError.message ?? '';
+      const statusCode = (uploadError as { statusCode?: string }).statusCode;
+      if (/exist|duplicate/i.test(msg) || statusCode === '409') {
+        // Object already present from an earlier attempt — treat as uploaded.
+        uploaded = true;
+        break;
+      }
+
+      console.error(
+        `[HoneySwing] uploadSwingVideo attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+        JSON.stringify(uploadError, null, 2),
+      );
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+      }
     }
+
+    if (!uploaded) return;
 
     const { error: updateError } = await supabase
       .from('swings')
