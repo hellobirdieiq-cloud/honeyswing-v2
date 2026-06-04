@@ -12,6 +12,7 @@
  */
 
 import type { PoseFrame } from '../packages/pose/PoseTypes';
+import { correctLowerBodyIdentity } from '../packages/domain/swing/lowerBodyIdentity';
 import type { GolfAngles } from '../packages/domain/swing/angles';
 import type { SwingTempo } from '../packages/domain/swing/tempoAnalysis';
 import type { DetectedPhase, SwingTrailPoint } from '../packages/domain/swing/phaseDetection';
@@ -269,17 +270,24 @@ export async function getSwingMotionFrames(
     // EXTERNAL ASSUMPTION: motion_frames JSON matches PoseFrame[] shape —
     // no runtime validator. Enriched frames (with velocity fields) are
     // compatible; extra fields are ignored by consumers.
-    return (
+    const frames =
       (data as { motion_frames: PoseFrame[] | null } | null)?.motion_frames ??
-      null
-    );
+      null;
+    // Persisted motion_frames are RAW by design (debug source of truth,
+    // matching the keypoint_veto pattern). Apply the pure, idempotent
+    // lower-body identity correction at read time so replay/gallery render
+    // corrected legs — including rows persisted before the pass existed.
+    // Clinic's raw-signal surface is unaffected: lib/clinic/fetchMotionFrames.ts
+    // has its own direct query and does not route through here.
+    return frames ? correctLowerBodyIdentity(frames).frames : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Per-swing render inputs for the Swing Art gallery: the raw pose frames plus
+ * Per-swing render inputs for the Swing Art gallery: the pose frames
+ * (persisted raw, corrected at read time via correctLowerBodyIdentity) plus
  * the persisted phases (drives SwingArtCard's optional impact-highlight accent).
  */
 export type SwingMotionEntry = {
@@ -325,7 +333,11 @@ export async function getSwingMotionFramesBatch(
       }> | null) ?? [];
     for (const row of rows) {
       if (row.motion_frames) {
-        out.set(row.id, { frames: row.motion_frames, phases: row.phases ?? null });
+        // Same read-time identity correction as getSwingMotionFrames.
+        out.set(row.id, {
+          frames: correctLowerBodyIdentity(row.motion_frames).frames,
+          phases: row.phases ?? null,
+        });
       }
     }
     return out;

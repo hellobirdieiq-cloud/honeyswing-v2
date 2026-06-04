@@ -14,6 +14,7 @@ import {
   setCurrentSwingVideoUri,
 } from './swingMotionStore';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
+import { correctLowerBodyIdentity } from '../packages/domain/swing/lowerBodyIdentity';
 import { persistSwing } from './persistSwing';
 import { persistFailedSwing } from './persistFailedSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
@@ -267,8 +268,21 @@ export function useSwingCapture({
           }
 
           const { poseFrames, rtmw } = result;
+          // Layer 0 routing — corrected stream feeds ONE consumer: the live
+          // replay store (setCurrentSwingMotion), i.e. the kid-visible
+          // skeleton. Everything else deliberately reads RAW poseFrames:
+          //   - analyzePoseSequence: applies the same idempotent pass at its
+          //     canonical chokepoint — bit-identical output, and RAW input
+          //     preserves the true swap set in swing_debug.keypoint_identity.
+          //   - grip block: wrist joints only; identity never touches wrists.
+          //   - classifyCapture: confidence-count over symmetric L/R pairs —
+          //     provably swap-invariant (lib/captureValidity.ts:11-26).
+          //   - persistSwing: persisted motion_frames are the debug source of
+          //     truth; historical reads re-apply this pure pass at fetch time
+          //     (lib/swingStore.ts getSwingMotionFrames/Batch).
+          const correctedFrames = correctLowerBodyIdentity(poseFrames).frames;
           const sequence: PoseSequence = {
-            frames: poseFrames,
+            frames: poseFrames, // RAW → analysis (corrects internally; see above)
             source: 'rtmw-l-2d-v1',
             metadata: { fps: CAPTURE_FPS, durationMs: video.duration * 1000 },
           };
@@ -312,7 +326,7 @@ export function useSwingCapture({
             try { await releaseGripBuffer(); } catch {}
           }
 
-          setCurrentSwingMotion({ frames: poseFrames, recordedAt: Date.now(), source: 'live-camera' });
+          setCurrentSwingMotion({ frames: correctedFrames, recordedAt: Date.now(), source: 'live-camera' });
           setCurrentSwingAnalysis(analysis);
           updateCapturePhase('complete');
 
@@ -326,7 +340,7 @@ export function useSwingCapture({
             : baseClassification;
           const captureFrameStats = getCaptureFrameStats();
           swingIdPromiseRef.current = persistSwing(
-            poseFrames,
+            poseFrames, // RAW by design — persisted motion_frames are the debug source of truth
             analysis,
             classification,
             {

@@ -1,6 +1,11 @@
 import { JointName, PoseFrame } from "../../pose/PoseTypes";
 import { PoseSequence } from "../../pose/PoseTypes";
 import { vetoAndInterpolateKeypoints, type UntrustedMap } from "./keypointVeto";
+import {
+  correctLowerBodyIdentity,
+  toIdentityDebug,
+  type LowerBodyIdentityDebug,
+} from "./lowerBodyIdentity";
 import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle, detectCameraAngleEarly } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
@@ -65,6 +70,7 @@ export type FrameSelectionDebug = {
   implausible_frame_filter?: ImplausibleFrameDebug;
   z_trace?: ZTraceDebug;
   keypoint_veto?: UntrustedMap | null;
+  keypoint_identity?: LowerBodyIdentityDebug | null;
   phase_rules?: PhaseRuleDebug;
   camera_angle_pre?: CameraAngle;
   lead_wrist_hinge?: LeadWristHinge | null;
@@ -514,19 +520,32 @@ export function analyzePoseSequence(
   // logic is untouched; it simply consumes cleaner keypoints. untrustedMap is a
   // diagnostic surface for later layers — NOT fed into phase detection here.
   //
-  // skipVeto bypasses the pass entirely, reproducing the exact pre-L1 path
-  // (canonical = toCanonicalSequence(sequence, isLeftHanded)). It exists ONLY
-  // for veto-validate.ts test #1 (true veto-vs-no-veto comparison) — no
-  // production/app call site passes it.
+  // skipVeto bypasses the L1 pass, reproducing the pre-L1 path (canonical =
+  // toCanonicalSequence(identity-corrected sequence, isLeftHanded)). It
+  // exists ONLY for veto-validate.ts test #1 (true veto-vs-no-veto
+  // comparison) — no production/app call site passes it. Layer 0 runs in
+  // BOTH branches so that comparison holds identity correction constant.
+  //
+  // Layer 0 — lower-body L/R identity correction (see lowerBodyIdentity.ts).
+  // RTMW exchanges the whole lower body's left/right labels in runs the
+  // velocity veto cannot fix (sustained swaps have low interior velocity and
+  // the veto re-anchors onto the swapped track). Relabel before the veto so
+  // it, the canonical mirror, and phase detection see identity-stable legs.
+  const identity = correctLowerBodyIdentity(sequence.frames);
+  const identitySequence: PoseSequence =
+    identity.swappedFrames.length > 0
+      ? { ...sequence, frames: identity.frames }
+      : sequence;
+
   let canonical: PoseSequence;
   let untrustedMap: UntrustedMap | null;
   if (opts?.skipVeto) {
-    canonical = toCanonicalSequence(sequence, isLeftHanded);
+    canonical = toCanonicalSequence(identitySequence, isLeftHanded);
     untrustedMap = null;
   } else {
-    const veto = vetoAndInterpolateKeypoints(sequence.frames);
+    const veto = vetoAndInterpolateKeypoints(identitySequence.frames);
     canonical = toCanonicalSequence(
-      { ...sequence, frames: veto.cleanedFrames },
+      { ...identitySequence, frames: veto.cleanedFrames },
       isLeftHanded,
     );
     untrustedMap = veto.untrustedMap;
@@ -712,6 +731,7 @@ export function analyzePoseSequence(
       implausible_frame_filter: implausibleFrameDebug,
       z_trace: computeZTrace(canonical.frames, phases),
       keypoint_veto: untrustedMap,
+      keypoint_identity: toIdentityDebug(identity),
       phase_rules: ruleDebug,
       camera_angle_pre: earlyAngle.angle,
       lead_wrist_hinge: leadWristHinge,
