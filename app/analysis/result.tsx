@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
@@ -170,6 +170,16 @@ export default function ResultScreen() {
     [isLiveSwing, motion, historicalFrames],
   );
 
+  // Frame-index ↔ video-time mapping. Post-hoc extraction guarantees frame i
+  // ↔ video time i × msPerFrame (timestamps assigned as i × step in
+  // extractPoseFromVideo.ts), so this is exact and offset-free.
+  const msPerFrame = useMemo(() => {
+    const frames = effectiveMotion?.frames;
+    return frames && frames.length > 1
+      ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) / (frames.length - 1)
+      : 33;
+  }, [effectiveMotion]);
+
   useEffect(() => {
     getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
     getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
@@ -179,6 +189,14 @@ export default function ResultScreen() {
     p.loop = true;
     p.playbackRate = 0.25;
   });
+
+  // Driven mode (video present): the skeleton canvas matches the video panel
+  // exactly — same width (content column, container padding 24/side) and the
+  // video's 9:16 aspect — so the identity transform in SwingSkeletonCanvas
+  // frames the figure pixel-identically to the golfer in the video.
+  const hasVideo = !!(videoUri && player);
+  const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
+  const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
 
   useEffect(() => {
     if (player) player.playbackRate = speed;
@@ -192,6 +210,66 @@ export default function ResultScreen() {
     });
     return () => sub.remove();
   }, [player]);
+
+  // Skeleton playhead, derived from the video player's clock. null until the
+  // first timeUpdate; the canvas call site maps no-video → null → the canvas
+  // stays uncontrolled (self-clocked rAF).
+  const [videoIdx, setVideoIdx] = useState<number | null>(null);
+  const frameCount = effectiveMotion?.frames?.length ?? 0;
+  useEffect(() => {
+    if (!player) return;
+    // expo-video emits timeUpdate ONLY when the interval is set (default 0 =
+    // disabled). 1/60 s keeps step with one data-frame per ~16.7 ms at 1×.
+    player.timeUpdateEventInterval = 1 / 60;
+    const sub = player.addListener('timeUpdate', (payload) => {
+      if (frameCount === 0) return;
+      const idx = Math.round((payload.currentTime * 1000) / msPerFrame);
+      setVideoIdx(Math.min(Math.max(0, idx), frameCount - 1));
+    });
+    return () => {
+      // No interval reset here: on unmount useVideoPlayer has already
+      // release()d the player (its hook is declared first, cleanups run in
+      // declaration order) and the native Property setter throws
+      // NativeSharedObjectNotFound on a released object; on dep-change
+      // re-runs the effect body re-sets 1/60 anyway. sub.remove() is safe
+      // either way — listeners live JS-side, no native-peer lookup.
+      sub.remove();
+    };
+  }, [player, frameCount, msPerFrame]);
+
+  // Deferred-play timer guard: a chip tap <100 ms before back-nav would fire
+  // play() on a released player (same NativeSharedObjectNotFound throw, via
+  // the global handler). Clear the timer on unmount and no-op the callback
+  // once unmounted.
+  const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (seekTimerRef.current != null) {
+        clearTimeout(seekTimerRef.current);
+        seekTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  // THE one seek path for every phase-chip surface (canvas row + video-section
+  // row). Divergent chip behavior was the original sync bug — keep it single.
+  const seekToFrame = useCallback((index: number) => {
+    if (!player) return;
+    player.pause();
+    player.currentTime = Math.max(0, (index * msPerFrame) / 1000);
+    // Sync skeleton immediately — timeUpdate is not reliably emitted while
+    // paused.
+    setVideoIdx(Math.min(Math.max(0, index), Math.max(0, frameCount - 1)));
+    if (seekTimerRef.current != null) clearTimeout(seekTimerRef.current);
+    seekTimerRef.current = setTimeout(() => {
+      seekTimerRef.current = null;
+      if (!isMountedRef.current) return;
+      player.play();
+    }, 100);
+  }, [player, msPerFrame, frameCount]);
 
   const scrollRef = useRef<ScrollView>(null);
   const [videoSectionY, setVideoSectionY] = useState<number | null>(null);
@@ -533,8 +611,14 @@ export default function ResultScreen() {
               <SwingSkeletonCanvas
                 frames={effectiveMotion.frames}
                 phases={analysis?.phases ?? null}
-                width={screenW - 32}
-                height={380}
+                width={skeletonCanvasW}
+                height={skeletonCanvasH}
+                // Driven by the video playhead when a video exists; null →
+                // uncontrolled self-clocked replay (video-less swings).
+                playheadIdx={hasVideo ? (videoIdx ?? 0) : null}
+                // Driven-mode chip taps seek the video — the same shared seek
+                // the video-section chips use, so the two rows cannot diverge.
+                onPhaseSeek={(_phase, index) => seekToFrame(index)}
               />
             ) : null}
 
@@ -589,13 +673,7 @@ export default function ResultScreen() {
                       disabled={!enabled}
                       onPress={
                         enabled
-                          ? () => {
-                              player.pause();
-                              player.currentTime = 0;
-                              setTimeout(() => {
-                                player.play();
-                              }, 100);
-                            }
+                          ? () => seekToFrame(0)
                           : undefined
                       }
                       activeOpacity={0.7}
@@ -617,16 +695,7 @@ export default function ResultScreen() {
                       enabled
                         ? () => {
                             if (typeof phaseEntry.index !== 'number') return;
-                            const frames = effectiveMotion?.frames;
-                            const msPerFrame = (frames && frames.length > 1)
-                              ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) / (frames.length - 1)
-                              : 33;
-                            const seekSeconds = Math.max(0, (phaseEntry.index * msPerFrame) / 1000);
-                            player.pause();
-                            player.currentTime = seekSeconds;
-                            setTimeout(() => {
-                              player.play();
-                            }, 100);
+                            seekToFrame(phaseEntry.index);
                           }
                         : undefined
                     }

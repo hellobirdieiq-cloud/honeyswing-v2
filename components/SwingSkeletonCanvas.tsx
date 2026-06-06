@@ -126,11 +126,43 @@ interface Props {
   phases: DetectedPhase[] | null;
   width: number;
   height: number;
+  /**
+   * Drive the displayed frame from an external playhead (the video player).
+   * null/absent → uncontrolled: self-clocked rAF loop, autoplay, endIdx
+   * cutoff, internal controls (existing behavior — video-less swings).
+   * number → driven: render frames[clamp(playheadIdx)], skip the self-clock,
+   * hide the speed/play row (the video owns transport).
+   */
+  playheadIdx?: number | null;
+  /**
+   * Driven mode only: phase-chip taps are routed here (seek the video, the
+   * single clock) instead of the internal self-clock handler. When absent in
+   * driven mode the chip row is hidden rather than rendering dead chips.
+   */
+  onPhaseSeek?: (phase: string, index: number) => void;
 }
 
-export default function SwingSkeletonCanvas({ frames, phases, width, height }: Props) {
+export default function SwingSkeletonCanvas({
+  frames,
+  phases,
+  width,
+  height,
+  playheadIdx = null,
+  onPhaseSeek,
+}: Props) {
+  const driven = playheadIdx != null;
   const transform = useMemo(() => {
     if (frames.length === 0) return null;
+    if (driven) {
+      // Driven mode: video & pose share the full 9:16 frame (no crop on either
+      // side — pose extracted from the full frame, video contain-fit in a 9:16
+      // box), so the identity mapping puts each joint on the golfer's pixel.
+      // (1 - x): render-time mirror correction, same flip as the synthetic
+      // transform below (see skeleton x-mirror convergence).
+      const tx = (x: number) => (1 - x) * width;
+      const ty = (y: number) => y * height;
+      return { tx, ty };
+    }
     const f0 = frames[0];
     const top = getJoint(f0, 'leftShoulder') ?? getJoint(f0, 'rightShoulder') ?? getJoint(f0, 'nose');
     const bot =
@@ -152,7 +184,7 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     const tx = (x: number) => anchorX - (x - hipX0) * hScale;
     const ty = (y: number) => anchorY + (y - hipY0) * scale;
     return { tx, ty };
-  }, [frames, width, height]);
+  }, [driven, frames, width, height]);
 
   const endIdx = useMemo(() => {
     if (frames.length < 4) return Math.max(0, frames.length - 1);
@@ -175,6 +207,7 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
   const lastWallRef = useRef<number>(0);
 
   useEffect(() => {
+    if (driven) return; // driven mode: the video playhead owns the clock
     if (!isPlaying) return;
     let cancelled = false;
     frameDebtRef.current = 0;
@@ -213,7 +246,13 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
       cancelled = true;
       if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, speed, frames, endIdx]);
+  }, [driven, isPlaying, speed, frames, endIdx]);
+
+  // Single resolved index for everything rendered below: external playhead
+  // when driven, the self-clocked index otherwise.
+  const displayIdx = driven
+    ? Math.min(Math.max(0, playheadIdx), Math.max(0, frames.length - 1))
+    : currentIdx;
 
   const handlePlayPause = useCallback(() => {
     if (currentIdx >= endIdx) {
@@ -237,9 +276,25 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     }
   }, [phases, endIdx]);
 
+  // Driven mode: route chip taps to the video (the single clock — it drives
+  // this canvas back via playheadIdx). Uncontrolled: internal self-clock.
+  const handleChipTap = useCallback((phase: PhaseChipKey) => {
+    if (driven) {
+      if (!onPhaseSeek) return;
+      if (phase === 'full_swing') {
+        onPhaseSeek('full_swing', 0);
+        return;
+      }
+      const p = phases?.find((x) => x.phase === phase);
+      if (p && typeof p.index === 'number') onPhaseSeek(phase, p.index);
+      return;
+    }
+    handlePhaseChip(phase);
+  }, [driven, onPhaseSeek, phases, handlePhaseChip]);
+
   const trails = useMemo(() => {
     if (!transform || frames.length === 0) return null;
-    const safeIdx = Math.min(currentIdx, frames.length - 1);
+    const safeIdx = Math.min(displayIdx, frames.length - 1);
     const tNow = frames[safeIdx].timestampMs;
     const window: number[] = [];
     for (let i = safeIdx; i >= 0; i--) {
@@ -264,11 +319,11 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
     const L = buildHand(LEFT_HAND_JOINTS);
     const R = buildHand(RIGHT_HAND_JOINTS);
     return { leftFull: L.full, leftTail: L.tail, rightFull: R.full, rightTail: R.tail };
-  }, [frames, currentIdx, transform]);
+  }, [frames, displayIdx, transform]);
 
   if (!transform || frames.length === 0) return null;
 
-  const frame = frames[Math.min(currentIdx, frames.length - 1)];
+  const frame = frames[Math.min(displayIdx, frames.length - 1)];
 
   const sp = (name: JointName) => {
     const j = getJoint(frame, name);
@@ -376,42 +431,49 @@ export default function SwingSkeletonCanvas({ frames, phases, width, height }: P
         </Svg>
       </View>
 
-      <View style={styles.controlsRow}>
-        {([0.25, 0.5, 1] as const).map((s) => (
-          <TouchableOpacity
-            key={s}
-            style={[styles.speedButton, speed === s && styles.speedButtonActive]}
-            onPress={() => setSpeed(s)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.speedText, speed === s && styles.speedTextActive]}>{s}x</Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity style={styles.playButton} onPress={handlePlayPause} activeOpacity={0.7}>
-          <Text style={styles.playText}>{isPlaying ? '⏸' : '▶'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.phaseRow}>
-        {PHASE_CHIPS.map((entry) => {
-          const enabled =
-            entry.phase === 'full_swing' ||
-            !!phases?.find((p) => p.phase === entry.phase);
-          return (
+      {/* Driven mode: the video owns transport (play/pause/speed) — hide this
+          row. The phase-chip row below stays visible and seeks the video via
+          onPhaseSeek, so chips remain reachable right under the skeleton. */}
+      {!driven && (
+        <View style={styles.controlsRow}>
+          {([0.25, 0.5, 1] as const).map((s) => (
             <TouchableOpacity
-              key={entry.phase}
-              style={[styles.chip, !enabled && styles.chipDisabled]}
-              onPress={enabled ? () => handlePhaseChip(entry.phase) : undefined}
-              disabled={!enabled}
+              key={s}
+              style={[styles.speedButton, speed === s && styles.speedButtonActive]}
+              onPress={() => setSpeed(s)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.chipText, !enabled && styles.chipTextDisabled]}>
-                {entry.label}
-              </Text>
+              <Text style={[styles.speedText, speed === s && styles.speedTextActive]}>{s}x</Text>
             </TouchableOpacity>
-          );
-        })}
-      </View>
+          ))}
+          <TouchableOpacity style={styles.playButton} onPress={handlePlayPause} activeOpacity={0.7}>
+            <Text style={styles.playText}>{isPlaying ? '⏸' : '▶'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {(!driven || !!onPhaseSeek) && (
+        <View style={styles.phaseRow}>
+          {PHASE_CHIPS.map((entry) => {
+            const enabled =
+              entry.phase === 'full_swing' ||
+              !!phases?.find((p) => p.phase === entry.phase);
+            return (
+              <TouchableOpacity
+                key={entry.phase}
+                style={[styles.chip, !enabled && styles.chipDisabled]}
+                onPress={enabled ? () => handleChipTap(entry.phase) : undefined}
+                disabled={!enabled}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.chipText, !enabled && styles.chipTextDisabled]}>
+                  {entry.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
