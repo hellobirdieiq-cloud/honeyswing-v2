@@ -161,7 +161,7 @@ export default function SwingArtCard({ frames, phases, width, showLabel = true }
     const offX = pad + ((size - pad * 2) - rangeX * scale) / 2;
     const offY = pad + ((size - pad * 2) - rangeY * scale) / 2;
 
-    const tx = (x: number) => offX + (maxX - x) * scale;
+    const tx = (x: number) => offX + (x - minX) * scale;
     const ty = (y: number) => offY + (y - minY) * scale;
 
     const mapPts = (pts: { x: number; y: number }[]) =>

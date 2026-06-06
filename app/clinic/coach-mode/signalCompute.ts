@@ -150,18 +150,22 @@ function _phase3Core(
   const leadKey = leadWristJoint(handedness);
   const lWx = frames.map((f) => f.joints[leadKey].x);
 
+  // Direction inverted for the faithful-anatomical convention (decode
+  // conjugation fix): backswing now carries the wrist x DOWN, so track the
+  // running MIN and fire on a confirmed local-MAX reversal (was max/min on
+  // the pre-fix mirrored frames).
   let triggerFrame: number | null = null;
-  let runningMax = -Infinity;
+  let runningMin = Infinity;
   const loopStart = Math.max(1, searchStart);
   const loopEnd = Math.min(n - 2, searchEnd - 1);
 
   for (let F = loopStart; F < loopEnd; F++) {
-    if (lWx[F] > runningMax) runningMax = lWx[F];
+    if (lWx[F] < runningMin) runningMin = lWx[F];
     if (
-      lWx[F] < lWx[F - 1] &&
-      lWx[F] < lWx[F + 1] &&
-      lWx[F + 1] < lWx[F + 2] &&
-      lWx[F] < runningMax - MIN_TRAVEL
+      lWx[F] > lWx[F - 1] &&
+      lWx[F] > lWx[F + 1] &&
+      lWx[F + 1] > lWx[F + 2] &&
+      lWx[F] > runningMin + MIN_TRAVEL
     ) {
       triggerFrame = F;
       break;
@@ -329,12 +333,16 @@ export function computePhase2Signal(
     midX[i] = (frames[i].joints.leftWrist.x + frames[i].joints.rightWrist.x) / 2;
   }
 
+  // Direction inverted for the faithful-anatomical convention (decode
+  // conjugation fix): takeaway Δx is now NEGATIVE in raw frame space for the
+  // RH-tuned corpus (was positive on the pre-fix mirrored frames). Gate is
+  // handedness-blind by design — sign flip preserves parity.
   let triggerFrame: number | null = null;
   for (let F = DIRECTION_FRAMES; F < n; F++) {
-    if (midX[F] - midX[F - DIRECTION_FRAMES] > DIRECTION_THRESHOLD) {
+    if (midX[F] - midX[F - DIRECTION_FRAMES] < -DIRECTION_THRESHOLD) {
       let monotonic = true;
       for (let Fp = F - DIRECTION_FRAMES + 1; Fp <= F; Fp++) {
-        if (midX[Fp] - midX[Fp - 1] <= 0) {
+        if (midX[Fp] - midX[Fp - 1] >= 0) {
           monotonic = false;
           break;
         }

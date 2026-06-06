@@ -140,7 +140,11 @@ async function main() {
   const prodHandedness = (data.swing_debug as { handedness?: string } | null)?.handedness;
   const prodIsLeftHanded = prodHandedness === "left";
   const isLeftHanded = lhOverride ?? prodIsLeftHanded;
-  const canonical = toCanonicalSequence(sequence, isLeftHanded);
+  // Match analysisPipeline's canonical branch (decode conjugation fix):
+  // faithful frames → mirror RIGHT-handed swings into corpus-canonical space.
+  // NOTE: pre-fix persisted swings (mirrored at source) no longer reproduce
+  // their production canonical through this path — corpus declared disposable.
+  const canonical = toCanonicalSequence(sequence, !isLeftHanded);
 
   if (!canonical.frames || canonical.frames.length === 0) {
     console.error(`[debugPhaseDetection] canonicalization produced 0 frames`);

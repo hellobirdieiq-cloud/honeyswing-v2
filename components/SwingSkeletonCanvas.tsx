@@ -157,9 +157,8 @@ export default function SwingSkeletonCanvas({
       // Driven mode: video & pose share the full 9:16 frame (no crop on either
       // side — pose extracted from the full frame, video contain-fit in a 9:16
       // box), so the identity mapping puts each joint on the golfer's pixel.
-      // (1 - x): render-time mirror correction, same flip as the synthetic
-      // transform below (see skeleton x-mirror convergence).
-      const tx = (x: number) => (1 - x) * width;
+      // Keypoints are faithful-anatomical (decode conjugation fix) — no flip.
+      const tx = (x: number) => x * width;
       const ty = (y: number) => y * height;
       return { tx, ty };
     }
@@ -181,7 +180,7 @@ export default function SwingSkeletonCanvas({
     const hipY0 = (lh.y + rh.y) / 2;
     const anchorX = width / 2;
     const anchorY = height * 0.40;
-    const tx = (x: number) => anchorX - (x - hipX0) * hScale;
+    const tx = (x: number) => anchorX + (x - hipX0) * hScale;
     const ty = (y: number) => anchorY + (y - hipY0) * scale;
     return { tx, ty };
   }, [driven, frames, width, height]);
@@ -189,14 +188,17 @@ export default function SwingSkeletonCanvas({
   const endIdx = useMemo(() => {
     if (frames.length < 4) return Math.max(0, frames.length - 1);
     const start = Math.floor(frames.length / 2);
-    let minX = Infinity;
-    let minIdx = frames.length - 1;
+    // Faithful-convention transport of the old mirrored heuristic: old
+    // min(label-leftShoulder.x) ≡ new max(label-rightShoulder.x) under
+    // x→1−x + label swap. Cosmetic end-trim for the self-clocked preview.
+    let maxX = -Infinity;
+    let maxIdx = frames.length - 1;
     for (let i = start; i < frames.length; i++) {
-      const j = getJoint(frames[i], 'leftShoulder') ?? getJoint(frames[i], 'rightShoulder');
+      const j = getJoint(frames[i], 'rightShoulder') ?? getJoint(frames[i], 'leftShoulder');
       if (!j) continue;
-      if (j.x < minX) { minX = j.x; minIdx = i; }
+      if (j.x > maxX) { maxX = j.x; maxIdx = i; }
     }
-    return minIdx;
+    return maxIdx;
   }, [frames]);
 
   const [currentIdx, setCurrentIdx] = useState(0);

@@ -142,9 +142,9 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
       x: (lw.x + rw.x) / 2,
       y: (lw.y + rw.y) / 2,
       timestamp: frame.timestampMs,
-      leadX: lw.x,   // leftWrist = lead post-canonicalTransform (both RH and LH)
-      leadY: lw.y,
-      trailX: rw.x,  // rightWrist = trail post-canonicalTransform (both RH and LH)
+      leadX: lw.x,   // NAMING IS HISTORICAL: canonical label left* = TRAIL arm
+      leadY: lw.y,   // (both RH and LH) — corpus convention; see mirrorToCanonical
+      trailX: rw.x,  // canonical label right* = LEAD arm (both RH and LH)
       trailY: rw.y,
     });
   }
@@ -521,7 +521,7 @@ export function analyzePoseSequence(
   // diagnostic surface for later layers — NOT fed into phase detection here.
   //
   // skipVeto bypasses the L1 pass, reproducing the pre-L1 path (canonical =
-  // toCanonicalSequence(identity-corrected sequence, isLeftHanded)). It
+  // toCanonicalSequence(identity-corrected sequence, mirrorToCanonical)). It
   // exists ONLY for veto-validate.ts test #1 (true veto-vs-no-veto
   // comparison) — no production/app call site passes it. Layer 0 runs in
   // BOTH branches so that comparison holds identity correction constant.
@@ -537,16 +537,27 @@ export function analyzePoseSequence(
       ? { ...sequence, frames: identity.frames }
       : sequence;
 
+  // Canonical branch INVERSION (decode conjugation fix): input frames are now
+  // faithful-anatomical, but every downstream sign convention (takeaway Δx>0
+  // gate, faceOn top/finish x-signals, spineDrift sign) was tuned on the
+  // pre-fix corpus, whose RH captures reached this point MIRRORED with
+  // appearance-swapped labels — i.e. canonical space = mirror(faithful-RH).
+  // To preserve that exact layout for both handedness: mirror RIGHT-handed
+  // swings, pass LEFT-handed through (old-RH M(F) via identity ≡ new-RH F via
+  // mirror; old-LH M(M(F))=F via mirror ≡ new-LH F via identity). In canonical
+  // space, label left* is the TRAIL arm.
+  const mirrorToCanonical = !isLeftHanded;
+
   let canonical: PoseSequence;
   let untrustedMap: UntrustedMap | null;
   if (opts?.skipVeto) {
-    canonical = toCanonicalSequence(identitySequence, isLeftHanded);
+    canonical = toCanonicalSequence(identitySequence, mirrorToCanonical);
     untrustedMap = null;
   } else {
     const veto = vetoAndInterpolateKeypoints(identitySequence.frames);
     canonical = toCanonicalSequence(
       { ...identitySequence, frames: veto.cleanedFrames },
-      isLeftHanded,
+      mirrorToCanonical,
     );
     untrustedMap = veto.untrustedMap;
   }

@@ -1,5 +1,8 @@
 /**
- * canonicalTransform.test.ts — Tests for the LH→RH canonical mirror.
+ * canonicalTransform.test.ts — Tests for the canonical mirror M
+ * (x → 1−x + bilateral label swap). M carries no handedness policy;
+ * the mirror flag is decided at the analysisPipeline call site
+ * (mirrorToCanonical = !isLeftHanded — see canonicalTransform.ts docs).
  *
  * Run with: npx --yes tsx packages/domain/swing/canonicalTransform.test.ts
  */

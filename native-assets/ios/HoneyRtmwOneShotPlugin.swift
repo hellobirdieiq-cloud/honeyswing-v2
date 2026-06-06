@@ -214,13 +214,23 @@ class HoneyRtmwOneShotPlugin: NSObject {
           // D1c/D3: apply the track's preferred transform → upright CGImage,
           // matching the removed appliesPreferredTrackTransform=true output, then
           // hand the existing crop/resize chain an identical CGImage.
-          var ci = CIImage(cvImageBuffer: imageBuffer).transformed(by: preferredTransform)
+          //
+          // preferredTransform is authored in TOP-LEFT (y-down) video space;
+          // CIImage transforms operate in BOTTOM-LEFT (y-up) space. Conjugate:
+          //   F_out ∘ preferredTransform ∘ F_in
+          // where F_in/F_out are y-axis flips over the pre-/post-transform
+          // extent heights. The two flips are the coordinate-space conversion,
+          // NOT image flips: net = identity for landscape (P = I) tracks and a
+          // pure rotation (det +1) for portrait tracks. The previous chain
+          // (raw P + one post-hoc Y-flip, "HSW-YFLIP") had det −1 — it fixed Y
+          // but emitted X-MIRRORED frames, so keypoints were horizontally
+          // reflected with appearance-swapped L/R labels.
+          let src = CIImage(cvImageBuffer: imageBuffer)
+          let fIn = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: src.extent.height)
+          var ci = src.transformed(by: fIn).transformed(by: preferredTransform)
           ci = ci.transformed(by: CGAffineTransform(translationX: -ci.extent.origin.x,
                                                     y: -ci.extent.origin.y))
-          // HSW-YFLIP: CIImage has bottom-left origin; createCGImage otherwise emits frames
-          // Y-flipped vs the old appliesPreferredTrackTransform generator (top-left origin),
-          // producing Y-inverted keypoints. Flip Y back into top-left space. X is unchanged;
-          // (x, y) -> (x, H - y) maps the rect onto itself, so extent stays [0,0,W,H].
+          // F_out: back into CI's bottom-left space using the settled extent.
           ci = ci.transformed(by: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: ci.extent.height))
           guard let fullImage = Self.ciContext.createCGImage(ci, from: ci.extent) else {
             DispatchQueue.main.async {

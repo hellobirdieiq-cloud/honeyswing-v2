@@ -63,13 +63,14 @@ function scoreColor(score: number): string {
 /** Each scoreable metric mapped to the skeleton segments it corresponds to. */
 
 /**
- * Remap segment joint names for lefty skeleton highlight.
- * The skeleton shows REAL pose (not canonical). For a lefty, the canonical
- * "leftElbow" (lead arm) is their anatomical RIGHT elbow. Swap left↔right
- * so the highlight lands on the correct physical joint.
+ * Remap segment joint names from canonical space to the displayed REAL pose
+ * (faithful-anatomical labels). Canonical space mirrors RIGHT-handed swings
+ * (analysisPipeline mirrorToCanonical = !isLeftHanded), so for a righty the
+ * canonical "leftElbow" metric is their anatomical RIGHT elbow → swap
+ * left↔right. Lefty canonical = identity → no remap.
  */
 function remapSegmentJoint(name: string, isLeftHanded: boolean): string {
-  if (!isLeftHanded) return name;
+  if (isLeftHanded) return name;
   if (name.startsWith('left')) return 'right' + name.slice(4);
   if (name.startsWith('right')) return 'left' + name.slice(5);
   return name;

@@ -5,7 +5,7 @@ import type {
   PoseSequence,
 } from "@/packages/pose/PoseTypes";
 
-/** Bilateral joint pairs — swap left↔right for lefty canonical transform. */
+/** Bilateral joint pairs — swapped left↔right by the canonical mirror. */
 const BILATERAL_PAIRS: [JointName, JointName][] = [
   ["leftEyeInner", "rightEyeInner"],
   ["leftEye", "rightEye"],
@@ -36,10 +36,10 @@ function mirrorJoint(
   joint: NormalizedJoint,
   newName: JointName,
 ): NormalizedJoint {
-  // Z pass-through under lefty x-mirror: MediaPipe pose z is subject-centered
-  // depth (origin at mid-hips), sign-preserved under horizontal reflection.
-  // Mirroring a right-handed swing to canonical (right-handed) form flips x
-  // but leaves z and y unchanged. Verify with real lefty capture in Phase 3.
+  // Z pass-through under the x-mirror: pose z is subject-centered depth
+  // (origin at mid-hips), sign-preserved under horizontal reflection — the
+  // mirror flips x but leaves z and y unchanged. Verify with real lefty
+  // capture at clinic.
   return {
     name: newName,
     x: 1.0 - joint.x,
@@ -50,15 +50,21 @@ function mirrorJoint(
 }
 
 /**
- * Mirror a single frame into right-handed canonical form.
- * When isLeftHanded=false, returns the input unchanged (identity).
- * When isLeftHanded=true, mirrors all X coords and swaps bilateral joint pairs.
+ * M: the canonical mirror — x → 1−x on every joint + bilateral label swap.
+ * An involution (M∘M = identity). When mirror=false, returns the input
+ * unchanged.
+ *
+ * WHICH swings get mirrored is the CALLER's decision (analysisPipeline
+ * computes `mirrorToCanonical = !isLeftHanded`): canonical space is the
+ * layout the scoring/phase corpus was tuned on — the mirror of a faithful
+ * right-handed capture, where label left* is the TRAIL arm. This function
+ * only implements M; it encodes no handedness policy.
  */
 export function toCanonicalFrame(
   frame: PoseFrame,
-  isLeftHanded: boolean,
+  mirror: boolean,
 ): PoseFrame {
-  if (!isLeftHanded) return frame;
+  if (!mirror) return frame;
 
   const canonicalJoints = {} as Record<JointName, NormalizedJoint | undefined>;
 
@@ -83,14 +89,15 @@ export function toCanonicalFrame(
 }
 
 /**
- * Mirror an entire pose sequence into right-handed canonical form.
- * When isLeftHanded=false, returns the input unchanged (identity).
+ * Apply the canonical mirror M to an entire pose sequence.
+ * When mirror=false, returns the input unchanged (identity).
+ * Handedness policy lives at the call site — see toCanonicalFrame.
  */
 export function toCanonicalSequence(
   sequence: PoseSequence,
-  isLeftHanded: boolean,
+  mirror: boolean,
 ): PoseSequence {
-  if (!isLeftHanded) return sequence;
+  if (!mirror) return sequence;
 
   return {
     frames: sequence.frames.map((frame) => toCanonicalFrame(frame, true)),
