@@ -26,6 +26,13 @@ export type CameraAngleResult = {
 const FACE_ON_THRESHOLD = 0.40;
 // [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
 const DTL_THRESHOLD = 0.55;
+// STOPGAP (2026-06-07): forces face_on for all current (all-face-on) captures.
+// All footIndexNorm >= 0.175 -> face_on; unknown unreachable. A real DTL swing
+// WILL misclassify as face_on. REVERT by switching the >= comparison below back
+// to DTL_THRESHOLD (0.55) and deleting this constant.
+// NOTE name inversion: DTL_THRESHOLD bounds the face_on band (see comparison logic).
+// Convergence: age-tier or shoulder/hip-spread discriminant pending kid DTL data.
+const STOPGAP_FACE_ON_BOUNDARY = 0.175;
 const MIN_CONFIDENCE = 0.5;
 
 const FACE_ON_WEIGHTS: MetricConfidenceWeights = {
@@ -130,7 +137,7 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
 
   let angle: CameraAngle;
   if (footIndexNorm != null) {
-    if (footIndexNorm >= DTL_THRESHOLD) {
+    if (footIndexNorm >= STOPGAP_FACE_ON_BOUNDARY) {
       angle = "face_on";
     } else if (footIndexNorm <= FACE_ON_THRESHOLD) {
       angle = "dtl";
