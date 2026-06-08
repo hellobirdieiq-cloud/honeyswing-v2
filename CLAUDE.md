@@ -38,6 +38,8 @@ HoneySwing is a golf swing analysis app. It captures pose data from the camera i
 
 Record screen → `swingMotionStore` (in-memory store in `lib/`) → `captureValidity` classifies capture → Analysis result screen. The store holds `PoseFrame[]` from capture and `AnalysisResult` from the pipeline. No persistence — state is lost on app restart.
 
+DB timestamp strings are parsed only via `lib/datetime.ts` `parseDbTimestamp`; never `new Date()` on a column value (offset-less strings would be read as device-local and shift the instant).
+
 ### Domain Analysis Details
 
 - **Angles** (`angles.ts`): 7 biomechanical angles (spine, elbows, knees, hip rotation, shoulder tilt). Min confidence threshold: 0.5.

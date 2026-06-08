@@ -9,6 +9,7 @@ import {
 } from '../packages/domain/swing/scoring';
 import { GOLD } from '../lib/colors';
 import { getProfiles, getDisplayName, type PlayerProfile } from '../lib/playerProfiles';
+import { parseDbTimestamp } from '../lib/datetime';
 
 type LoadState =
   | { kind: 'loading' }
@@ -16,7 +17,7 @@ type LoadState =
   | { kind: 'ready'; rows: SwingHistoryRecord[] };
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseDbTimestamp(iso);
   return d.toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
