@@ -18,6 +18,13 @@ import { correctLowerBodyIdentity } from '../packages/domain/swing/lowerBodyIden
 import { persistSwing } from './persistSwing';
 import { persistFailedSwing } from './persistFailedSwing';
 import { uploadSwingVideo } from './uploadSwingVideo';
+import {
+  captureVideoOutbox,
+  capturePoseOutbox,
+  attachSwingId,
+  abandonPending,
+  outboxEnabled,
+} from './outbox';
 import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
 import type { CameraGuidanceColor } from './cameraGuidance';
@@ -89,6 +96,10 @@ export function useSwingCapture({
   const isLeftHandedRef = useRef<boolean>(false);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+  // Durable-outbox video entry id for THIS capture. Minted at recording-finish
+  // (decoupled from swingId + network); reconciled via attachSwingId on persist
+  // success, or abandoned on any terminal capture failure. iOS only.
+  const videoOutboxEntryIdRef = useRef<string | null>(null);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
@@ -147,6 +158,16 @@ export function useSwingCapture({
   }
 
   function handleCaptureFailure(reason: string) {
+    // A failed capture never uploads its video — abandon the durable entry so it
+    // isn't stranded pending until the orphan sweep.
+    const strandedVideoEntry = videoOutboxEntryIdRef.current;
+    if (strandedVideoEntry) {
+      videoOutboxEntryIdRef.current = null;
+      abandonPending([strandedVideoEntry]).catch((e) =>
+        console.warn('[HoneySwing] abandonPending (capture failure) failed', e),
+      );
+    }
+
     const stats = getCaptureFrameStats();
     AsyncStorage.setItem(
       'lastFailedCaptureStats',
@@ -217,6 +238,7 @@ export function useSwingCapture({
     videoUriRef.current = 'pending';
     navigatedRef.current = false;
     isFinalizingRef.current = false;
+    videoOutboxEntryIdRef.current = null;
     resetCaptureFrameStats();
     onBeginRecording();
 
@@ -235,6 +257,20 @@ export function useSwingCapture({
         }
         videoUriRef.current = video.path;
         updateCapturePhase('processing');
+
+        // Decoupled durable capture: copy the temp video into the outbox as
+        // early as possible (synchronous id mint + meta write; copy runs in the
+        // background). MUST run BEFORE the up-to-45s extraction so a kill during
+        // extraction still drains the video later. Extraction reads the ORIGINAL
+        // temp path and is never blocked. iOS only; Android stays on fallback.
+        if (outboxEnabled()) {
+          try {
+            videoOutboxEntryIdRef.current = captureVideoOutbox(video.path);
+          } catch (e) {
+            console.warn('[HoneySwing] captureVideoOutbox threw', e);
+            videoOutboxEntryIdRef.current = null;
+          }
+        }
 
         let extractionMs = 0;
         let analysisMs = 0;
@@ -304,7 +340,7 @@ export function useSwingCapture({
           // Grip estimation — preserves the previous contract for persistSwing's nativeGripResult.
           let nativeGripResult: Record<string, unknown>[] | null = null;
           try {
-            const addressPhase = analysis.phases?.find((p) => p.phase === 'address');
+            const addressPhase = analysis.phases?.find((p) => p.phase === 'takeaway');
             if (addressPhase && addressPhase.index < poseFrames.length) {
               const frame = poseFrames[addressPhase.index];
               const leadWrist = isLeftHandedRef.current ? frame.joints.rightWrist : frame.joints.leftWrist;
@@ -380,16 +416,43 @@ export function useSwingCapture({
           const driftDurationMs = result.videoDurationMs;
           const driftFailure = result.failure;
 
-          // Fire-and-forget uploads off the resolved swingId. MUST run after
-          // swingIdPromiseRef is assigned (above) — otherwise this .then chain
-          // would see null and no-op.
-          swingIdPromiseRef.current?.then((swingId) => {
-            if (!swingId) return;
-            uploadSwingVideo(swingId, video.path)
-              .catch((e) => console.warn('[HoneySwing] uploadSwingVideo failed', e));
-            persistPoseFull(swingId, rtmw)
-              .catch((e) => console.warn('[HoneySwing] persistPoseFull failed', e));
+          // Durable outbox (iOS) vs legacy fire-and-forget (Android). The pose
+          // payload is captured here (awaited write inside capturePoseOutbox =
+          // durable) and, together with the video entry, reconciled once
+          // persistSwing resolves a swingId. MUST run after swingIdPromiseRef is
+          // assigned (above) — otherwise this .then chain would see null.
+          const poseEntryIdPromise = outboxEnabled()
+            ? capturePoseOutbox(rtmw).catch((e) => {
+                console.warn('[HoneySwing] capturePoseOutbox failed', e);
+                return null;
+              })
+            : null;
+
+          swingIdPromiseRef.current?.then(async (swingId) => {
+            if (outboxEnabled()) {
+              const poseEntryId = poseEntryIdPromise ? await poseEntryIdPromise : null;
+              const ids = [poseEntryId, videoOutboxEntryIdRef.current].filter(
+                (x): x is string => typeof x === 'string',
+              );
+              videoOutboxEntryIdRef.current = null;
+              if (swingId) {
+                attachSwingId(ids, swingId); // reconcile: fires one drain
+              } else if (ids.length > 0) {
+                // insert returned null (anonymous / failed) — these can never
+                // reconcile; drop them (no dead-letter, no telemetry).
+                abandonPending(ids).catch((e) =>
+                  console.warn('[HoneySwing] abandonPending failed', e),
+                );
+              }
+            } else if (swingId) {
+              uploadSwingVideo(swingId, video.path)
+                .catch((e) => console.warn('[HoneySwing] uploadSwingVideo failed', e));
+              persistPoseFull(swingId, rtmw)
+                .catch((e) => console.warn('[HoneySwing] persistPoseFull failed', e));
+            }
+
             if (
+              swingId &&
               !driftFailure &&
               typeof driftFrameCount === 'number' &&
               typeof driftDurationMs === 'number'

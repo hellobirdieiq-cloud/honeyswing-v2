@@ -17,6 +17,7 @@ import { sessionAccumulator } from '../lib/sessionAccumulator';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { getAgeTier } from '../lib/ageTier';
 import { migrateAnonSwings } from '../lib/migrateAnonSwings';
+import { bootstrapOutbox } from '../lib/outbox';
 
 export { ErrorBoundary } from '../components/ErrorBoundary';
 
@@ -96,6 +97,13 @@ export default function RootLayout() {
         // silent — dev builds, no network, no update channel all land here
       }
     })();
+  }, []);
+
+  // Durable write-outbox: drain pending swing video + pose_full writes left by a
+  // prior session (trigger a), and wire the AppState-foreground + NetInfo
+  // reconnect drain triggers. Idempotent; safe to call once on mount.
+  useEffect(() => {
+    bootstrapOutbox();
   }, []);
 
   // Task 7 + 14: reset tip frequency, positive reinforcement, and session accumulator
