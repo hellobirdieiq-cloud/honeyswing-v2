@@ -44,3 +44,8 @@ expo-env.d.ts
 # CNG refactor: ios/ is prebuild-generated. Keep only the lockfile tracked.
 ios/*
 !ios/Podfile.lock
+
+# Diagnostic artifacts; keep only the build-time RTMW index
+models/*
+!models/coco_wholebody_index.json
+scripts/output/
