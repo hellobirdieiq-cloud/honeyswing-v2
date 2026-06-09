@@ -14,7 +14,6 @@ export interface SwingTempo {
 export type TempoRating = "rushed" | "fast" | "good" | "slow" | "very_slow";
 
 export interface PhaseTimestamps {
-  address: number;
   takeaway: number;
   top: number;
   downswing: number;
@@ -55,24 +54,24 @@ function rateTempo(ratio: number): TempoRating {
 }
 
 export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
-  if (phases.length < 6) {
+  if (phases.length < 5) {
     return null;
   }
 
-  const addressPhase = phases.find((p) => p.phase === "address");
   const takeawayPhase = phases.find((p) => p.phase === "takeaway");
   const topPhase = phases.find((p) => p.phase === "top");
   const downswingPhase = phases.find((p) => p.phase === "downswing");
   const impactPhase = phases.find((p) => p.phase === "impact");
   const finishPhase = phases.find((p) => p.phase === "follow_through");
 
-  if (!addressPhase || !takeawayPhase || !topPhase || !downswingPhase || !impactPhase || !finishPhase) {
+  if (!takeawayPhase || !topPhase || !downswingPhase || !impactPhase || !finishPhase) {
     return null;
   }
 
-  const backswingMs = topPhase.timestamp - addressPhase.timestamp;
+  // Takeaway is the first committed-movement frame; backswing/total anchor on it.
+  const backswingMs = topPhase.timestamp - takeawayPhase.timestamp;
   const downswingMs = impactPhase.timestamp - topPhase.timestamp;
-  const totalSwingMs = finishPhase.timestamp - addressPhase.timestamp;
+  const totalSwingMs = finishPhase.timestamp - takeawayPhase.timestamp;
 
   if (downswingMs <= 0 || backswingMs <= 0) {
     return null;
@@ -82,7 +81,6 @@ export function calculateTempo(phases: DetectedPhase[]): SwingTempo | null {
   const tempoRating = rateTempo(tempoRatio);
 
   const phaseTimestamps: PhaseTimestamps = {
-    address: addressPhase.timestamp,
     takeaway: takeawayPhase.timestamp,
     top: topPhase.timestamp,
     downswing: downswingPhase.timestamp,
@@ -138,7 +136,6 @@ export function isTempoTrustworthy(
 
 function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, number> {
   return {
-    address: Math.round(timestamps.address),
     takeaway: Math.round(timestamps.takeaway),
     top: Math.round(timestamps.top),
     downswing: Math.round(timestamps.downswing),

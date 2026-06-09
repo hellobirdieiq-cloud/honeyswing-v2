@@ -20,7 +20,6 @@ import {
 } from "./phaseDetectionShared";
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
-  address: "Address",
   takeaway: "Takeaway",
   top: "Top",
   downswing: "Downswing",
@@ -29,7 +28,6 @@ const PHASE_LABELS: Record<SwingPhase, string> = {
 };
 
 const PHASE_ORDER: SwingPhase[] = [
-  "address",
   "takeaway",
   "top",
   "downswing",
@@ -70,7 +68,7 @@ function findMaxVelocityIndex(
 }
 
 function fallbackPhases(points: SwingTrailPoint[]): DetectedPhase[] {
-  const pcts = [0.02, 0.12, 0.45, 0.55, 0.65, 0.9];
+  const pcts = [0.12, 0.45, 0.55, 0.65, 0.9];
   return PHASE_ORDER.map((phase, i) => {
     const idx = Math.min(
       points.length - 1,
@@ -160,7 +158,7 @@ export function tryHeuristicDetection(
     return { phases: [], failureGate: "impact_distance_out_of_range" };
   }
 
-  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
+  // Takeaway onset is addressIdx (first committed move); synthetic 40% slot removed.
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
 
   const FOLLOW_THROUGH_MULTIPLIER = 3.0;
@@ -196,7 +194,7 @@ export function tryHeuristicDetection(
   }
   finishIdx = Math.min(finishIdx, lastIdx);
 
-  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finishIdx];
+  const indices = [addressIdx, topIdx, downswingIdx, impactIdx, finishIdx];
 
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] <= indices[i - 1]) {

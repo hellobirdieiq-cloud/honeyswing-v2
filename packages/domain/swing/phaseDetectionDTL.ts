@@ -35,7 +35,6 @@ import {
 const A = EXTERNAL_ASSUMPTIONS.dtl;
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
-  address: "Address",
   takeaway: "Takeaway",
   top: "Top",
   downswing: "Downswing",
@@ -44,7 +43,6 @@ const PHASE_LABELS: Record<SwingPhase, string> = {
 };
 
 const PHASE_ORDER: SwingPhase[] = [
-  "address",
   "takeaway",
   "top",
   "downswing",
@@ -416,8 +414,7 @@ export function detectDTLPhases(input: {
     };
   }
 
-  // Phase 2 takeaway slot (percentage interpolation address→top, unchanged)
-  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
+  // Takeaway onset is addressIdx (first committed move); synthetic 40% slot removed.
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
 
   // Phase 5 — finish
@@ -425,7 +422,7 @@ export function detectDTLPhases(input: {
   assumptionsUsed.push("dtl.finish");
   reliability.finish = finish.complete ? "high" : "low";
 
-  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
+  const indices = [addressIdx, topIdx, downswingIdx, impactIdx, finish.frame];
 
   // Temporal sanity: keep parity with legacy gates.
   for (let i = 1; i < indices.length; i++) {

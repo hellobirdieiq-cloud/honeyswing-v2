@@ -28,7 +28,6 @@ import {
 const A = EXTERNAL_ASSUMPTIONS.faceOn;
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
-  address: "Address",
   takeaway: "Takeaway",
   top: "Top",
   downswing: "Downswing",
@@ -37,7 +36,6 @@ const PHASE_LABELS: Record<SwingPhase, string> = {
 };
 
 const PHASE_ORDER: SwingPhase[] = [
-  "address",
   "takeaway",
   "top",
   "downswing",
@@ -437,18 +435,18 @@ export function detectFaceOnPhases(input: {
   const topIdx = top.frame;
   reliability.top = top.reliability ?? "medium";
 
-  // Phase 1 — true_address not validated face-on; use takeaway gate fallback.
-  // takeawayAddressIdx is a TRAIL-space index from findSetupEndIndex; convert to
-  // frame-space so phases[].index is canonical and agrees with topIdx/impactIdx.
-  const addressTimestamp = trail[takeawayAddressIdx].timestamp;
-  const addressIdx = frames.findIndex(f => f.timestampMs === addressTimestamp);
-  if (addressIdx === -1) {
+  // Phase 1 — takeaway onset (first committed club movement) from findSetupEndIndex.
+  // takeawayAddressIdx is a TRAIL-space index; convert to frame-space so phases[].index
+  // is canonical and agrees with topIdx/impactIdx.
+  const takeawayTimestamp = trail[takeawayAddressIdx].timestamp;
+  const takeawayIdx = frames.findIndex(f => f.timestampMs === takeawayTimestamp);
+  if (takeawayIdx === -1) {
     throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
   }
   reliability.true_address = "low";
 
-  // Sanity: address must precede top must precede impact.
-  if (!(addressIdx < topIdx && topIdx < impactIdx)) {
+  // Sanity: takeaway must precede top must precede impact.
+  if (!(takeawayIdx < topIdx && topIdx < impactIdx)) {
     return {
       phases: [],
       fallbackGate: "temporal_inversion",
@@ -462,7 +460,6 @@ export function detectFaceOnPhases(input: {
     };
   }
 
-  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
 
   // Phase 5 — finish
@@ -470,7 +467,7 @@ export function detectFaceOnPhases(input: {
   assumptionsUsed.push("faceOn.finish");
   reliability.finish = finish.reliability;
 
-  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
+  const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] <= indices[i - 1]) {
       return {
@@ -598,14 +595,14 @@ export function detectFaceOnPhasesDebug(input: {
     return result;
   }
 
-  const addressIdx = takeawayAddressIdx;
+  const takeawayIdx = takeawayAddressIdx;
   const topIdx = top.frame;
   const impactIdx = impact.frame;
 
-  const triggerAOk = addressIdx < topIdx && topIdx < impactIdx;
+  const triggerAOk = takeawayIdx < topIdx && topIdx < impactIdx;
   result.triggerA = {
     fired: !triggerAOk,
-    condition: `${addressIdx} < ${topIdx} < ${impactIdx} = ${triggerAOk}`,
+    condition: `${takeawayIdx} < ${topIdx} < ${impactIdx} = ${triggerAOk}`,
   };
 
   if (!triggerAOk) {
@@ -613,7 +610,6 @@ export function detectFaceOnPhasesDebug(input: {
     return result;
   }
 
-  const takeawayIdx = Math.floor(addressIdx + (topIdx - addressIdx) * 0.4);
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
   result.takeawayIdx = takeawayIdx;
   result.downswingIdx = downswingIdx;
@@ -621,8 +617,8 @@ export function detectFaceOnPhasesDebug(input: {
   const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
   result.finishFrame = finish.frame;
 
-  const indices = [addressIdx, takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
-  const labels = ["address", "takeaway", "top", "downswing", "impact", "follow_through"];
+  const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
+  const labels = ["takeaway", "top", "downswing", "impact", "follow_through"];
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] <= indices[i - 1]) {
       result.triggerB = {

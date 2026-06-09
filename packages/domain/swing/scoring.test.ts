@@ -83,7 +83,7 @@ function makeTempo(ratio: number): SwingTempo {
     tempoRatio: ratio,
     totalSwingMs: 1200,
     tempoRating: 'good',
-    phaseTimestamps: { address: 0 } as SwingTempo['phaseTimestamps'],
+    phaseTimestamps: { takeaway: 0 } as SwingTempo['phaseTimestamps'],
   };
 }
 

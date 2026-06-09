@@ -31,7 +31,6 @@ import {
 // ---------------------------------------------------------------------------
 
 export type SwingPhase =
-  | "address"
   | "takeaway"
   | "top"
   | "downswing"

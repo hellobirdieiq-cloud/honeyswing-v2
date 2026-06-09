@@ -224,7 +224,7 @@ function computePhaseWindowedAngles(
   phases: DetectedPhase[],
   addressFrameIdx?: number,
 ): PhaseWindowResult {
-  const addressPhase = phases.find(p => p.phase === 'address')!;
+  const addressPhase = phases.find(p => p.phase === 'takeaway')!;
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
@@ -294,7 +294,7 @@ function shouldFallback(
   if (phases.length === 0) return true;
   if (phases.every(p => p.source === 'fallback')) return true;
 
-  const addressPhase = phases.find(p => p.phase === 'address');
+  const addressPhase = phases.find(p => p.phase === 'takeaway');
   const topPhase = phases.find(p => p.phase === 'top');
   const impactPhase = phases.find(p => p.phase === 'impact');
   if (!addressPhase || !topPhase || !impactPhase) return true;
@@ -591,7 +591,7 @@ export function analyzePoseSequence(
     angle: earlyAngle.angle,
   });
 
-  const phaseAddressIdx = phases.find(p => p.phase === 'address')?.index ?? 0;
+  const phaseAddressIdx = phases.find(p => p.phase === 'takeaway')?.index ?? 0;
   const phaseTopIdx = phases.find(p => p.phase === 'top')?.index ?? canonical.frames.length - 1;
   const swingStart = detectSwingStart(
     canonical.frames,

@@ -25,7 +25,6 @@ const tempo: SwingTempo = {
   totalSwingMs: 1080,
   tempoRating: 'good',
   phaseTimestamps: {
-    address: 0,
     takeaway: 200,
     top: 800,
     downswing: 900,
@@ -36,8 +35,8 @@ const tempo: SwingTempo = {
 
 const phases: DetectedPhase[] = [
   {
-    phase: 'address',
-    label: 'Address',
+    phase: 'takeaway',
+    label: 'Takeaway',
     point: { x: 0.5, y: 0.7, timestamp: 0 },
     index: 0,
     timestamp: 0,

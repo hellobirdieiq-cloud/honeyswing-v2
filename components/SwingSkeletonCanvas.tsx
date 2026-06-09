@@ -114,7 +114,6 @@ function buildPath(pts: { x: number; y: number }[]): string {
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'full_swing',     label: 'Full Swing' },
-  { phase: 'address',        label: 'Address' },
   { phase: 'takeaway',       label: 'Takeaway' },
   { phase: 'top',            label: 'Top' },
   { phase: 'impact',         label: 'Impact' },

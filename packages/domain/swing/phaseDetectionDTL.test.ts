@@ -118,7 +118,7 @@ function buildDTLSwing(opts: {
 // ---------------------------------------------------------------------------
 // T1 — happy path: each rule returns a frame in the expected band
 // ---------------------------------------------------------------------------
-group("T1. Happy-path DTL swing → 6 phases detected, no fallback");
+group("T1. Happy-path DTL swing → 5 phases detected, no fallback");
 {
   const { sequence, trail } = buildDTLSwing({
     totalFrames: 180,
@@ -130,16 +130,16 @@ group("T1. Happy-path DTL swing → 6 phases detected, no fallback");
   const result = detectDTLPhases({ canonical: sequence, trail, msPerFrame: FRAME_DT_MS });
 
   assert(result.fallbackGate == null, "T1: no fallback gate fired");
-  assert(result.phases.length === 6, `T1: 6 phases returned (got ${result.phases.length})`);
+  assert(result.phases.length === 5, `T1: 5 phases returned (got ${result.phases.length})`);
   assert(result.ruleDebug.detector === "dtl", "T1: detector tag = dtl");
 
   const phaseByName = (n: string) => result.phases.find((p) => p.phase === n);
   const top = phaseByName("top");
   const impact = phaseByName("impact");
-  const address = phaseByName("address");
+  const takeaway = phaseByName("takeaway");
   assert(top != null && top.index > 30 && top.index < 100, `T1: top within (30,100) (got ${top?.index})`);
   assert(impact != null && impact.index > (top?.index ?? 0), `T1: impact > top (got top=${top?.index}, impact=${impact?.index})`);
-  assert(address != null && address.index < (top?.index ?? Infinity), `T1: address < top (got address=${address?.index}, top=${top?.index})`);
+  assert(takeaway != null && takeaway.index < (top?.index ?? Infinity), `T1: takeaway < top (got takeaway=${takeaway?.index}, top=${top?.index})`);
 }
 
 // ---------------------------------------------------------------------------
