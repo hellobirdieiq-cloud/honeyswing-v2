@@ -15,6 +15,7 @@ import {
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getUser, supabase } from '../../lib/supabase';
 import { getSwingById, getSwingMotionFrames, type SwingRecord } from '../../lib/swingStore';
+import { getSwingVideoSignedUrl } from '../../lib/getSwingVideoUrl';
 import { GOLD } from '../../lib/colors';
 import {
   analyzePoseSequence,
@@ -56,7 +57,6 @@ const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'full_swing',     label: 'Full Swing' },
-  { phase: 'address',        label: 'Address' },
   { phase: 'takeaway',       label: 'Takeaway' },
   { phase: 'top',            label: 'Top' },
   { phase: 'impact',         label: 'Impact' },
@@ -152,6 +152,13 @@ export default function ResultScreen() {
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
   const [historicalFrames, setHistoricalFrames] = useState<PoseFrame[] | null>(null);
   const [framesLoading, setFramesLoading] = useState(false);
+  // Remote playback for historical swings: signed URL resolved ONCE per record
+  // load from video_storage_path (private swing-videos bucket). null = no
+  // remote video → skeleton-only (existing behavior). Local videoUri wins.
+  const [remoteVideoUrl, setRemoteVideoUrl] = useState<string | null>(null);
+  // One quiet re-sign on playback error (expired URL / transient network),
+  // then give up → skeleton-only. Guards against an error→retry loop.
+  const remoteRetriedRef = useRef(false);
 
   const effectiveMotion = useMemo(
     () =>
@@ -185,7 +192,15 @@ export default function ResultScreen() {
     getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
   }, []);
 
-  const player = useVideoPlayer(videoUri, (p) => {
+  // Local capture file wins (live swing, byte-identical to the previous
+  // behavior); remote signed URL is the historical-view fallback. useVideoPlayer
+  // recreates the player when the source changes (keyed on the parsed source),
+  // so the null → signed-URL transition re-runs setup and re-attaches the
+  // player-dep'd listener effects below.
+  const videoStoragePath = swingRecord?.video_storage_path ?? null;
+  const effectiveVideoUri = videoUri ?? remoteVideoUrl;
+
+  const player = useVideoPlayer(effectiveVideoUri, (p) => {
     p.loop = true;
     p.playbackRate = 0.25;
   });
@@ -194,7 +209,7 @@ export default function ResultScreen() {
   // exactly — same width (content column, container padding 24/side) and the
   // video's 9:16 aspect — so the identity transform in SwingSkeletonCanvas
   // frames the figure pixel-identically to the golfer in the video.
-  const hasVideo = !!(videoUri && player);
+  const hasVideo = !!(effectiveVideoUri && player);
   const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
   const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
 
@@ -210,6 +225,24 @@ export default function ResultScreen() {
     });
     return () => sub.remove();
   }, [player]);
+
+  // Remote-playback failure path: one silent re-sign (expired URL / transient
+  // network), then surrender to skeleton-only (remoteVideoUrl → null collapses
+  // every video gate). Local-file playback (videoUri set) is never touched.
+  useEffect(() => {
+    if (!player || videoUri || !remoteVideoUrl) return;
+    const sub = player.addListener('statusChange', (payload) => {
+      if (payload.status !== 'error') return;
+      console.warn('[HoneySwing] remote video playback error:', payload.error?.message);
+      if (remoteRetriedRef.current || !videoStoragePath) {
+        setRemoteVideoUrl(null);
+        return;
+      }
+      remoteRetriedRef.current = true;
+      getSwingVideoSignedUrl(videoStoragePath).then((url) => setRemoteVideoUrl(url));
+    });
+    return () => sub.remove();
+  }, [player, videoUri, remoteVideoUrl, videoStoragePath]);
 
   // Skeleton playhead, derived from the video player's clock. null until the
   // first timeUpdate; the canvas call site maps no-video → null → the canvas
@@ -318,6 +351,20 @@ export default function ResultScreen() {
       .catch((err) => console.error('[HoneySwing]', err))
       .finally(() => setFramesLoading(false));
   }, [swingId, isLiveSwing]);
+
+  // Resolve the uploaded video into a signed URL ONCE per record load —
+  // historical views only. Local videoUri (live swing) wins; storage_path
+  // null (never/in-flight upload) → stays skeleton-only with no error.
+  useEffect(() => {
+    if (videoUri || isLiveSwing || !videoStoragePath) return;
+    let cancelled = false;
+    getSwingVideoSignedUrl(videoStoragePath).then((url) => {
+      if (!cancelled && url) setRemoteVideoUrl(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [videoUri, isLiveSwing, videoStoragePath]);
 
   useEffect(() => {
     const reason = swingRecord?.failure_reason;
@@ -623,7 +670,7 @@ export default function ResultScreen() {
             ) : null}
 
             {/* 2. Video */}
-            {videoUri && player && (
+            {effectiveVideoUri && player && (
               <View
                 style={styles.videoSection}
                 onLayout={(e) => setVideoSectionY(e.nativeEvent.layout.y)}
@@ -665,7 +712,7 @@ export default function ResultScreen() {
             <View style={styles.phaseChipsRow}>
               {PHASE_CHIPS.map((entry) => {
                 if (entry.phase === 'full_swing') {
-                  const enabled = !!player && !!videoUri;
+                  const enabled = !!player && !!effectiveVideoUri;
                   return (
                     <TouchableOpacity
                       key={entry.phase}
@@ -685,7 +732,7 @@ export default function ResultScreen() {
                   );
                 }
                 const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
-                const enabled = !!phaseEntry && !!player && !!videoUri && firstFrameTimestamp != null;
+                const enabled = !!phaseEntry && !!player && !!effectiveVideoUri && firstFrameTimestamp != null;
                 return (
                   <TouchableOpacity
                     key={entry.phase}
