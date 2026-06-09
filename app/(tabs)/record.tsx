@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -364,6 +364,11 @@ export default function RecordTab() {
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
   const isInitializing = hasPermission === null || (showCamera && !cameraReady);
+  // Branded post-capture overlay: cover the camera for the whole processing→complete
+  // wait so the live-feed flash (camera toggling isActive) never shows. Excludes
+  // 'weak'/'error' so the retry path keeps the live preview.
+  const showBrandOverlay = capturePhase === 'processing' || capturePhase === 'complete';
+  const brandIconSize = Math.min(screenW * 0.4, 200);
 
   return (
     <GestureHandlerRootView
@@ -528,6 +533,53 @@ export default function RecordTab() {
         </Pressable>
       </Modal>
 
+      {/* Branded post-capture overlay — full-screen Modal so it renders ABOVE the floating
+          tab bar (which mounts outside the screen tree). This hides the live-feed flash AND
+          the tab bar's own processing spinner + "Analyzing swing…" caption for the full
+          pre-navigation wait, leaving exactly one "Analyzing your swing…" line on screen.
+          Visible strictly on the existing processing|complete gate; fully unmounted on
+          weak/error so the live camera + Try Again stay interactive. setProcessing() is
+          left untouched, so the center-button double-fire disable still works underneath. */}
+      <Modal
+        visible={showBrandOverlay}
+        transparent
+        statusBarTranslucent
+        animationType="none"
+        onRequestClose={() => {}}
+      >
+        <View style={localStyles.brandOverlay}>
+          <Image
+            source={require('../../assets/images/icon.png')}
+            style={{ width: brandIconSize, height: brandIconSize, borderRadius: brandIconSize * 0.22 }}
+            resizeMode="contain"
+          />
+          <View style={localStyles.brandLabelRow}>
+            <ActivityIndicator size="small" color="#fff" />
+            <Text style={localStyles.brandLabel}>Analyzing your swing…</Text>
+          </View>
+        </View>
+      </Modal>
+
     </GestureHandlerRootView>
   );
 }
+
+const localStyles = StyleSheet.create({
+  brandOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 20,
+  },
+  brandLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
