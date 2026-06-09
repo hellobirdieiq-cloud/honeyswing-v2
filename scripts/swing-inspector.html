@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Swing Inspector — HoneySwing</title>
+<!--
+  swing-inspector.html — standalone, no-build inspector for a swing JSON produced
+  by scripts/dumpPoseFull.ts. Open this file directly in a browser.
+
+  FAITHFULNESS: this page is a DUMB PLOTTER. Every "APP" series is an array baked
+  into the JSON by the exporter (read from the app's persisted Supabase columns or
+  produced by the app's real functions). The page computes nothing app-meaningful.
+  The only in-browser math is the two "TOOL-ONLY" derived series the app has no
+  function for — pixel velocity and inter-keypoint distance — and they are badged
+  "TOOL-ONLY (not an app value)" everywhere they appear.
+
+  Chart library: Chart.js 4 via a single cdnjs <script> (needs internet on first
+  load; everything else is inline/offline).
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --edge:#2a2f3a;
+    --fg:#e6e9ef; --muted:#9aa3b2; --accent:#5b9dff;
+    --app:#2ecc71; --tool:#ff9f43; --err:#ff5c5c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  h1{font-size:15px;margin:0;font-weight:600}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
+  a{color:var(--accent)}
+  code{background:#000;padding:1px 5px;border-radius:4px;font-size:12px}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--edge);border-radius:6px;padding:5px 9px;cursor:pointer;font-size:12px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#06101f;font-weight:600}
+  input[type=text],input[type=number],select,textarea{background:#0b0d12;color:var(--fg);border:1px solid var(--edge);border-radius:6px;padding:5px 7px;font-size:12px}
+  input[type=number]{width:80px}
+  textarea{width:100%;min-height:70px;font-family:ui-monospace,Menlo,monospace}
+  header{display:flex;align-items:center;gap:14px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--edge);position:sticky;top:0;z-index:5}
+  .badge{font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+  .badge.app{background:rgba(46,204,113,.16);color:var(--app);border:1px solid rgba(46,204,113,.4)}
+  .badge.tool{background:rgba(255,159,67,.16);color:var(--tool);border:1px solid rgba(255,159,67,.45)}
+  #wrap{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:calc(100vh - 49px)}
+  #side{background:var(--panel);border-right:1px solid var(--edge);padding:14px;overflow:auto;max-height:calc(100vh - 49px)}
+  #main{padding:16px;overflow:auto;max-height:calc(100vh - 49px)}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:10px;padding:14px;margin-bottom:14px}
+  .sect{margin-bottom:16px;border-bottom:1px solid var(--edge);padding-bottom:14px}
+  .sect:last-child{border-bottom:none}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  .err{background:rgba(255,92,92,.12);border:1px solid var(--err);color:#ffd2d2;border-radius:8px;padding:10px 12px;margin-top:10px;white-space:pre-wrap;display:none}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+  .stat{background:var(--panel2);border:1px solid var(--edge);border-radius:8px;padding:8px 10px}
+  .stat .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .stat .v{font-size:16px;font-weight:600;margin-top:2px}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--edge)}
+  th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  tr.phase-row{cursor:pointer}
+  tr.phase-row:hover{background:var(--panel2)}
+  .kp-list{max-height:230px;overflow:auto;border:1px solid var(--edge);border-radius:8px;padding:4px}
+  .kp-group-h{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:6px 4px 2px;position:sticky;top:0;background:var(--panel)}
+  .kp-row{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:2px 4px;border-radius:5px}
+  .kp-row:hover{background:var(--panel2)}
+  .kp-name{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kp-name .idx{color:var(--muted);font-size:10px;margin-right:5px}
+  .chan{display:inline-flex;gap:3px}
+  .chan label{font-size:10px;display:inline-flex;align-items:center;gap:2px;cursor:pointer;user-select:none;border:1px solid var(--edge);border-radius:5px;padding:1px 4px}
+  .chan label:hover{border-color:var(--accent)}
+  .chan input{margin:0}
+  .legend{display:flex;flex-direction:column;gap:5px;margin:8px 0}
+  .legend-item{display:flex;align-items:center;gap:8px;font-size:12px}
+  .swatch{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .legend-item .rm{margin-left:auto;color:var(--muted);cursor:pointer;border:none;background:none;font-size:14px;padding:0 4px}
+  .legend-item .rm:hover{color:var(--err)}
+  details>summary{cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0}
+  pre.debug{background:#0b0d12;border:1px solid var(--edge);border-radius:8px;padding:10px;max-height:420px;overflow:auto;font-size:11px;font-family:ui-monospace,Menlo,monospace}
+  .pill{font-size:10px;border:1px solid var(--edge);border-radius:99px;padding:2px 8px;cursor:pointer;color:var(--muted)}
+  .pill.active{background:var(--accent);color:#06101f;border-color:var(--accent);font-weight:600}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px}
+  .chartbox{position:relative;height:460px}
+  .disabled{opacity:.4;pointer-events:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Swing Inspector</h1>
+  <span class="badge app">APP = app value</span>
+  <span class="badge tool">TOOL-ONLY = computed here</span>
+  <span class="muted" id="loadedTag" style="margin-left:auto"></span>
+</header>
+
+<div id="wrap">
+  <!-- ============================= SIDEBAR ============================= -->
+  <aside id="side">
+    <div class="sect">
+      <h2>1 · Load swing JSON</h2>
+      <input type="file" id="fileInput" accept="application/json,.json" />
+      <div class="hint">…or paste JSON below</div>
+      <textarea id="pasteBox" placeholder='Paste the contents of scripts/output/pose-full-&lt;id&gt;.json'></textarea>
+      <div class="row" style="margin-top:6px">
+        <button id="loadPaste">Load pasted JSON</button>
+        <button id="clearAll">Clear</button>
+      </div>
+      <div class="err" id="errBox"></div>
+    </div>
+
+    <div id="controls" class="disabled">
+      <div class="sect">
+        <h2>2 · Frame range</h2>
+        <div class="row">
+          <label class="muted">start <input type="number" id="rangeStart" min="0" /></label>
+          <label class="muted">end <input type="number" id="rangeEnd" min="0" /></label>
+          <button id="rangeReset">full</button>
+        </div>
+        <div class="hint" id="rangeInfo"></div>
+      </div>
+
+      <div class="sect">
+        <h2>3 · X axis</h2>
+        <div class="row">
+          <label><input type="radio" name="xaxis" value="frame" checked /> frame index</label>
+          <label><input type="radio" name="xaxis" value="time" /> timestampMs</label>
+        </div>
+      </div>
+
+      <div class="sect">
+        <h2>4 · 133-keypoint series <span class="badge app">APP</span></h2>
+        <div class="hint">pose_full, raw model output, PIXELS. Toggle x / y / c (confidence).</div>
+        <div class="row" style="margin:6px 0">
+          <input type="text" id="kpSearch" placeholder="search joint… (e.g. wrist)" style="flex:1" />
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <span class="pill active" data-filter="all">all 133</span>
+          <span class="pill" data-filter="lb">load_bearing_18</span>
+          <button id="kpClear" style="margin-left:auto">clear selected</button>
+        </div>
+        <div class="kp-list" id="kpList"></div>
+      </div>
+
+      <div class="sect" id="jointSect">
+        <h2>5 · Motion-frame joints <span class="badge app">APP</span></h2>
+        <div class="hint">motion_frames, 39 named joints, NORMALIZED 0–1, with app vx/vy/vz.</div>
+        <details>
+          <summary>show joint list</summary>
+          <div class="row" style="margin:6px 0"><input type="text" id="jSearch" placeholder="search joint…" style="flex:1" /></div>
+          <div class="kp-list" id="jList"></div>
+        </details>
+      </div>
+
+      <div class="sect" id="angleSect">
+        <h2>6 · Per-frame angles <span class="badge app">APP</span></h2>
+        <div class="hint">computed per frame by the app's calculateGolfAngles().</div>
+        <div id="angleList" class="row" style="gap:6px;margin-top:6px"></div>
+      </div>
+
+      <div class="sect" id="trailSect">
+        <h2>7 · Trail points <span class="badge app">APP</span></h2>
+        <div class="hint">per-frame wrist trail (normalized).</div>
+        <div id="trailList" class="row" style="gap:6px;margin-top:6px"></div>
+      </div>
+
+      <div class="sect">
+        <h2>8 · Derived <span class="badge tool">TOOL-ONLY</span></h2>
+        <div class="hint">Computed in this page — NOT app values. The app has no function for these.</div>
+        <div style="margin-top:8px">
+          <div class="muted" style="font-size:11px">Pixel velocity of a 133-kp keypoint</div>
+          <div class="row" style="margin:4px 0">
+            <select id="velKp"></select>
+            <select id="velChan"><option value="speed">speed</option><option value="vx">vx</option><option value="vy">vy</option></select>
+            <button id="velAdd">add</button>
+          </div>
+          <div class="muted" style="font-size:11px;margin-top:6px">Distance between two 133-kp keypoints (px)</div>
+          <div class="row" style="margin:4px 0">
+            <select id="distA"></select>
+            <select id="distB"></select>
+            <button id="distAdd">add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================== MAIN ============================== -->
+  <main id="main">
+    <div class="card" id="summaryCard" style="display:none">
+      <h2>Summary <span class="badge app">APP</span></h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <div class="card" id="chartCard" style="display:none">
+      <h2>Chart</h2>
+      <div class="legend" id="legend"></div>
+      <div class="chartbox"><canvas id="chart"></canvas></div>
+      <div class="hint" id="chartHint"></div>
+    </div>
+
+    <div class="card" id="phaseCard" style="display:none">
+      <h2>Phases <span class="badge app">APP</span></h2>
+      <div class="row" style="margin-bottom:8px">
+        <label><input type="checkbox" id="showPhaseMarkers" checked /> show phase markers on chart</label>
+      </div>
+      <table id="phaseTable"></table>
+      <div class="hint">Click a phase row to set the frame range to that phase (its anchor → the next phase's anchor).</div>
+    </div>
+
+    <div class="card" id="debugCard" style="display:none">
+      <h2>swing_debug <span class="badge app">APP</span></h2>
+      <details><summary>show raw swing_debug JSON</summary><pre class="debug" id="debugPre"></pre></details>
+    </div>
+
+    <div class="card" id="welcome">
+      <h2>Getting started</h2>
+      <p class="muted">Produce a swing JSON with:</p>
+      <p><code>npx --yes tsx scripts/dumpPoseFull.ts &lt;swingId&gt;</code></p>
+      <p class="muted">Then load <code>scripts/output/pose-full-&lt;id8&gt;.json</code> via the file picker (or paste it). A bare <code>Rtmw133Frame[]</code> array also loads (raw 133-kp plotting only; APP-derived sections hidden).</p>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+// =====================================================================
+//  Embedded reference data (copied verbatim from
+//  models/coco_wholebody_index.json — names[] and load_bearing indices).
+// =====================================================================
+const COCO_NAMES = ["nose","left_eye","right_eye","left_ear","right_ear","left_shoulder","right_shoulder","left_elbow","right_elbow","left_wrist","right_wrist","left_hip","right_hip","left_knee","right_knee","left_ankle","right_ankle","left_big_toe","left_small_toe","left_heel","right_big_toe","right_small_toe","right_heel","face-0","face-1","face-2","face-3","face-4","face-5","face-6","face-7","face-8","face-9","face-10","face-11","face-12","face-13","face-14","face-15","face-16","face-17","face-18","face-19","face-20","face-21","face-22","face-23","face-24","face-25","face-26","face-27","face-28","face-29","face-30","face-31","face-32","face-33","face-34","face-35","face-36","face-37","face-38","face-39","face-40","face-41","face-42","face-43","face-44","face-45","face-46","face-47","face-48","face-49","face-50","face-51","face-52","face-53","face-54","face-55","face-56","face-57","face-58","face-59","face-60","face-61","face-62","face-63","face-64","face-65","face-66","face-67","left_hand_root","left_thumb1","left_thumb2","left_thumb3","left_thumb4","left_forefinger1","left_forefinger2","left_forefinger3","left_forefinger4","left_middle_finger1","left_middle_finger2","left_middle_finger3","left_middle_finger4","left_ring_finger1","left_ring_finger2","left_ring_finger3","left_ring_finger4","left_pinky_finger1","left_pinky_finger2","left_pinky_finger3","left_pinky_finger4","right_hand_root","right_thumb1","right_thumb2","right_thumb3","right_thumb4","right_forefinger1","right_forefinger2","right_forefinger3","right_forefinger4","right_middle_finger1","right_middle_finger2","right_middle_finger3","right_middle_finger4","right_ring_finger1","right_ring_finger2","right_ring_finger3","right_ring_finger4","right_pinky_finger1","right_pinky_finger2","right_pinky_finger3","right_pinky_finger4"];
+// load_bearing_18 = body_joints values + anatomical_traps values (coco_wholebody_index.json)
+const LOAD_BEARING = [0,5,6,7,8,9,10,11,12,13,14,15,16,19,96,117,92,113,108,129,17,20];
+const LB_SET = new Set(LOAD_BEARING);
+const KP_GROUPS = [
+  {name:"Body",      lo:0,  hi:16},
+  {name:"Feet",      lo:17, hi:22},
+  {name:"Face",      lo:23, hi:90},
+  {name:"Left hand", lo:91, hi:111},
+  {name:"Right hand",lo:112,hi:132},
+];
+const ANGLE_KEYS = ["spineAngle","leftElbowAngle","rightElbowAngle","leftKneeAngle","rightKneeAngle","hipSpreadDelta","shoulderTilt","spineDrift"];
+const TRAIL_CHANS = ["x","y","leadX","leadY","trailX","trailY"];
+
+// Y-axis units → Chart.js scale id. Series sharing a unit share an axis.
+const AXIS_META = {
+  px:     {label:"pixels"},
+  ratio01:{label:"0–1 (norm / confidence)"},
+  velnorm:{label:"vel (norm/ms)"},
+  deg:    {label:"degrees"},
+  pxvel:  {label:"px/ms (TOOL)"},
+};
+
+// =====================================================================
+//  State
+// =====================================================================
+let S = null;          // loaded dataset (see normalize())
+let chart = null;
+const selected = new Map();   // seriesId -> descriptor
+let colorSeed = 0;
+let kpFilter = "all";
+
+const $ = (id) => document.getElementById(id);
+
+function colorFor(){
+  // deterministic, well-spaced hues
+  const hue = (colorSeed * 47) % 360; colorSeed++;
+  return `hsl(${hue} 70% 60%)`;
+}
+
+// =====================================================================
+//  Load + validate
+// =====================================================================
+function showErr(msg){ const e=$("errBox"); e.textContent=msg; e.style.display="block"; }
+function clearErr(){ const e=$("errBox"); e.textContent=""; e.style.display="none"; }
+
+function normalize(raw){
+  // Accept the wrapper {pose_full,...} OR a bare Rtmw133Frame[] (alias keys frames/rtmw).
+  let frames=null, wrapper=null;
+  if(Array.isArray(raw)){ frames=raw; wrapper={}; }
+  else if(raw && typeof raw==="object"){
+    wrapper=raw;
+    frames = raw.pose_full || raw.frames || raw.rtmw || null;
+  }
+  if(!Array.isArray(frames)) throw new Error("Could not find a frames array. Expected a wrapper with `pose_full` (or `frames`/`rtmw`), or a bare Rtmw133Frame[] array.");
+  if(frames.length===0) throw new Error("frames array is empty.");
+  // validate first few frames
+  const sample = frames.slice(0, Math.min(5, frames.length));
+  for(let i=0;i<sample.length;i++){
+    const f=sample[i];
+    if(!f || !Array.isArray(f.keypoints)) throw new Error(`frame ${i}: missing keypoints[] array.`);
+    if(f.keypoints.length < 100) throw new Error(`frame ${i}: keypoints length ${f.keypoints.length} (expected ~133).`);
+    const kp=f.keypoints.find(k=>k);
+    if(!kp || typeof kp.x!=="number" || typeof kp.y!=="number" || typeof kp.confidence!=="number")
+      throw new Error(`frame ${i}: keypoint must have numeric {x,y,confidence}.`);
+  }
+  const N = frames.length;
+  const motion = Array.isArray(wrapper.motion_frames) ? wrapper.motion_frames : null;
+  const jointNames = motion ? [...new Set(motion.flatMap(f=>f&&f.joints?Object.keys(f.joints):[]))].sort() : [];
+  return {
+    raw, wrapper, frames, N,
+    motion, jointNames,
+    perFrameAngles: (wrapper.perFrameAngles && typeof wrapper.perFrameAngles==="object") ? wrapper.perFrameAngles : null,
+    trail: Array.isArray(wrapper.trail_points) ? wrapper.trail_points : null,
+    phases: Array.isArray(wrapper.phases) ? wrapper.phases : null,
+    summary: (wrapper.summary && typeof wrapper.summary==="object") ? wrapper.summary : null,
+    swingDebug: wrapper.swing_debug ?? null,
+    meta: { swingId:wrapper.swingId, createdAt:wrapper.createdAt, appVersion:wrapper.appVersion, analysisVersion:wrapper.analysisVersion, source:wrapper.source },
+    frameW: frames[0].frameWidth ?? null,
+    frameH: frames[0].frameHeight ?? null,
+    range: { start:0, end:N-1 },
+    xAxis: "frame",
+  };
+}
+
+function loadJSON(text){
+  clearErr();
+  let raw;
+  try{ raw=JSON.parse(text); }catch(e){ showErr("Invalid JSON: "+e.message); return; }
+  let data;
+  try{ data=normalize(raw); }catch(e){ showErr("Schema mismatch: "+e.message); return; }
+  S=data; selected.clear(); colorSeed=0;
+  $("controls").classList.remove("disabled");
+  $("welcome").style.display="none";
+  buildUI();
+  render();
+  const m=S.meta;
+  $("loadedTag").textContent = (m.swingId? "swing "+String(m.swingId).slice(0,8)+" · ":"") + S.N+" frames"+(m.source?" · "+m.source:"")+(S.motion?"":" · bare array");
+}
+
+// =====================================================================
+//  Build sidebar widgets from the loaded data
+// =====================================================================
+function buildUI(){
+  // range
+  $("rangeStart").value=S.range.start; $("rangeStart").max=S.N-1;
+  $("rangeEnd").value=S.range.end;     $("rangeEnd").max=S.N-1;
+  updateRangeInfo();
+
+  buildKpList();
+
+  // joint section
+  $("jointSect").style.display = S.motion ? "" : "none";
+  if(S.motion) buildJointList();
+
+  // angle section
+  $("angleSect").style.display = S.perFrameAngles ? "" : "none";
+  if(S.perFrameAngles){
+    const host=$("angleList"); host.innerHTML="";
+    for(const k of ANGLE_KEYS){
+      if(!Array.isArray(S.perFrameAngles[k])) continue;
+      const allNull = S.perFrameAngles[k].every(v=>v==null);
+      const lbl=document.createElement("label");
+      lbl.className="chan"; lbl.style.border="1px solid var(--edge)"; lbl.style.borderRadius="5px"; lbl.style.padding="2px 6px"; lbl.style.cursor="pointer";
+      lbl.innerHTML=`<input type="checkbox" data-angle="${k}"> ${k}${allNull?' <span class="muted">(n/a per-frame)</span>':''}`;
+      if(allNull) lbl.style.opacity=".5";
+      host.appendChild(lbl);
+    }
+    host.querySelectorAll("input[data-angle]").forEach(cb=>cb.addEventListener("change",()=>{
+      const k=cb.getAttribute("data-angle");
+      toggleSeries(cb.checked, {kind:"angle",key:k});
+    }));
+  }
+
+  // trail section
+  $("trailSect").style.display = S.trail ? "" : "none";
+  if(S.trail){
+    const host=$("trailList"); host.innerHTML="";
+    for(const c of TRAIL_CHANS){
+      const lbl=document.createElement("label");
+      lbl.className="chan"; lbl.style.border="1px solid var(--edge)"; lbl.style.borderRadius="5px"; lbl.style.padding="2px 6px"; lbl.style.cursor="pointer";
+      lbl.innerHTML=`<input type="checkbox" data-trail="${c}"> ${c}`;
+      host.appendChild(lbl);
+    }
+    host.querySelectorAll("input[data-trail]").forEach(cb=>cb.addEventListener("change",()=>{
+      toggleSeries(cb.checked, {kind:"trail",chan:cb.getAttribute("data-trail")});
+    }));
+  }
+
+  // derived dropdowns
+  fillKpSelect($("velKp")); fillKpSelect($("distA")); fillKpSelect($("distB"));
+  $("distB").selectedIndex = Math.min(10, COCO_NAMES.length-1);
+
+  // summary / phases / debug cards
+  buildSummary();
+  buildPhases();
+  buildDebug();
+}
+
+function fillKpSelect(sel){
+  sel.innerHTML="";
+  COCO_NAMES.forEach((n,i)=>{ const o=document.createElement("option"); o.value=String(i); o.textContent=`${i} · ${n}`; sel.appendChild(o); });
+}
+
+function kpVisible(i){
+  const q=$("kpSearch").value.trim().toLowerCase();
+  if(kpFilter==="lb" && !LB_SET.has(i)) return false;
+  if(q && !(COCO_NAMES[i].toLowerCase().includes(q) || String(i)===q)) return false;
+  return true;
+}
+
+function buildKpList(){
+  const host=$("kpList"); host.innerHTML="";
+  for(const g of KP_GROUPS){
+    const rows=[];
+    for(let i=g.lo;i<=g.hi;i++){
+      if(!kpVisible(i)) continue;
+      const row=document.createElement("div"); row.className="kp-row";
+      row.innerHTML=`<span class="kp-name"><span class="idx">${i}</span>${COCO_NAMES[i]}</span>`;
+      const chan=document.createElement("span"); chan.className="chan";
+      for(const c of [["x","x"],["y","y"],["confidence","c"]]){
+        const id=`kp-${i}-${c[0]}`;
+        const lab=document.createElement("label");
+        lab.innerHTML=`<input type="checkbox" id="${id}"> ${c[1]}`;
+        const cb=lab.querySelector("input");
+        cb.checked = selected.has(seriesId({kind:"kp",idx:i,chan:c[0]}));
+        cb.addEventListener("change",()=>toggleSeries(cb.checked,{kind:"kp",idx:i,chan:c[0]}));
+        chan.appendChild(lab);
+      }
+      row.appendChild(chan); rows.push(row);
+    }
+    if(rows.length){
+      const h=document.createElement("div"); h.className="kp-group-h"; h.textContent=`${g.name} (${g.lo}–${g.hi})`;
+      host.appendChild(h); rows.forEach(r=>host.appendChild(r));
+    }
+  }
+  if(!host.children.length){ host.innerHTML='<div class="muted" style="padding:8px">no keypoints match.</div>'; }
+}
+
+function buildJointList(){
+  const host=$("jList"); host.innerHTML="";
+  const q=$("jSearch").value.trim().toLowerCase();
+  const chans=["x","y","confidence","vx","vy","vz"];
+  for(const name of S.jointNames){
+    if(q && !name.toLowerCase().includes(q)) continue;
+    const row=document.createElement("div"); row.className="kp-row";
+    row.innerHTML=`<span class="kp-name">${name}</span>`;
+    const chan=document.createElement("span"); chan.className="chan";
+    for(const c of chans){
+      const lab=document.createElement("label");
+      lab.innerHTML=`<input type="checkbox"> ${c==="confidence"?"c":c}`;
+      const cb=lab.querySelector("input");
+      cb.checked = selected.has(seriesId({kind:"joint",name,chan:c}));
+      cb.addEventListener("change",()=>toggleSeries(cb.checked,{kind:"joint",name,chan:c}));
+      chan.appendChild(lab);
+    }
+    row.appendChild(chan); host.appendChild(row);
+  }
+  if(!host.children.length){ host.innerHTML='<div class="muted" style="padding:8px">no joints match.</div>'; }
+}
+
+// =====================================================================
+//  Series model
+// =====================================================================
+function seriesId(d){
+  switch(d.kind){
+    case "kp":    return `kp:${d.idx}:${d.chan}`;
+    case "joint": return `jt:${d.name}:${d.chan}`;
+    case "angle": return `an:${d.key}`;
+    case "trail": return `tr:${d.chan}`;
+    case "tvel":  return `tv:${d.idx}:${d.chan}`;
+    case "tdist": return `td:${d.a}:${d.b}`;
+  }
+}
+function seriesLabel(d){
+  switch(d.kind){
+    case "kp":    return `${COCO_NAMES[d.idx]}.${d.chan==="confidence"?"conf":d.chan} [kp${d.idx}]`;
+    case "joint": return `${d.name}.${d.chan} (mf)`;
+    case "angle": return `${d.key}`;
+    case "trail": return `trail.${d.chan}`;
+    case "tvel":  return `${COCO_NAMES[d.idx]} pixel ${d.chan}`;
+    case "tdist": return `dist(${COCO_NAMES[d.a]} , ${COCO_NAMES[d.b]})`;
+  }
+}
+function seriesBadge(d){ return (d.kind==="tvel"||d.kind==="tdist") ? "tool":"app"; }
+function seriesAxis(d){
+  switch(d.kind){
+    case "kp":    return d.chan==="confidence" ? "ratio01" : "px";
+    case "joint": return (d.chan==="vx"||d.chan==="vy"||d.chan==="vz") ? "velnorm" : "ratio01";
+    case "angle": return "deg";
+    case "trail": return "ratio01";
+    case "tvel":  return "pxvel";
+    case "tdist": return "px";
+  }
+}
+
+// raw value at frame index i for a descriptor (no range filtering)
+function rawValueAt(d,i){
+  switch(d.kind){
+    case "kp": { const kp=S.frames[i]?.keypoints?.[d.idx]; if(!kp) return null; const v=kp[d.chan]; return Number.isFinite(v)?v:null; }
+    case "joint": { const j=S.motion[i]?.joints?.[d.name]; if(!j) return null; const v=j[d.chan]; return Number.isFinite(v)?v:null; }
+    case "angle": { const v=S.perFrameAngles[d.key]?.[i]; return Number.isFinite(v)?v:null; }
+    case "trail": { const t=S.trail[i]; if(!t) return null; const v=t[d.chan]; return Number.isFinite(v)?v:null; }
+    case "tvel": {
+      // TOOL-ONLY: pixel velocity from raw pose_full positions + timestampMs
+      if(i===0) return null;
+      const a=S.frames[i-1]?.keypoints?.[d.idx], b=S.frames[i]?.keypoints?.[d.idx];
+      if(!a||!b) return null;
+      const dt=(S.frames[i].timestampMs - S.frames[i-1].timestampMs);
+      if(!(dt>0)) return null;
+      const vx=(b.x-a.x)/dt, vy=(b.y-a.y)/dt;
+      if(d.chan==="vx") return vx; if(d.chan==="vy") return vy; return Math.hypot(vx,vy);
+    }
+    case "tdist": {
+      // TOOL-ONLY: euclidean pixel distance between two keypoints
+      const a=S.frames[i]?.keypoints?.[d.a], b=S.frames[i]?.keypoints?.[d.b];
+      if(!a||!b) return null;
+      return Math.hypot(a.x-b.x, a.y-b.y);
+    }
+  }
+}
+// x value at frame index i, honoring the X-axis toggle and the series' own timestamp
+function xValueAt(d,i){
+  if(S.xAxis==="frame") return i;
+  if(d.kind==="trail" && S.trail[i] && Number.isFinite(S.trail[i].timestamp)) return S.trail[i].timestamp;
+  if(d.kind==="joint" && S.motion[i] && Number.isFinite(S.motion[i].timestampMs)) return S.motion[i].timestampMs;
+  const ts=S.frames[i]?.timestampMs; return Number.isFinite(ts)?ts:i;
+}
+
+function toggleSeries(on,d){
+  const id=seriesId(d);
+  if(on){
+    if(!selected.has(id)) selected.set(id,{...d,id,color:colorFor()});
+  }else{
+    selected.delete(id);
+  }
+  render();
+}
+
+// =====================================================================
+//  Summary / phases / debug
+// =====================================================================
+function fmt(v,suf=""){ if(v==null) return "—"; if(typeof v==="number") return (Math.round(v*100)/100)+suf; return String(v); }
+function buildSummary(){
+  const card=$("summaryCard"), grid=$("summaryGrid");
+  const sm=S.summary; grid.innerHTML="";
+  const stats=[];
+  stats.push(["frames",S.N]);
+  const ts0=S.frames[0]?.timestampMs, tsN=S.frames[S.N-1]?.timestampMs;
+  if(Number.isFinite(ts0)&&Number.isFinite(tsN)) stats.push(["duration",fmt((tsN-ts0)/1000,"s")]);
+  stats.push(["frame size", (S.frameW&&S.frameH)? `${S.frameW}×${S.frameH}`:"—"]);
+  if(sm){
+    stats.push(["score",fmt(sm.score)]);
+    stats.push(["honeyBoom",sm.honeyBoom==null?"—":String(sm.honeyBoom)]);
+    if(sm.tempo) stats.push(["tempo",`${fmt(sm.tempo.tempoRatio)} · ${sm.tempo.tempoRating??""}`]);
+    else if(sm.tempoRatio!=null) stats.push(["tempo ratio",fmt(sm.tempoRatio)]);
+    stats.push(["camera",fmt(sm.cameraAngle)]);
+    stats.push(["handed",fmt(sm.handedness)]);
+    stats.push(["fps",fmt(sm.fpsActual)]);
+    stats.push(["phase src",fmt(sm.phaseSource)]);
+    if(sm.angles && typeof sm.angles==="object"){
+      for(const k of ANGLE_KEYS){ if(sm.angles[k]!=null) stats.push([k,fmt(sm.angles[k])]); }
+    }
+  }
+  if(S.meta.appVersion) stats.push(["app ver",S.meta.appVersion]);
+  if(S.meta.analysisVersion) stats.push(["analysis",S.meta.analysisVersion]);
+  for(const [k,v] of stats){
+    const el=document.createElement("div"); el.className="stat";
+    el.innerHTML=`<div class="k">${k}</div><div class="v">${v}</div>`; grid.appendChild(el);
+  }
+  card.style.display = stats.length ? "" : "none";
+}
+
+function buildPhases(){
+  const card=$("phaseCard"), tbl=$("phaseTable");
+  if(!S.phases || !S.phases.length){ card.style.display="none"; return; }
+  card.style.display="";
+  // derive ranges: anchor.index -> next anchor.index (last -> N-1)
+  const ph=S.phases.filter(p=>Number.isFinite(p.index)).slice().sort((a,b)=>a.index-b.index);
+  let html=`<thead><tr><th>phase</th><th>frame</th><th>timestamp</th><th>range</th><th>frames</th></tr></thead><tbody>`;
+  for(let i=0;i<ph.length;i++){
+    const p=ph[i]; const start=p.index; const end=(i<ph.length-1)?ph[i+1].index:(S.N-1);
+    html+=`<tr class="phase-row" data-s="${start}" data-e="${end}"><td>${p.label||p.phase||"?"}</td><td>${p.index}</td><td>${fmt(p.timestamp)} ms</td><td>${start}–${end}</td><td>${Math.max(0,end-start)}</td></tr>`;
+  }
+  html+="</tbody>"; tbl.innerHTML=html;
+  tbl.querySelectorAll("tr.phase-row").forEach(tr=>tr.addEventListener("click",()=>{
+    const s=+tr.getAttribute("data-s"), e=+tr.getAttribute("data-e");
+    S.range.start=Math.max(0,Math.min(s,S.N-1)); S.range.end=Math.max(S.range.start,Math.min(e,S.N-1));
+    $("rangeStart").value=S.range.start; $("rangeEnd").value=S.range.end;
+    updateRangeInfo(); render();
+  }));
+}
+
+function buildDebug(){
+  const card=$("debugCard");
+  if(S.swingDebug==null){ card.style.display="none"; return; }
+  card.style.display="";
+  $("debugPre").textContent = JSON.stringify(S.swingDebug,null,2);
+}
+
+// =====================================================================
+//  Range
+// =====================================================================
+function updateRangeInfo(){
+  $("rangeInfo").textContent = `active range: ${S.range.start} – ${S.range.end}  (${S.range.end-S.range.start+1} frames of ${S.N})`;
+}
+
+// =====================================================================
+//  Render chart
+// =====================================================================
+function buildLegend(){
+  const host=$("legend"); host.innerHTML="";
+  if(!selected.size){ host.innerHTML='<span class="muted">Select datapoints in the sidebar to plot.</span>'; return; }
+  for(const d of selected.values()){
+    const item=document.createElement("div"); item.className="legend-item";
+    item.innerHTML=`<span class="swatch" style="background:${d.color}"></span>`+
+      `<span>${seriesLabel(d)}</span>`+
+      `<span class="badge ${seriesBadge(d)}">${seriesBadge(d)==="tool"?"TOOL-ONLY":"APP"}</span>`+
+      `<button class="rm" title="remove">✕</button>`;
+    item.querySelector(".rm").addEventListener("click",()=>{ selected.delete(d.id); syncCheckboxes(); render(); });
+    host.appendChild(item);
+  }
+}
+
+function syncCheckboxes(){
+  // re-sync sidebar checkbox states after a legend removal
+  buildKpList(); if(S.motion) buildJointList();
+  $("angleList")?.querySelectorAll("input[data-angle]").forEach(cb=>cb.checked=selected.has(seriesId({kind:"angle",key:cb.getAttribute("data-angle")})));
+  $("trailList")?.querySelectorAll("input[data-trail]").forEach(cb=>cb.checked=selected.has(seriesId({kind:"trail",chan:cb.getAttribute("data-trail")})));
+}
+
+function render(){
+  buildLegend();
+  const usedAxes=new Set();
+  const datasets=[];
+  for(const d of selected.values()){
+    const ax=seriesAxis(d); usedAxes.add(ax);
+    const pts=[];
+    for(let i=S.range.start;i<=S.range.end;i++){
+      const y=rawValueAt(d,i);
+      pts.push({x:xValueAt(d,i), y: y==null?null:y});
+    }
+    datasets.push({
+      label:seriesLabel(d), data:pts, borderColor:d.color, backgroundColor:d.color,
+      yAxisID:ax, borderWidth:1.5, pointRadius:0, tension:0, spanGaps:false,
+      borderDash: seriesBadge(d)==="tool" ? [5,3] : [],
+    });
+  }
+  const scales={ x:{ type:"linear", title:{display:true,text:S.xAxis==="frame"?"frame index":"timestamp (ms)"}, grid:{color:"#222732"}, ticks:{color:"#9aa3b2"} } };
+  let side=["left","right","right","right","right"]; let n=0;
+  for(const ax of ["px","ratio01","velnorm","deg","pxvel"]){
+    if(!usedAxes.has(ax)) continue;
+    scales[ax]={ position: side[n++]||"right", title:{display:true,text:AXIS_META[ax].label}, grid:{drawOnChartArea:n===1,color:"#222732"}, ticks:{color:"#9aa3b2"} };
+  }
+  const cfg={
+    type:"line",
+    data:{datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      interaction:{mode:"nearest",intersect:false},
+      plugins:{ legend:{display:false}, tooltip:{enabled:true} },
+      scales,
+    },
+    plugins:[phaseMarkerPlugin],
+  };
+  if(chart){ chart.config.data=cfg.data; chart.config.options=cfg.options; chart.update(); }
+  else chart=new Chart($("chart").getContext("2d"), cfg);
+
+  $("chartCard").style.display="";
+  $("chartHint").textContent = selected.size
+    ? `${selected.size} series · dashed = TOOL-ONLY (not an app value) · range ${S.range.start}–${S.range.end}`
+    : "";
+}
+
+// vertical phase markers
+const phaseMarkerPlugin={
+  id:"phaseMarkers",
+  afterDatasetsDraw(c){
+    if(!S || !S.phases || !$("showPhaseMarkers").checked) return;
+    const {ctx, chartArea:{top,bottom}, scales}=c; const xs=scales.x; if(!xs) return;
+    ctx.save(); ctx.font="10px sans-serif"; ctx.textAlign="left";
+    for(const p of S.phases){
+      if(!Number.isFinite(p.index)) continue;
+      if(p.index<S.range.start || p.index>S.range.end) continue;
+      const xv = S.xAxis==="frame" ? p.index : (Number.isFinite(p.timestamp)?p.timestamp:(S.frames[p.index]?.timestampMs??p.index));
+      const px=xs.getPixelForValue(xv); if(!Number.isFinite(px)) continue;
+      ctx.strokeStyle="rgba(91,157,255,.5)"; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(px,top); ctx.lineTo(px,bottom); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle="rgba(91,157,255,.9)";
+      ctx.fillText((p.label||p.phase||""), px+3, top+10);
+    }
+    ctx.restore();
+  }
+};
+
+// =====================================================================
+//  Wire up events
+// =====================================================================
+$("fileInput").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader(); r.onload=()=>loadJSON(String(r.result)); r.readAsText(f);
+});
+$("loadPaste").addEventListener("click",()=>{ const t=$("pasteBox").value.trim(); if(t) loadJSON(t); else showErr("Paste box is empty."); });
+$("clearAll").addEventListener("click",()=>{ location.reload(); });
+
+$("rangeStart").addEventListener("change",()=>{ S.range.start=Math.max(0,Math.min(+$("rangeStart").value||0,S.N-1)); if(S.range.start>S.range.end){S.range.end=S.range.start;$("rangeEnd").value=S.range.end;} $("rangeStart").value=S.range.start; updateRangeInfo(); render(); });
+$("rangeEnd").addEventListener("change",()=>{ S.range.end=Math.max(0,Math.min(+$("rangeEnd").value||0,S.N-1)); if(S.range.end<S.range.start){S.range.start=S.range.end;$("rangeStart").value=S.range.start;} $("rangeEnd").value=S.range.end; updateRangeInfo(); render(); });
+$("rangeReset").addEventListener("click",()=>{ S.range.start=0; S.range.end=S.N-1; $("rangeStart").value=0; $("rangeEnd").value=S.N-1; updateRangeInfo(); render(); });
+
+document.querySelectorAll("input[name=xaxis]").forEach(r=>r.addEventListener("change",()=>{ S.xAxis=document.querySelector("input[name=xaxis]:checked").value; render(); }));
+
+$("kpSearch").addEventListener("input",buildKpList);
+document.querySelectorAll(".pill[data-filter]").forEach(p=>p.addEventListener("click",()=>{
+  document.querySelectorAll(".pill[data-filter]").forEach(x=>x.classList.remove("active"));
+  p.classList.add("active"); kpFilter=p.getAttribute("data-filter"); buildKpList();
+}));
+$("kpClear").addEventListener("click",()=>{
+  for(const id of [...selected.keys()]) if(id.startsWith("kp:")) selected.delete(id);
+  buildKpList(); render();
+});
+$("jSearch")?.addEventListener("input",buildJointList);
+
+$("showPhaseMarkers").addEventListener("change",()=>render());
+
+$("velAdd").addEventListener("click",()=>{
+  const idx=+$("velKp").value, chan=$("velChan").value;
+  toggleSeries(true,{kind:"tvel",idx,chan});
+});
+$("distAdd").addEventListener("click",()=>{
+  const a=+$("distA").value, b=+$("distB").value;
+  if(a===b){ showErr("Distance needs two different keypoints."); return; }
+  clearErr(); toggleSeries(true,{kind:"tdist",a,b});
+});
+</script>
+</body>
+</html>
