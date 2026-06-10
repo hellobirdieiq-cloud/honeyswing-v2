@@ -45,6 +45,10 @@ expo-env.d.ts
 ios/*
 !ios/Podfile.lock
 
+# apple-targets regenerates *.generated.entitlements each prebuild from the
+# `entitlements` field in expo-target.config.js — derived, not source.
+targets/*/generated.entitlements
+
 # Diagnostic artifacts; keep only the build-time RTMW index
 models/*
 !models/coco_wholebody_index.json

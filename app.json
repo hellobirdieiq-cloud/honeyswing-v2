@@ -36,7 +36,8 @@
       "expo-video",
       "./plugins/withHoneyNative",
       "@clerk/expo",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,
