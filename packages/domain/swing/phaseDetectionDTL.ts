@@ -456,14 +456,22 @@ export function detectDTLPhases(input: {
     }
   }
 
-  const phases: DetectedPhase[] = PHASE_ORDER.map((phase, i) => ({
-    phase,
-    label: PHASE_LABELS[phase],
-    point: trail[indices[i]],
-    index: indices[i],
-    timestamp: trail[indices[i]].timestamp,
-    source: "heuristic" as const,
-  }));
+  const phases: DetectedPhase[] = PHASE_ORDER.map((phase, i) => {
+    const ti = indices[i]; // trail-space index from trail-based sub-detectors
+    const ts = trail[ti].timestamp;
+    const frameIdx = frames.findIndex(f => f.timestampMs === ts);
+    if (frameIdx === -1) {
+      throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
+    }
+    return {
+      phase,
+      label: PHASE_LABELS[phase],
+      point: trail[ti],
+      index: frameIdx,
+      timestamp: ts,
+      source: "heuristic" as const,
+    };
+  });
 
   return {
     phases,

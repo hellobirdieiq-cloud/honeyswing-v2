@@ -47,6 +47,19 @@ const PHASE_ORDER: SwingPhase[] = [
 // Helpers — joint velocity per frame, with null-skip for missing joints
 // ---------------------------------------------------------------------------
 
+// phase.index is FRAME-space (canonical). Map a frame's timestamp to its trail point for the
+// diagnostic-only `point` field; a wrist-less frame has no trail entry → use the nearest.
+function trailPointForFrame(trail: SwingTrailPoint[], frameTs: number): SwingTrailPoint {
+  let best = trail[0];
+  let bestD = Infinity;
+  for (const t of trail) {
+    if (t.timestamp === frameTs) return t;
+    const d = Math.abs(t.timestamp - frameTs);
+    if (d < bestD) { bestD = d; best = t; }
+  }
+  return best;
+}
+
 function jointVelocity(
   prev: PoseFrame,
   curr: PoseFrame,
@@ -499,14 +512,17 @@ export function detectFaceOnPhases(input: {
     }
   }
 
-  const phases: DetectedPhase[] = PHASE_ORDER.map((phase, i) => ({
-    phase,
-    label: PHASE_LABELS[phase],
-    point: trail[indices[i]],
-    index: indices[i],
-    timestamp: trail[indices[i]].timestamp,
-    source: "heuristic" as const,
-  }));
+  const phases: DetectedPhase[] = PHASE_ORDER.map((phase, i) => {
+    const frameIdx = indices[i]; // sub-detectors return FRAME-space indices
+    return {
+      phase,
+      label: PHASE_LABELS[phase],
+      point: trailPointForFrame(trail, frames[frameIdx].timestampMs),
+      index: frameIdx,
+      timestamp: frames[frameIdx].timestampMs,
+      source: "heuristic" as const,
+    };
+  });
 
   return {
     phases,

@@ -170,7 +170,11 @@ const MIN_AVG_CONFIDENCE = 0.5;
 function averageFrames(frames: PoseFrame[], start: number, end: number): PoseFrame {
   const s = Math.max(0, start);
   const e = Math.min(frames.length - 1, end);
-  const window = frames.slice(s, e + 1);
+  // Guard parity with computeZTrace (:474): an out-of-range request (s > e) slices to an
+  // empty window → undefined midFrame → crash. Fall back to the nearest valid single frame.
+  const window = s > e
+    ? [frames[Math.min(frames.length - 1, Math.max(0, start))]]
+    : frames.slice(s, e + 1);
   const midFrame = window[Math.floor(window.length / 2)];
 
   const joints = {} as Record<JointName, import("../../pose/PoseTypes").NormalizedJoint | undefined>;
