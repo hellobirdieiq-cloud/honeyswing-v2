@@ -297,9 +297,47 @@ else:
 
 ## Face-On Phase 4 — Impact
 
+**Signal:** Speed-banded lead-wrist (`leftWrist`) Y-arc-bottom — `detectFaceOnImpact` (`packages/domain/swing/phaseDetectionFaceOn.ts:152-194`). No foot reference, no handedness, no trail hand: only `leftWrist` (`:162-163, :185`).
+**Validated:** via `scripts/testLeadWristImpact.ts` — T=0.90: +9 recoveries on impact_search_bounds, 1 regression (`phaseDetectionFaceOn.ts:143-144`).
+**Status:** PROVISIONAL — **KNOWN BIAS** (see below).
+
+```
+// Constants (phaseDetectionFaceOn.ts:148-150)
+IMPACT_SPEED_LOOKBACK  = 3      // frames; 2D leftWrist displacement window
+IMPACT_PEAK_PERCENTILE = 0.95   // robust max (ignores a single noisy spike)
+IMPACT_BAND_THRESHOLD  = 0.9    // band = speed >= threshold * peak
+
+// 1. Lead-wrist 2D speed, 3-frame lookback (phaseDetectionFaceOn.ts:160-168).
+//    speed[0..2] = 0; speed[f] = 0 when either frame's leftWrist is missing.
+speed[f] = hypot(leftWrist.x[f] - leftWrist.x[f-3],
+                 leftWrist.y[f] - leftWrist.y[f-3])
+
+// 2. Robust peak = 95th-percentile speed: sort asc, index floor(0.95*n) (:170-173).
+peak  = sorted_speed[ floor(IMPACT_PEAK_PERCENTILE * n) ]
+
+// 3. High-speed band, then arc bottom = MAX leftWrist.y within band (:176-191).
+//    y is top-down 0..1, so max y = the LOWEST point of the wrist arc. Banding
+//    keeps the search out of slow address/finish regions where a global y-max lands.
+floor  = IMPACT_BAND_THRESHOLD * peak
+impact = argmax_f { leftWrist.y[f] : speed[f] >= floor }
+```
+
+**Returns:** `{ frame, reliability: "medium" }` (`phaseDetectionFaceOn.ts:193`); `null` when `n === 0`, `peak <= 0`, or no band frame has a valid `leftWrist.y` (`:159, :174, :192`).
+
+**KNOWN BIAS:** fires at the lead-wrist **arc-bottom**, which precedes true contact. Measured **3.6 frames early (~60 ms at 60 fps)** on swing 81f0b197 (eyeballed ground truth 137.6 vs detected 134). **No lag correction applied** — unlike DTL Phase 4's 67 ms `HAND_LOW_TO_IMPACT_MS` term. A fixed lag constant was **considered and REJECTED**: lag varies with swing speed.
+
+### Under evaluation (NOT shipped)
+
+**(a) Lead-thumb-line vertical crossing** — `dx = thumb_tip.x − thumb_CMC.x` (COCO-WholeBody left-hand indices 95, 92) sign flip; take the **LAST** crossing in `[top, follow_through]`, **not the first** (8/13 RH swings have multiple crossings — an early transition-wobble crossing right after `top` confounds first-crossing). Matched ground truth on 81f0b197 (**137.5 vs 137.6**) and historically corroborates c6860ce5 f92. **CAVEATS:** requires a valid `top`/`follow_through` window (3 swings without a stored `top` produced garbage, crossings at 122–235); 2 unexplained outliers (a761da0e −22.75, 4b47009e +32.77) not yet eyeballed; constants `conf ≥ 0.4` and the 2-frame hold are `EXTERNAL ASSUMPTION`. Validation data: `scripts/output/thumb_crossing_validation.json`.
+
+**(b) Two-wrist x crossing** — **TESTED AND REJECTED** on 81f0b197: the wrists are ~55 px apart through contact (`wristDx = rightWrist.x − leftWrist.x` runs −53→−36 across frames 134–141), with **no zero-cross in the impact band**. Nearest crossings are early-downswing rotation (~127) and follow-through noise (~143, 5.4 frames late). Label-swap invariant (a L/R wrist swap only flips `wristDx`'s sign — crossing frames are identical). Data: `scripts/output/wrist_crossing_81f0b197.json`.
+
+### SUPERSEDED (replaced — see in-code comment `phaseDetectionFaceOn.ts:144-145`)
+
+> The trail-hand X-rise-vs-foot-reference rule below shipped previously and was replaced because it "keyed off the wrong hand/axis for face-on" (`phaseDetectionFaceOn.ts:145`). Preserved for its N=2 historical validation.
+
 **Signal:** Hand/foot x crossing (hand crosses lead foot reference line)
-**Validated:** N=2, strongest rule in face-on set
-**Status:** PROVISIONAL
+**Validated:** N=2, strongest rule in (old) face-on set
 
 ```
 // Lock foot reference at address — NEVER update during swing
@@ -325,7 +363,7 @@ impact = crossing_frame - lag_frames
 - Lock foot at address — live foot position drifts ±0.005 with weight shift
 - Flag swings where lead foot x moves >0.01 from address (dramatic lunge)
 - Coaching use: hand crosses foot early = ball too far forward; late = too far back
-- `EXTERNAL ASSUMPTION` — 27ms lag correction, 0.03 rise rate, 110ms sustain
+- `EXTERNAL ASSUMPTION` (SUPERSEDED with detector) — 27ms lag correction, 0.03 rise rate, 110ms sustain
 
 ---
 
@@ -365,7 +403,7 @@ finish = first frame where rolling average reaches plateau value
 | 1 — True address | Spine+head+knee window | Not validated | No |
 | 2 — Takeaway | Wrist midX directional gate | Same | Yes ✓ |
 | 3 — Top | Lead wrist X minimum | Wrist vel min + Z max + shoulder | No |
-| 4 — Impact | Combined wrist Y max + 67ms | Hand/foot x crossing | No |
+| 4 — Impact | Combined wrist Y max + 67ms | Lead-wrist speed-band arc-bottom (`leftWrist.y` max) — foot-crossing SUPERSEDED | No |
 | 5 — Finish | velXY < 0.008 × 3 frames | Trail shoulder x plateau | No |
 
 ---
@@ -386,9 +424,12 @@ finish = first frame where rolling average reaches plateau value
 | Face-on sustain multiplier | 10x | Face-on 0 | Face-on |
 | Face-on sustain window | 330ms | Face-on 0 | Face-on |
 | Face-on top 5-frame window | ±5 frames | Face-on 3 | Face-on |
-| Impact lag correction | 27ms | Face-on 4 | Face-on |
-| Rise rate threshold | 0.03 | Face-on 4 | Face-on |
-| Rise sustain | 110ms | Face-on 4 | Face-on |
+| Impact lag correction | 27ms | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Rise rate threshold | 0.03 | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Rise sustain | 110ms | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Impact speed lookback | 3 frames | Face-on 4 (shipped) | Face-on |
+| Impact peak percentile | 0.95 | Face-on 4 (shipped) | Face-on |
+| Impact band threshold | 0.9 × peak | Face-on 4 (shipped) | Face-on |
 | Shoulder plateau filter | >10% exclusion | Face-on 5 | Face-on |
 | Shoulder plateau confirm | 550ms rising | Face-on 5 | Face-on |
 
