@@ -4,7 +4,7 @@ import Foundation
 enum CaptureState: Equatable {
     case ready
     case recording
-    case captured(samples: Int, hz: Double)
+    case sent(samples: Int, hz: Double)
 }
 
 // Why a capture stopped. Logged, not configurable.
@@ -22,6 +22,7 @@ final class CaptureModel: ObservableObject {
 
     private let workout = WorkoutController()
     private let imu = ImuCapture()
+    private let wc = WatchConnectivityManager()
     private var hardCapTimer: Timer?
 
     // MARK: Intents
@@ -49,18 +50,20 @@ final class CaptureModel: ObservableObject {
     func stop(reason: StopReason) {
         guard state == .recording else { return }  // idempotent: only stops an active capture
         invalidateHardCap()
-        let metrics = imu.stop()
+        let (samples, metrics) = imu.stop()
         workout.end()
         let durationMs = Int(metrics.durationMs.rounded())
         let derivedHz = String(format: "%.1f", metrics.derivedHz)
         let maxAccelG = String(format: "%.2f", metrics.maxAccelMagnitudeG)
         print("[HoneyWatch][capture] STOP reason=\(reason.rawValue) sampleCount=\(metrics.sampleCount) durationMs=\(durationMs) derivedHz=\(derivedHz) nominalHz=\(metrics.nominalHz) maxAccelMagnitudeG=\(maxAccelG) workoutState=ended")
-        state = .captured(samples: metrics.sampleCount, hz: metrics.derivedHz)
+        // Phase 3: hand the captured window to the phone (queues; delivers in background).
+        wc.send(samples: samples, metrics: metrics)
+        state = .sent(samples: metrics.sampleCount, hz: metrics.derivedHz)
     }
 
-    /// Captured screen → back to idle. Phase 3 inserts a "sent" state here.
+    /// Sent screen → back to idle.
     func acknowledge() {
-        guard case .captured = state else { return }
+        guard case .sent = state else { return }
         resetToReady()
     }
 

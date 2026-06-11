@@ -42,11 +42,12 @@ final class ImuCapture {
     }
 
     /// Stop updates, snapshot the window, and compute the gate metrics.
-    func stop() -> CaptureMetrics {
+    /// Returns the raw samples too — Phase 3 encodes them into the transfer blob.
+    func stop() -> (samples: [ImuSample], metrics: CaptureMetrics) {
         manager.stopDeviceMotionUpdates()
         let nominalHz = manager.deviceMotionDataFrequency
         let samples = queue.sync { buffer.snapshot() }
-        return Self.metrics(from: samples, nominalHz: nominalHz)
+        return (samples, Self.metrics(from: samples, nominalHz: nominalHz))
     }
 
     private static func metrics(from samples: [ImuSample], nominalHz: Int) -> CaptureMetrics {

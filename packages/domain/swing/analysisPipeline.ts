@@ -48,6 +48,7 @@ import { aggregateSwing, type AggregateResult } from './categoryAggregation';
 import { computeLeadWristHinge, type LeadWristHinge } from './wristHinge';
 import { computeSyntheticClubheadPath, type SyntheticClubheadPath } from './syntheticClubheadPath';
 import { computeFaceToPath, type FaceToPath } from './faceToPath';
+import type { WatchImuReading } from './watchImu';
 
 export type FrameSelectionDebug = {
   frame_selection_method: 'phase_windowed' | 'mid_frame_fallback';
@@ -76,6 +77,9 @@ export type FrameSelectionDebug = {
   lead_wrist_hinge?: LeadWristHinge | null;
   synthetic_clubhead_path?: SyntheticClubheadPath | null;
   face_to_path?: FaceToPath | null;
+  // Phase 5 telemetry seam: did this analysis receive a paired watch IMU stream?
+  // No scoring consumer yet — impact-anchored use lands in Phase 6.
+  watch_imu_present?: boolean;
 };
 
 /** Per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
@@ -517,6 +521,10 @@ export function analyzePoseSequence(
   gravityReadings: GravityReading[] = [],
   addressFrameIdx?: number,
   opts?: { skipVeto?: boolean },
+  // Phase 5 seam — mirrors gravityReadings (optional, no-ops when empty). No scoring
+  // consumer this phase; only surfaced as swing_debug.watch_imu_present telemetry.
+  // Impact-spike anchoring against this stream is Phase 6.
+  watchImuReadings: WatchImuReading[] = [],
 ): AnalysisResult {
   // Layer 1 — velocity-veto + interpolation pre-clean. Operates on the raw
   // normalized frames (matches /tmp/veto_analysis.md threshold derivation, which
@@ -760,6 +768,7 @@ export function analyzePoseSequence(
       lead_wrist_hinge: leadWristHinge,
       synthetic_clubhead_path: syntheticClubheadPath,
       face_to_path: faceToPath,
+      watch_imu_present: watchImuReadings.length > 0,
     },
   };
 }
