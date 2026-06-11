@@ -25,6 +25,9 @@ export type JointName =
   | "rightIndex"
   | "leftThumb"
   | "rightThumb"
+  // thumb tips (face-on impact detector reads dx = thumbTip.x − thumb.x)
+  | "leftThumbTip"
+  | "rightThumbTip"
   // lower body
   | "leftHip"
   | "rightHip"
@@ -100,6 +103,8 @@ export function createEmptyJoints(): Record<JointName, NormalizedJoint | undefin
     rightIndex: undefined,
     leftThumb: undefined,
     rightThumb: undefined,
+    leftThumbTip: undefined,
+    rightThumbTip: undefined,
     leftHip: undefined,
     rightHip: undefined,
     leftKnee: undefined,

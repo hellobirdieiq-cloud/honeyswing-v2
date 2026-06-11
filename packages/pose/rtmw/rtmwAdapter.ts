@@ -25,6 +25,8 @@ import {
   IDX_RIGHT_INDEX,
   IDX_LEFT_THUMB,
   IDX_RIGHT_THUMB,
+  IDX_LEFT_THUMB_TIP,
+  IDX_RIGHT_THUMB_TIP,
   IDX_LEFT_PINKY,
   IDX_RIGHT_PINKY,
   IDX_LEFT_FOOT_INDEX,
@@ -70,6 +72,8 @@ const JOINT_TO_COCOWB_INDEX: Record<JointName, number | null> = {
   rightIndex: IDX_RIGHT_INDEX,
   leftThumb: IDX_LEFT_THUMB,
   rightThumb: IDX_RIGHT_THUMB,
+  leftThumbTip: IDX_LEFT_THUMB_TIP,
+  rightThumbTip: IDX_RIGHT_THUMB_TIP,
   // lower body
   leftHip: IDX_LEFT_HIP,
   rightHip: IDX_RIGHT_HIP,

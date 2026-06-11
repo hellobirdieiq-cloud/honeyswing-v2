@@ -77,6 +77,13 @@ export const EXTERNAL_ASSUMPTIONS = {
       riseLookbackFrames: 3,
       riseSustainMs: 110,
       footRefFrames: 30,
+      // Lead-thumb-line crossing rule (primary face-on impact detector).
+      // EXTERNAL ASSUMPTION — calibrated on RH swing 81f0b197 (crossing 137.5 vs
+      // ground truth 137.6) via scripts/output/_thumbCrossing.mjs; re-validate vs corpus.
+      thumbConfMin: 0.4,        // skip frames where either thumb joint conf < this
+      thumbHoldFrames: 2,       // crossing must hold positive this many consecutive valid frames
+      thumbMinValidCoverage: 0.5, // fraction of window frames that must pass conf, else fall back
+      crossCheckThresholdFrames: 6, // |thumb − arcBottom| above this sets the reliability flag
     },
     finish: {
       rollingWindow: 5,
@@ -107,6 +114,24 @@ export type PhaseRuleDebug = {
   true_address_frame: number | null;
   reliability: PhaseRuleReliability;
   external_assumptions_used: string[];
+  // Face-on impact provenance + cross-check (optional → DTL/legacy unaffected).
+  // Records BOTH candidates and their disagreement on every swing, so neither
+  // detector is silently trusted.
+  impact_source?: "thumb_crossing" | "arc_bottom";
+  impact_thumb?: number | null;       // sub-frame thumb crossing (null when none / gated)
+  impact_arcbottom?: number | null;   // arc-bottom fallback frame (null when none)
+  impact_delta?: number | null;       // impact_thumb − impact_arcbottom (null when either absent)
+  impact_cross_check_mismatch?: boolean; // |delta| > crossCheckThresholdFrames
+  // Why arc-bottom was used instead of the thumb crossing (set only when
+  // impact_source === "arc_bottom"). "lh_ungated" = LH skips the unvalidated thumb
+  // primary this ticket; "override" = test seam; the rest are RH thumb misses.
+  impact_fallback_reason?:
+    | "lh_ungated"
+    | "override"
+    | "no_precanonical"
+    | "invalid_window"
+    | "no_crossing"
+    | "low_coverage";
 };
 
 export function emptyReliability(): PhaseRuleReliability {

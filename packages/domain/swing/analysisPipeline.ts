@@ -554,15 +554,21 @@ export function analyzePoseSequence(
 
   let canonical: PoseSequence;
   let untrustedMap: UntrustedMap | null;
+  // Pre-canonical (unmirrored, normalized, post-veto) sequence — the same x-sign
+  // space the face-on lead-thumb crossing rule was validated in. The canonical
+  // mirror would negate thumb dx for RH; the face-on impact detector reads thumb
+  // from this instead. Frame indices are 1:1 with canonical (veto interpolates,
+  // never drops; mirror only flips x), so phase windows line up.
+  let preCanonical: PoseSequence;
   if (opts?.skipVeto) {
     canonical = toCanonicalSequence(identitySequence, mirrorToCanonical);
+    preCanonical = identitySequence;
     untrustedMap = null;
   } else {
     const veto = vetoAndInterpolateKeypoints(identitySequence.frames);
-    canonical = toCanonicalSequence(
-      { ...identitySequence, frames: veto.cleanedFrames },
-      mirrorToCanonical,
-    );
+    const cleanedSequence = { ...identitySequence, frames: veto.cleanedFrames };
+    canonical = toCanonicalSequence(cleanedSequence, mirrorToCanonical);
+    preCanonical = cleanedSequence;
     untrustedMap = veto.untrustedMap;
   }
 
@@ -593,6 +599,8 @@ export function analyzePoseSequence(
     canonical,
     trail,
     angle: earlyAngle.angle,
+    preCanonical,
+    isLeftHanded,
   });
 
   const phaseAddressIdx = phases.find(p => p.phase === 'takeaway')?.index ?? 0;

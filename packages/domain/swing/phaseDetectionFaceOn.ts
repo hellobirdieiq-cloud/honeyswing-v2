@@ -194,6 +194,160 @@ function detectFaceOnImpact(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 4 (primary) — lead-thumb-line last zero-crossing.
+// dx = thumbTip.x − thumbCMC.x in PRE-canonical (unmirrored, normalized) space —
+// the same x-sign space the rule was validated in (scripts/output/_thumbCrossing.mjs,
+// RH swing 81f0b197: crossing 137.5 vs ground truth 137.6). Within [top, follow_through]:
+// LAST negative→positive crossing that holds positive thumbHoldFrames consecutive valid
+// frames; sub-frame via linear interpolation. Frames where either thumb joint conf <
+// thumbConfMin are skipped. LAST (not first) — an early transition crossing right after
+// 'top' confounds the literal first crossing (81f0b197 first=112.5 wrong).
+//
+// Handedness: RH lead hand = LEFT thumb (CMC=leftThumb idx 92, tip=leftThumbTip idx 95),
+// neg→pos crossing. LH lead hand = RIGHT thumb (113/116) with the sign FLIPPED (the rule
+// was calibrated on RH). The LH thumb path is UNVALIDATED (no LH ground truth) and is
+// gated OFF as primary by the caller this ticket; the mapping is built here for later.
+// ---------------------------------------------------------------------------
+
+type ThumbCrossingResult = {
+  frame: number | null;
+  coverage: number;
+  nCrossings: number;
+  reason: "ok" | "invalid_window" | "no_crossing";
+};
+
+export function detectFaceOnThumbCrossing(
+  preFrames: PoseFrame[],
+  topIdx: number,
+  followIdx: number,
+  isLeftHanded: boolean,
+): ThumbCrossingResult {
+  const cmcName = isLeftHanded ? "rightThumb" : "leftThumb";
+  const tipName = isLeftHanded ? "rightThumbTip" : "leftThumbTip";
+  const signFlip = isLeftHanded ? -1 : 1; // LH flips the RH-calibrated sign
+
+  const start = Math.max(0, topIdx);
+  const end = Math.min(preFrames.length - 1, followIdx);
+  // Defense-in-depth: a degenerate/inverted window (incl. any sentinel followIdx)
+  // is reported, never silently coerced to a 0-length search.
+  if (end <= start) return { frame: null, coverage: 0, nCrossings: 0, reason: "invalid_window" };
+
+  const confMin = A.impact.thumbConfMin;
+  const samples: { frame: number; dx: number }[] = [];
+  let windowLen = 0;
+  for (let i = start; i <= end; i++) {
+    windowLen++;
+    const f = preFrames[i];
+    const cmc = f?.joints[cmcName];
+    const tip = f?.joints[tipName];
+    if (!cmc || !tip) continue;
+    if (!Number.isFinite(cmc.x) || !Number.isFinite(tip.x)) continue;
+    if (!((cmc.confidence ?? 0) >= confMin) || !((tip.confidence ?? 0) >= confMin)) continue;
+    samples.push({ frame: i, dx: signFlip * (tip.x - cmc.x) });
+  }
+  const coverage = windowLen > 0 ? samples.length / windowLen : 0;
+
+  // All neg→pos crossings that hold positive thumbHoldFrames consecutive valid frames.
+  const hold = A.impact.thumbHoldFrames;
+  const crossings: number[] = [];
+  for (let k = 0; k + 1 < samples.length; k++) {
+    const a = samples[k];
+    const b = samples[k + 1];
+    if (!(a.dx < 0 && b.dx > 0)) continue;
+    let holds = true;
+    for (let h = 1; h < hold; h++) {
+      const c = samples[k + 1 + h];
+      if (c === undefined) break; // tail of window — accept (mirrors _thumbCrossing.mjs)
+      if (!(c.dx > 0)) { holds = false; break; }
+    }
+    if (!holds) continue;
+    const cross = a.frame + ((0 - a.dx) / (b.dx - a.dx)) * (b.frame - a.frame);
+    crossings.push(cross);
+  }
+  const last = crossings.length > 0 ? crossings[crossings.length - 1] : null;
+  return {
+    frame: last,
+    coverage,
+    nCrossings: crossings.length,
+    reason: last != null ? "ok" : "no_crossing",
+  };
+}
+
+// Impact selection: thumb crossing (primary, RH) vs arc-bottom (fallback), with the
+// per-swing cross-check. Shared by detectFaceOnPhases and detectFaceOnPhasesDebug so
+// the two paths can never drift. Returns the chosen frame + full provenance.
+type ImpactSelection = {
+  impactIdx: number;
+  impactSource: "thumb_crossing" | "arc_bottom";
+  impactThumb: number | null;
+  impactArcbottom: number;
+  impactDelta: number | null;
+  impactCrossCheckMismatch: boolean;
+  impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"];
+  impactReliability: "high" | "medium";
+};
+
+function selectFaceOnImpact(args: {
+  arcBottomFrame: number;
+  thumb: ThumbCrossingResult | null;
+  isLeftHanded: boolean;
+  hasPreCanonical: boolean;
+  isOverride: boolean;
+}): ImpactSelection {
+  const { arcBottomFrame, thumb, isLeftHanded, hasPreCanonical, isOverride } = args;
+  const impactThumb = thumb && thumb.frame != null ? thumb.frame : null;
+  const impactArcbottom = arcBottomFrame;
+  const impactDelta = impactThumb != null ? impactThumb - impactArcbottom : null;
+  const impactCrossCheckMismatch =
+    impactDelta != null && Math.abs(impactDelta) > A.impact.crossCheckThresholdFrames;
+
+  // Precedence: override → LH gate → no pre-canonical → RH thumb (primary) → fallback.
+  let impactIdx: number;
+  let impactSource: "thumb_crossing" | "arc_bottom";
+  let impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"];
+  let impactReliability: "high" | "medium" = "medium";
+
+  if (isOverride) {
+    impactIdx = arcBottomFrame;
+    impactSource = "arc_bottom";
+    impactFallbackReason = "override";
+  } else if (isLeftHanded) {
+    impactIdx = arcBottomFrame;
+    impactSource = "arc_bottom";
+    impactFallbackReason = "lh_ungated";
+  } else if (!hasPreCanonical) {
+    impactIdx = arcBottomFrame;
+    impactSource = "arc_bottom";
+    impactFallbackReason = "no_precanonical";
+  } else if (thumb && thumb.frame != null && thumb.coverage >= A.impact.thumbMinValidCoverage) {
+    impactIdx = Math.round(thumb.frame);
+    impactSource = "thumb_crossing";
+    // Cross-check disagreement keeps the thumb frame but downgrades confidence.
+    impactReliability = impactCrossCheckMismatch ? "medium" : "high";
+  } else {
+    impactIdx = arcBottomFrame;
+    impactSource = "arc_bottom";
+    impactFallbackReason =
+      thumb && thumb.reason === "invalid_window"
+        ? "invalid_window"
+        : thumb && thumb.frame == null
+          ? "no_crossing"
+          : "low_coverage";
+  }
+
+  return {
+    impactIdx,
+    impactSource,
+    impactThumb,
+    impactArcbottom,
+    impactDelta,
+    impactCrossCheckMismatch,
+    impactFallbackReason,
+    impactReliability,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3 — top of backswing (consensus across velocity min, z max, shoulder x min)
 // ---------------------------------------------------------------------------
 
@@ -347,6 +501,14 @@ export function detectFaceOnPhases(input: {
    * impact_search_bounds gate. Used by scripts/testLeadWristImpact.ts.
    */
   impactOverride?: number;
+  /**
+   * Pre-canonical (unmirrored, normalized) frames — the x-sign space the
+   * lead-thumb crossing rule was validated in. When present (and RH), the thumb
+   * crossing is the PRIMARY impact; arc-bottom becomes fallback. Absent → arc-bottom.
+   */
+  preCanonical?: PoseSequence;
+  /** Handedness for the thumb lead-hand/sign branch. LH is gated to arc-bottom. */
+  isLeftHanded?: boolean;
 }): {
   phases: DetectedPhase[];
   fallbackGate: FallbackGate | null;
@@ -354,6 +516,7 @@ export function detectFaceOnPhases(input: {
 } {
   const { canonical, trail, msPerFrame } = input;
   const frames = canonical.frames;
+  const isLeftHanded = input.isLeftHanded ?? false;
   const reliability: PhaseRuleReliability = emptyReliability();
   const assumptionsUsed: string[] = [];
 
@@ -382,10 +545,11 @@ export function detectFaceOnPhases(input: {
   const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
   reliability.takeaway = "medium";
 
-  // Phase 4 — impact (no dependency on top). impactOverride lets an external
-  // candidate (e.g. lead-wrist Y-arc-bottom) replace the internal detector and flow
-  // through the real downstream top/finish/gates/assembly. Production passes none.
-  let impactIdx: number;
+  // Phase 4 — PROVISIONAL impact (arc-bottom or test override). Used to bound the
+  // top/finish search; the thumb crossing (computed below) becomes the final impact
+  // for RH swings. impactOverride is a test seam (testLeadWristImpact) and bypasses
+  // the thumb primary entirely.
+  let arcBottomFrame: number | null;
   if (input.impactOverride != null) {
     // Required range [0, frames.length-1]: detectFaceOnTop's search bound
     // `to = impactIdx - toOffset` indexes frames[F] for F <= to <= impactIdx, so an
@@ -405,8 +569,7 @@ export function detectFaceOnPhases(input: {
         },
       };
     }
-    impactIdx = input.impactOverride;
-    reliability.impact = "medium"; // external candidate, not internal high/low
+    arcBottomFrame = input.impactOverride;
     assumptionsUsed.push("faceOn.impact:override");
   } else {
     const impact = detectFaceOnImpact(frames, msPerFrame);
@@ -424,13 +587,12 @@ export function detectFaceOnPhases(input: {
         },
       };
     }
-    impactIdx = impact.frame;
-    reliability.impact = impact.reliability ?? "medium";
+    arcBottomFrame = impact.frame;
   }
 
-  // Phase 3 — top (uses swing_start and impact for search bounds)
+  // Phase 3 — top (uses swing_start and provisional impact for search bounds)
   const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
-  const top = detectFaceOnTop(frames, topSearchAnchor, impactIdx);
+  const top = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame);
   assumptionsUsed.push("faceOn.top");
   if (top.frame == null) {
     return {
@@ -448,6 +610,39 @@ export function detectFaceOnPhases(input: {
   const topIdx = top.frame;
   reliability.top = top.reliability ?? "medium";
 
+  // Phase 5 — finish (computed against provisional impact; gives the follow-through
+  // window upper bound for the thumb crossing).
+  const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);
+  assumptionsUsed.push("faceOn.finish");
+  reliability.finish = finish.reliability;
+
+  // Phase 4 (PRIMARY) — lead-thumb-line last zero-crossing within [top, follow_through].
+  // Selection precedence: test override → arc-bottom (bypass thumb); LH → arc-bottom
+  // (unvalidated thumb path, gated off this ticket); otherwise RH thumb crossing when a
+  // qualifying crossing exists and conf coverage is adequate, else arc-bottom fallback.
+  const thumb =
+    input.impactOverride == null && !isLeftHanded && input.preCanonical
+      ? detectFaceOnThumbCrossing(input.preCanonical.frames, topIdx, finish.frame, isLeftHanded)
+      : null;
+  const selection = selectFaceOnImpact({
+    arcBottomFrame,
+    thumb,
+    isLeftHanded,
+    hasPreCanonical: input.preCanonical != null,
+    isOverride: input.impactOverride != null,
+  });
+  const impactIdx = selection.impactIdx;
+  const {
+    impactSource,
+    impactThumb,
+    impactArcbottom,
+    impactDelta,
+    impactCrossCheckMismatch,
+    impactFallbackReason,
+  } = selection;
+  reliability.impact = selection.impactReliability;
+  if (impactSource === "thumb_crossing") assumptionsUsed.push("faceOn.impact:thumbCrossing");
+
   // Phase 1 — takeaway onset (first committed club movement) from findSetupEndIndex.
   // takeawayAddressIdx is a TRAIL-space index; convert to frame-space so phases[].index
   // is canonical and agrees with topIdx/impactIdx.
@@ -458,7 +653,7 @@ export function detectFaceOnPhases(input: {
   }
   reliability.true_address = "low";
 
-  // Sanity: takeaway must precede top must precede impact.
+  // Sanity: takeaway must precede top must precede impact (final impact).
   if (!(takeawayIdx < topIdx && topIdx < impactIdx)) {
     return {
       phases: [],
@@ -469,16 +664,17 @@ export function detectFaceOnPhases(input: {
         true_address_frame: null,
         reliability,
         external_assumptions_used: assumptionsUsed,
+        impact_source: impactSource,
+        impact_thumb: impactThumb,
+        impact_arcbottom: impactArcbottom,
+        impact_delta: impactDelta,
+        impact_cross_check_mismatch: impactCrossCheckMismatch,
+        impact_fallback_reason: impactFallbackReason,
       },
     };
   }
 
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
-
-  // Phase 5 — finish
-  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
-  assumptionsUsed.push("faceOn.finish");
-  reliability.finish = finish.reliability;
 
   const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
   for (let i = 1; i < indices.length; i++) {
@@ -492,6 +688,12 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          impact_source: impactSource,
+          impact_thumb: impactThumb,
+          impact_arcbottom: impactArcbottom,
+          impact_delta: impactDelta,
+          impact_cross_check_mismatch: impactCrossCheckMismatch,
+          impact_fallback_reason: impactFallbackReason,
         },
       };
     }
@@ -507,6 +709,12 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          impact_source: impactSource,
+          impact_thumb: impactThumb,
+          impact_arcbottom: impactArcbottom,
+          impact_delta: impactDelta,
+          impact_cross_check_mismatch: impactCrossCheckMismatch,
+          impact_fallback_reason: impactFallbackReason,
         },
       };
     }
@@ -533,6 +741,12 @@ export function detectFaceOnPhases(input: {
       true_address_frame: null,
       reliability,
       external_assumptions_used: assumptionsUsed,
+      impact_source: impactSource,
+      impact_thumb: impactThumb,
+      impact_arcbottom: impactArcbottom,
+      impact_delta: impactDelta,
+      impact_cross_check_mismatch: impactCrossCheckMismatch,
+      impact_fallback_reason: impactFallbackReason,
     },
   };
 }
@@ -553,6 +767,13 @@ export type FaceOnPhasesDebugResult = {
   downswingIdx: number | null;
   impactIdx: number | null;
   finishFrame: number | null;
+  // Impact provenance + cross-check (mirrors detectFaceOnPhases via selectFaceOnImpact).
+  impactSource: "thumb_crossing" | "arc_bottom" | null;
+  impactThumb: number | null;
+  impactArcbottom: number | null;
+  impactDelta: number | null;
+  impactCrossCheckMismatch: boolean | null;
+  impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"] | null;
   triggerA: { fired: boolean; condition: string };
   triggerB: { fired: boolean; offendingPair: string | null };
   wouldFallbackGate: FallbackGate | null;
@@ -562,9 +783,14 @@ export function detectFaceOnPhasesDebug(input: {
   canonical: PoseSequence;
   trail: SwingTrailPoint[];
   msPerFrame: number;
+  /** Pre-canonical frames + handedness — same as detectFaceOnPhases. When present
+   * (and RH), the thumb crossing is the primary impact; absent → arc-bottom. */
+  preCanonical?: PoseSequence;
+  isLeftHanded?: boolean;
 }): FaceOnPhasesDebugResult {
   const { canonical, trail, msPerFrame } = input;
   const frames = canonical.frames;
+  const isLeftHanded = input.isLeftHanded ?? false;
 
   const result: FaceOnPhasesDebugResult = {
     swingStartFrame: null,
@@ -575,6 +801,12 @@ export function detectFaceOnPhasesDebug(input: {
     downswingIdx: null,
     impactIdx: null,
     finishFrame: null,
+    impactSource: null,
+    impactThumb: null,
+    impactArcbottom: null,
+    impactDelta: null,
+    impactCrossCheckMismatch: null,
+    impactFallbackReason: null,
     triggerA: { fired: false, condition: "n/a (missing indices)" },
     triggerB: { fired: false, offendingPair: null },
     wouldFallbackGate: null,
@@ -594,26 +826,52 @@ export function detectFaceOnPhasesDebug(input: {
   result.takeawayAddressIdx = takeawayAddressIdx;
   result.addressIdx = takeawayAddressIdx;
 
+  // Provisional arc-bottom impact (bounds top/finish search).
   const impact = detectFaceOnImpact(frames, msPerFrame);
-  result.impactIdx = impact.frame;
 
   if (impact.frame == null) {
     result.wouldFallbackGate = "impact_search_bounds";
     return result;
   }
+  const arcBottomFrame = impact.frame;
 
   const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
-  const top = detectFaceOnTop(frames, topSearchAnchor, impact.frame);
+  const top = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame);
   result.topIdx = top.frame;
 
   if (top.frame == null) {
+    result.impactIdx = arcBottomFrame; // best available before the gate
     result.wouldFallbackGate = "top_search_bounds";
     return result;
   }
 
   const takeawayIdx = takeawayAddressIdx;
   const topIdx = top.frame;
-  const impactIdx = impact.frame;
+
+  // Finish bounds the thumb window; computed against provisional impact.
+  const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);
+  result.finishFrame = finish.frame;
+
+  // Final impact: thumb crossing (RH, primary) vs arc-bottom (fallback) — shared selector.
+  const thumb =
+    !isLeftHanded && input.preCanonical
+      ? detectFaceOnThumbCrossing(input.preCanonical.frames, topIdx, finish.frame, isLeftHanded)
+      : null;
+  const selection = selectFaceOnImpact({
+    arcBottomFrame,
+    thumb,
+    isLeftHanded,
+    hasPreCanonical: input.preCanonical != null,
+    isOverride: false,
+  });
+  const impactIdx = selection.impactIdx;
+  result.impactIdx = impactIdx;
+  result.impactSource = selection.impactSource;
+  result.impactThumb = selection.impactThumb;
+  result.impactArcbottom = selection.impactArcbottom;
+  result.impactDelta = selection.impactDelta;
+  result.impactCrossCheckMismatch = selection.impactCrossCheckMismatch;
+  result.impactFallbackReason = selection.impactFallbackReason;
 
   const triggerAOk = takeawayIdx < topIdx && topIdx < impactIdx;
   result.triggerA = {
@@ -629,9 +887,6 @@ export function detectFaceOnPhasesDebug(input: {
   const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
   result.takeawayIdx = takeawayIdx;
   result.downswingIdx = downswingIdx;
-
-  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
-  result.finishFrame = finish.frame;
 
   const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
   const labels = ["takeaway", "top", "downswing", "impact", "follow_through"];

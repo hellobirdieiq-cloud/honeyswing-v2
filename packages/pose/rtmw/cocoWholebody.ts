@@ -34,3 +34,9 @@ export const IDX_RIGHT_KNEE = body.rightKnee;
 export const IDX_LEFT_ANKLE = body.leftAnkle;
 export const IDX_RIGHT_ANKLE = body.rightAnkle;
 export const IDX_LEFT_HEEL = body.leftHeel;
+
+// Thumb-tip indices (thumb4 = distal tip) — JSON-sourced, used by the face-on
+// impact detector's lead-thumb-line crossing (dx = thumbTip.x − thumbCMC.x).
+// The thumb CMC (thumb1) is the existing leftThumb/rightThumb trap index.
+export const IDX_LEFT_THUMB_TIP = COCO_WHOLEBODY_NAMES.indexOf('left_thumb4');
+export const IDX_RIGHT_THUMB_TIP = COCO_WHOLEBODY_NAMES.indexOf('right_thumb4');

@@ -93,6 +93,14 @@ export type DispatcherInput =
       trail: SwingTrailPoint[];
       angle: CameraAngle;
       msPerFrame?: number;
+      /**
+       * Pre-canonical (unmirrored, normalized) frames — same x-sign space the
+       * lead-thumb crossing rule was validated in. Face-on impact reads thumb
+       * dx from these; DTL/legacy ignore them. Optional for back-compat.
+       */
+      preCanonical?: PoseSequence;
+      /** Handedness, for the face-on thumb lead-hand/sign branch. */
+      isLeftHanded?: boolean;
     };
 
 function isLegacyInput(input: DispatcherInput): input is SwingTrailPoint[] {
@@ -136,7 +144,13 @@ export function detectSwingPhasesWithDebug(
     return detectDTLPhases({ canonical, trail, msPerFrame });
   }
   if (angle === "face_on") {
-    return detectFaceOnPhases({ canonical, trail, msPerFrame });
+    return detectFaceOnPhases({
+      canonical,
+      trail,
+      msPerFrame,
+      preCanonical: input.preCanonical,
+      isLeftHanded: input.isLeftHanded,
+    });
   }
   const { phases, fallbackGate } = detectLegacyPhases(trail);
   return { phases, fallbackGate, ruleDebug: legacyDebug("legacy") };

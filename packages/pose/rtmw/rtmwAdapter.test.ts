@@ -33,6 +33,8 @@ const traps: { joint: JointName; correct: string; wrong: string }[] = [
   { joint: 'rightIndex', correct: 'right_forefinger1', wrong: 'right_forefinger4' },
   { joint: 'leftThumb', correct: 'left_thumb1', wrong: 'left_thumb4' },
   { joint: 'rightThumb', correct: 'right_thumb1', wrong: 'right_thumb4' },
+  { joint: 'leftThumbTip', correct: 'left_thumb4', wrong: 'left_thumb1' },
+  { joint: 'rightThumbTip', correct: 'right_thumb4', wrong: 'right_thumb1' },
   { joint: 'leftPinky', correct: 'left_pinky_finger1', wrong: 'left_pinky_finger4' },
   { joint: 'rightPinky', correct: 'right_pinky_finger1', wrong: 'right_pinky_finger4' },
   { joint: 'leftFootIndex', correct: 'left_big_toe', wrong: 'left_small_toe' },
@@ -57,12 +59,12 @@ for (const t of traps) {
   });
 }
 
-check('all 27 mapped joints are defined when input has all 133 confidences > 0', () => {
+check('all 29 mapped joints are defined when input has all 133 confidences > 0', () => {
   const frame = makeFrame({});
   const out = rtmwToPoseFrame(frame);
   const unmapped = new Set<string>(UNMAPPED_JOINTS);
   const allNames = Object.keys(out.joints) as JointName[];
-  assert.strictEqual(allNames.length, 33, 'PoseFrame must have all 33 joint keys');
+  assert.strictEqual(allNames.length, 35, 'PoseFrame must have all 35 joint keys');
   for (const name of allNames) {
     if (unmapped.has(name)) {
       assert.strictEqual(out.joints[name], undefined, `${name} is unmapped — must be undefined`);
