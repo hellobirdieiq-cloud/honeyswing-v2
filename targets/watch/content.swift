@@ -35,11 +35,12 @@ struct ContentView: View {
         }
         .padding()
         .onChange(of: scenePhase) { _, newPhase in
-            // watchOS can background an active workout; stop cleanly so the
-            // session is not left running. (G2 watch-item: if this fires
-            // mid-swing, the rule is too aggressive — report, don't fix here.)
+            // watchOS can background an active workout; stop cleanly so the session is
+            // not left running — but ONLY for user-armed captures. Phone-armed captures
+            // (auto-mode) are launched in the background and must not be killed here;
+            // CaptureModel.handleBackground() applies that gate (60s hard cap bounds them).
             if newPhase == .background {
-                model.stop(reason: .background)
+                model.handleBackground()
             }
         }
     }

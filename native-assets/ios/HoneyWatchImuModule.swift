@@ -1,4 +1,5 @@
 import Foundation
+import HealthKit
 import React
 import WatchConnectivity
 
@@ -13,6 +14,11 @@ class HoneyWatchImuModule: NSObject, WCSessionDelegate {
   // Guards `latest` across the WC delegate queue (writes) and the JS queue (reads).
   private let lock = NSLock()
   private var latest: [String: Any]?
+
+  // Phase 3 auto-mode: HealthKit store used only to launch the watch app into a
+  // workout via startWatchApp (phone-driven). The watch arms IMU on the arm signal,
+  // NOT on this launch (D2 integration contract).
+  private let healthStore = HKHealthStore()
 
   @objc static func requiresMainQueueSetup() -> Bool {
     return false
@@ -43,6 +49,82 @@ class HoneyWatchImuModule: NSObject, WCSessionDelegate {
     let snapshot = latest
     lock.unlock()
     resolve(snapshot)
+  }
+
+  // Ensures the shared session has our delegate and is activated, then returns it.
+  // Mirrors activate(); calling transferUserInfo before activation would raise.
+  private func activatedSession() -> WCSession {
+    let session = WCSession.default
+    session.delegate = self
+    if session.activationState != .activated {
+      session.activate()
+    }
+    return session
+  }
+
+  // Auto-mode (Phase 3): phone launches the watch app into a golf workout, then signals
+  // ARM. startWatchApp only LAUNCHES + creates the OS workout — the watch arms IMU on the
+  // arm signal it receives (D2 integration contract), not on this launch. Completion
+  // failures print (existing convention) AND reject the JS promise — no silent fallback.
+  @objc(startWatchAndArm:startMs:resolver:rejecter:)
+  func startWatchAndArm(_ seq: NSNumber,
+                        startMs: NSNumber,
+                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard WCSession.isSupported() else {
+      print("[HoneyWatchImu] startWatchAndArm: WCSession unsupported")
+      reject("watch_unsupported", "WCSession not supported on this device", nil)
+      return
+    }
+    guard HKHealthStore.isHealthDataAvailable() else {
+      print("[HoneyWatchImu] startWatchAndArm: HealthKit unavailable")
+      reject("health_unavailable", "HealthKit not available on this device", nil)
+      return
+    }
+    let session = activatedSession()
+
+    let config = HKWorkoutConfiguration()
+    config.activityType = .golf
+    config.locationType = .outdoor
+    healthStore.startWatchApp(with: config) { success, error in
+      if let error = error {
+        print("[HoneyWatchImu] startWatchApp error: \(error.localizedDescription)")
+        reject("start_watch_app_failed", error.localizedDescription, error)
+        return
+      }
+      guard success else {
+        print("[HoneyWatchImu] startWatchApp returned false")
+        reject("start_watch_app_failed", "startWatchApp returned false", nil)
+        return
+      }
+      let payload: [String: Any] = [
+        "type": "arm",
+        "seq": seq.doubleValue,
+        "startMs": startMs.doubleValue,
+      ]
+      session.transferUserInfo(payload)
+      print("[HoneyWatchImu] startWatchApp ok; queued arm seq=\(seq) startMs=\(startMs)")
+      resolve(true)
+    }
+  }
+
+  // Auto-mode (Phase 3): signal STOP. The watch snapshots its ring buffer + sends the
+  // blob (existing transferUserInfo path). seq lets the watch echo it back for the
+  // Phase 4/5 seq match. transferUserInfo is queued/guaranteed (no reachability needed).
+  @objc(stopWatch:resolver:rejecter:)
+  func stopWatch(_ seq: NSNumber,
+                 resolver resolve: @escaping RCTPromiseResolveBlock,
+                 rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard WCSession.isSupported() else {
+      print("[HoneyWatchImu] stopWatch: WCSession unsupported")
+      reject("watch_unsupported", "WCSession not supported on this device", nil)
+      return
+    }
+    let session = activatedSession()
+    let payload: [String: Any] = ["type": "stop", "seq": seq.doubleValue]
+    session.transferUserInfo(payload)
+    print("[HoneyWatchImu] queued stop seq=\(seq)")
+    resolve(true)
   }
 
   // MARK: WCSessionDelegate
