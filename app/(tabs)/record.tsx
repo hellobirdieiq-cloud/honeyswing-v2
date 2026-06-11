@@ -76,6 +76,11 @@ export default function RecordTab() {
   const [frameAspectState, setFrameAspectState] = useState(0);
 
   const cameraRef = useRef<Camera>(null);
+  // Live mirror of cameraReady for the once-per-focus shutter closure to read
+  // (the closure must not capture the cameraReady state — stale value). Set in
+  // onInitialized alongside setCameraReady(true); never reset (cameraReady is
+  // never torn down in this file).
+  const cameraReadyRef = useRef(false);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
 
   // Min-display guard for the tab-bar processing spinner — keeps it visible
@@ -279,6 +284,10 @@ export default function RecordTab() {
     useCallback(() => {
       registerShutter(() => {
         if (capturePhaseRef.current !== 'idle') return;
+        if (!cameraReadyRef.current) {
+          console.log('[P3] early-tap-blocked', Date.now());
+          return;
+        }
         if (captureModeRef.current === 'countdown') startCountdownRef.current();
         else startInstantRef.current();
       });
@@ -394,7 +403,10 @@ export default function RecordTab() {
             photo={false}
             video={true}
             audio={false}
-            onInitialized={() => setCameraReady(true)}
+            onInitialized={() => {
+              setCameraReady(true);
+              cameraReadyRef.current = true;
+            }}
           />
           <LiveSkeleton
             updateRef={skeletonUpdateRef}
