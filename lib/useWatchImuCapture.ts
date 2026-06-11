@@ -49,11 +49,27 @@ export function useWatchImuCapture() {
   }, []);
 
   const startCapture = useCallback(() => {
-    if (!enabledRef.current) return; // disabled → never touch the native module
+    // Anchor staleness SYNCHRONOUSLY first (preserves the receivedAtMs >= captureStartMs
+    // guard), independent of the async toggle read below — captureStartMs must reflect
+    // the true record-start instant regardless of how the toggle read resolves.
     summaryRef.current = null;
     captureStartMsRef.current = Date.now();
-    const mod = NativeModules.HoneyWatchImuModule as WatchImuModule | undefined;
-    mod?.activate?.().catch((e) => console.warn('[useWatchImuCapture] activate failed', e));
+    // Fix #1 (WATCH-TOGGLE-STALE-REF): re-read the toggle at the moment of use. The
+    // mount-once read (useEffect above) goes stale when the user flips the toggle ON
+    // mid-session, which previously required an app relaunch. Fire-and-forget: this is
+    // never awaited, so nothing the caller reaches before cameraRef.startRecording can
+    // block on it.
+    getWatchCaptureEnabled()
+      .then((enabled) => {
+        enabledRef.current = enabled;
+        if (!enabled) return; // disabled → never touch the native module
+        const mod = NativeModules.HoneyWatchImuModule as WatchImuModule | undefined;
+        mod?.activate?.().catch((e) => console.warn('[useWatchImuCapture] activate failed', e));
+      })
+      .catch((e) => {
+        enabledRef.current = false;
+        console.warn('[useWatchImuCapture] toggle re-read failed', e);
+      });
   }, []);
 
   const stopCapture = useCallback(() => {
@@ -77,13 +93,27 @@ export function useWatchImuCapture() {
       console.warn('[useWatchImuCapture] getLatestWatchImu failed', e);
       return [];
     }
-    if (!payload || !Array.isArray(payload.readings) || payload.readings.length === 0) return [];
-    if (payload.receivedAtMs < captureStartMsRef.current) return []; // stale prior swing
+    if (!payload || !Array.isArray(payload.readings) || payload.readings.length === 0) {
+      console.warn('[useWatchImuCapture] enabled but no watch IMU payload received');
+      return [];
+    }
+    if (payload.receivedAtMs < captureStartMsRef.current) {
+      console.warn(
+        `[useWatchImuCapture] stale watch IMU dropped: receivedAtMs=${payload.receivedAtMs} < captureStartMs=${captureStartMsRef.current}`,
+      );
+      return []; // stale prior swing
+    }
     summaryRef.current = {
       sampleCount: payload.n ?? payload.readings.length,
       derivedHz: payload.hz ?? 0,
       maxAccelMagnitudeG: payload.g ?? 0,
     };
+    // Fix #2 (WATCH-RECEIVE-OBSERVABILITY): the happy path previously logged nothing in
+    // JS — the Swift success print (HoneyWatchImuModule.swift:81) goes to the device
+    // console, not Metro. Surface the successful pull where the RN logs are visible.
+    console.log(
+      `[useWatchImuCapture] watch IMU received: n=${payload.readings.length} receivedAtMs=${payload.receivedAtMs}`,
+    );
     return payload.readings;
   }, []);
 
