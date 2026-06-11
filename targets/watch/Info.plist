@@ -4,5 +4,9 @@
 <dict>
     <key>NSHealthShareUsageDescription</key>
     <string>HoneySwing reads workout motion from your Apple Watch to analyze your golf swing.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>HoneySwing starts a golf workout session on your Apple Watch to capture wrist motion during your swing.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>HoneySwing uses Apple Watch motion sensors to measure your golf swing.</string>
 </dict>
 </plist>

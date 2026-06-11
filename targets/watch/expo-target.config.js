@@ -1,8 +1,12 @@
 /** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
-// Phase 1: empty installable watchOS app target — shell only. No CoreMotion /
-// WCSession / HealthKit query code yet. See docs/architecture/apple-watch-imu.md.
+// Phase 2: watchOS app captures wrist IMU during a swing (HKWorkoutSession +
+// CMBatchedSensorManager). No watch->phone transfer / JS / persistence yet.
+// See docs/architecture/apple-watch-imu.md.
 module.exports = (config) => ({
   type: "watch",
+  // The "watch" target type auto-links zero frameworks (@bacons/apple-targets
+  // TARGET_REGISTRY), so link the two the Phase-2 Swift code imports explicitly.
+  frameworks: ["HealthKit", "CoreMotion"],
   // Xcode target name + home-screen display name (locked Phase-1 decision).
   name: "honeyswingWatch",
   displayName: "honeyswing Watch",
