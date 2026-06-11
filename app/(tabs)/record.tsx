@@ -81,6 +81,9 @@ export default function RecordTab() {
   // onInitialized alongside setCameraReady(true); never reset (cameraReady is
   // never torn down in this file).
   const cameraReadyRef = useRef(false);
+  // [KPI] P7 instrumentation — stamped at the top of the setup effect; consumed
+  // once in onInitialized to log camera-screen-opened → first-preview-frame.
+  const screenOpenedAt = useRef<number | null>(null);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
 
   // Min-display guard for the tab-bar processing spinner — keeps it visible
@@ -309,6 +312,7 @@ export default function RecordTab() {
 
   useEffect(() => {
     let mounted = true;
+    screenOpenedAt.current = Date.now();
 
     if (!clinicSessionActive()) {
       clearCurrentSwingMotion();
@@ -406,6 +410,10 @@ export default function RecordTab() {
             onInitialized={() => {
               setCameraReady(true);
               cameraReadyRef.current = true;
+              if (screenOpenedAt.current != null) {
+                console.log('[KPI] first-preview-frame ms', Date.now() - screenOpenedAt.current);
+                screenOpenedAt.current = null;
+              }
             }}
           />
           <LiveSkeleton
