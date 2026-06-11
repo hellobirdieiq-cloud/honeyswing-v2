@@ -10,9 +10,11 @@
  * getReadings() returns [] BEFORE any NativeModules reference — so WCSession is never
  * activated and persistSwing writes watch_imu = null, identical to today.
  *
- * Staleness guard: the native payload carries receivedAtMs (phone wall clock). A blob
- * is accepted only if it arrived at/after this recording's start (captureStartMs),
- * so a previous swing's transfer is never reused. (Clock alignment of the watch's own
+ * Acceptance (R4): in auto-mode the blob echoes the arm signal's `seq`; getReadings
+ * accepts a blob only if blob.seq === this capture's seq, so a backlogged prior-swing
+ * transfer can never be reused. For a MANUAL watch capture (no arm signal → no seq) the
+ * wall-clock staleness guard is the fallback: accept only if the blob arrived at/after
+ * this recording's start (captureStartMs). (Clock alignment of the watch's own
  * boot-relative t vs pose timestamps is Phase 5.5/6 — not done here.)
  */
 
@@ -27,17 +29,25 @@ type NativePayload = {
   hz: number;
   g: number;
   receivedAtMs: number;
+  seq?: number;        // echoed arm-signal id (auto-mode); absent for manual captures
+  armStartMs?: number; // echoed arm startMs (future clock alignment; unused this phase)
 };
 
 type WatchImuModule = {
   activate(): Promise<boolean>;
   getLatestWatchImu(): Promise<NativePayload | null>;
+  startWatchAndArm(seq: number, startMs: number): Promise<boolean>;
+  stopWatch(seq: number): Promise<boolean>;
 };
 
 export function useWatchImuCapture() {
   const enabledRef = useRef(false);
   const captureStartMsRef = useRef<number>(0);
   const summaryRef = useRef<WatchImuMeasured | null>(null);
+  // Monotonic per-capture id. Seeded from the clock so values stay unique across a
+  // screen remount (a counter reset to 0 could collide with a backlogged blob's seq).
+  const seqRef = useRef<number>(Date.now());
+  const currentSeqRef = useRef<number>(0); // the active capture's seq, for getReadings match
 
   // Resolve the toggle once on mount (and keep it current if the screen remounts).
   useEffect(() => {
@@ -49,11 +59,14 @@ export function useWatchImuCapture() {
   }, []);
 
   const startCapture = useCallback(() => {
-    // Anchor staleness SYNCHRONOUSLY first (preserves the receivedAtMs >= captureStartMs
-    // guard), independent of the async toggle read below — captureStartMs must reflect
-    // the true record-start instant regardless of how the toggle read resolves.
+    // Anchor staleness + assign the capture seq SYNCHRONOUSLY first — independent of the
+    // async toggle read below. captureStartMs/seq must reflect the true record-start
+    // instant regardless of how the toggle read resolves; nothing here is awaited.
     summaryRef.current = null;
-    captureStartMsRef.current = Date.now();
+    const startMs = Date.now();
+    captureStartMsRef.current = startMs;
+    const seq = ++seqRef.current;
+    currentSeqRef.current = seq;
     // Fix #1 (WATCH-TOGGLE-STALE-REF): re-read the toggle at the moment of use. The
     // mount-once read (useEffect above) goes stale when the user flips the toggle ON
     // mid-session, which previously required an app relaunch. Fire-and-forget: this is
@@ -64,7 +77,13 @@ export function useWatchImuCapture() {
         enabledRef.current = enabled;
         if (!enabled) return; // disabled → never touch the native module
         const mod = NativeModules.HoneyWatchImuModule as WatchImuModule | undefined;
-        mod?.activate?.().catch((e) => console.warn('[useWatchImuCapture] activate failed', e));
+        // Auto-mode: launch the watch app into a workout + send the ARM signal. This
+        // self-activates the phone WCSession (native activatedSession), so the blob
+        // receive path is live without a separate activate() call. D5 + Fix #2: a launch/
+        // signal failure degrades silently to no-IMU but is logged for diagnosis.
+        mod?.startWatchAndArm?.(seq, startMs)?.catch((e) =>
+          console.warn('[useWatchImuCapture] startWatchAndArm failed', e),
+        );
       })
       .catch((e) => {
         enabledRef.current = false;
@@ -73,8 +92,14 @@ export function useWatchImuCapture() {
   }, []);
 
   const stopCapture = useCallback(() => {
-    // The watch drives its own capture/stop; nothing to stop on the phone. Kept for
-    // symmetry with useTiltCapture so the wiring in useSwingCapture reads the same.
+    // Auto-mode: signal the watch to snapshot its ring buffer + send the blob.
+    // Fire-and-forget (the caller does not await); gated on the now-resolved toggle.
+    // seq lets the watch echo it back so getReadings matches this capture's blob. A
+    // manual capture relies on the watch's own Stop button (this no-ops when disabled).
+    if (!enabledRef.current) return;
+    const seq = currentSeqRef.current;
+    const mod = NativeModules.HoneyWatchImuModule as WatchImuModule | undefined;
+    mod?.stopWatch?.(seq)?.catch((e) => console.warn('[useWatchImuCapture] stopWatch failed', e));
   }, []);
 
   /**
@@ -97,9 +122,19 @@ export function useWatchImuCapture() {
       console.warn('[useWatchImuCapture] enabled but no watch IMU payload received');
       return [];
     }
-    if (payload.receivedAtMs < captureStartMsRef.current) {
+    // R4 acceptance: prefer the echoed seq (auto-mode). A blob whose seq != this
+    // capture's seq is a backlogged/prior transfer — drop it. Only when the blob carries
+    // NO seq (manual watch capture) does the wall-clock staleness guard apply (constraint 5).
+    if (typeof payload.seq === 'number') {
+      if (payload.seq !== currentSeqRef.current) {
+        console.warn(
+          `[useWatchImuCapture] seq mismatch dropped: blob.seq=${payload.seq} current=${currentSeqRef.current}`,
+        );
+        return [];
+      }
+    } else if (payload.receivedAtMs < captureStartMsRef.current) {
       console.warn(
-        `[useWatchImuCapture] stale watch IMU dropped: receivedAtMs=${payload.receivedAtMs} < captureStartMs=${captureStartMsRef.current}`,
+        `[useWatchImuCapture] stale watch IMU dropped (no-seq fallback): receivedAtMs=${payload.receivedAtMs} < captureStartMs=${captureStartMsRef.current}`,
       );
       return []; // stale prior swing
     }
@@ -112,7 +147,7 @@ export function useWatchImuCapture() {
     // JS — the Swift success print (HoneyWatchImuModule.swift:81) goes to the device
     // console, not Metro. Surface the successful pull where the RN logs are visible.
     console.log(
-      `[useWatchImuCapture] watch IMU received: n=${payload.readings.length} receivedAtMs=${payload.receivedAtMs}`,
+      `[useWatchImuCapture] watch IMU received: n=${payload.readings.length} seq=${payload.seq ?? 'none'} receivedAtMs=${payload.receivedAtMs}`,
     );
     return payload.readings;
   }, []);
