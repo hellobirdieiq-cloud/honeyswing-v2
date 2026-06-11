@@ -8,6 +8,13 @@ import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import { calculateGolfAngles } from '../packages/domain/swing/angles';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
+import {
+  WORN_WRIST,
+  WATCH_IMU_CLOCK_NOTE,
+  type WatchImuReading,
+  type WatchImuMeasured,
+  type WatchImuSummary,
+} from '../packages/domain/swing/watchImu';
 import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
 import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
@@ -196,6 +203,7 @@ export async function persistSwing(
   videoDurationMs?: number | null,
   videoFrameCount?: number | null,
   extractionTotalMs?: number | null,
+  watchImu?: { readings: WatchImuReading[]; summary: WatchImuMeasured } | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -231,11 +239,26 @@ export async function persistSwing(
     gravityVector = { x: sum.x / n, y: sum.y / n, z: sum.z / n };
   }
 
+  // Watch IMU: persist the raw stream FULL (mirrors motion_frames — no decimation;
+  // the stream is already bounded to ≤900 by the watch ring buffer) + a summary block.
+  // Null when no watch / toggle off, exactly like gravity_vector above.
+  let watchImuColumn: Json | null = null;
+  let watchImuSummary: WatchImuSummary | null = null;
+  if (watchImu && watchImu.readings.length > 0) {
+    watchImuColumn = watchImu.readings as unknown as Json;
+    watchImuSummary = {
+      ...watchImu.summary,
+      wornWrist: WORN_WRIST, // EXTERNAL_ASSUMPTION — no wrist detection (Phase 5)
+      clockNote: WATCH_IMU_CLOCK_NOTE,
+    };
+  }
+
   const row: Database['public']['Tables']['swings']['Insert'] = {
     ...(profileId ? { user_id: profileId } : {}),
     player_profile_id: resolvedPlayerProfileId ?? null,
     motion_frames: enrichedFrames,
     gravity_vector: gravityVector,
+    watch_imu: watchImuColumn,
     frame_count: frames.length,
     duration_ms: Math.round(durationMs),
     fps_actual: durationMs > 0 ? frames.length / (durationMs / 1000.0) : null,
@@ -279,6 +302,7 @@ export async function persistSwing(
       video_frame_count: videoFrameCount ?? null,
       extraction_total_ms: extractionTotalMs ?? null,
       capture_frame_stats: captureFrameStats ?? null,
+      watch_imu: watchImuSummary,
     }) as unknown as Json,
   };
 

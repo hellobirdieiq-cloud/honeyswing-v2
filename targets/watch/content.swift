@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Phase 2 watch UI: three states — ready / recording / captured(N, Hz).
-// A "sent" state arrives in Phase 3 (watch→phone transfer) — not built here.
+// Watch UI: three states — ready / recording / sent(N, Hz). On stop the captured
+// window is queued to the phone (Phase 3), so "captured" and "sent" are one state.
 struct ContentView: View {
     @StateObject private var model = CaptureModel()
     @Environment(\.scenePhase) private var scenePhase
@@ -22,10 +22,11 @@ struct ContentView: View {
                 Button("Stop") { model.stop(reason: .userTap) }
                     .tint(.red)
 
-            case let .captured(samples, hz):
+            case let .sent(samples, hz):
                 VStack(spacing: 2) {
-                    Text("Captured")
+                    Text("Sent ✓")
                         .font(.headline)
+                        .foregroundColor(.green)
                     Text("\(samples) samples")
                     Text(String(format: "%.1f Hz", hz))
                 }

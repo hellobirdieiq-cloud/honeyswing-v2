@@ -252,6 +252,7 @@ export type Database = {
           video_storage_path: string | null
           video_uploaded_at: string | null
           video_url: string | null
+          watch_imu: Json | null
         }
         Insert: {
           analysis_tier?: string | null
@@ -292,6 +293,7 @@ export type Database = {
           video_storage_path?: string | null
           video_uploaded_at?: string | null
           video_url?: string | null
+          watch_imu?: Json | null
         }
         Update: {
           analysis_tier?: string | null
@@ -332,6 +334,7 @@ export type Database = {
           video_storage_path?: string | null
           video_uploaded_at?: string | null
           video_url?: string | null
+          watch_imu?: Json | null
         }
         Relationships: [
           {

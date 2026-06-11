@@ -27,6 +27,7 @@ import {
 } from './outbox';
 import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
+import { useWatchImuCapture } from './useWatchImuCapture';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
@@ -83,6 +84,11 @@ export function useSwingCapture({
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Apple Watch IMU capture, composed beside tilt capture (tilt is prop-injected;
+  // watch is internal so record.tsx needs no change). No-ops entirely when the
+  // "Apple Watch capture (beta)" toggle is OFF.
+  const watch = useWatchImuCapture();
 
   const capturePhaseRef = useRef<CapturePhase>('idle');
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -219,6 +225,7 @@ export function useSwingCapture({
 
     clearTimers();
     stopTiltCapture();
+    watch.stopCapture();
     gravityReadingsRef.current = getTiltReadings();
     isLeftHandedRef.current = await getActiveProfileHandedness();
     cameraRef.current?.stopRecording()?.catch(() => {});
@@ -226,6 +233,7 @@ export function useSwingCapture({
     // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
     // 1500ms gives ~3x headroom. Not measured.
     recordingStopFallbackTimerRef.current = setTimeout(() => {
+      console.log('[KPI] stop-fallback-fired', Date.now());
       handleCaptureFailure('recording-stop-fallback');
     }, 1500);
   }
@@ -248,6 +256,9 @@ export function useSwingCapture({
     };
 
     startTiltCapture();
+    watch.startCapture();
+    const recordIntentAt = Date.now();
+    console.log('[KPI] record-intent', recordIntentAt);
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
       onRecordingFinished: async (video) => {
@@ -322,11 +333,19 @@ export function useSwingCapture({
             source: 'rtmw-l-2d-v1',
             metadata: { fps: CAPTURE_FPS, durationMs: video.duration * 1000 },
           };
+          // Pull the paired-watch IMU blob now (post-extraction = maximal time for
+          // the transfer to land). Empty [] when toggle OFF / no watch / stale.
+          const watchReadings = await watch.getReadings();
+          const watchSummary = watch.getSummary();
+
           const t0 = Date.now();
           const analysis = analyzePoseSequence(
             sequence,
             isLeftHandedRef.current,
             gravityReadingsRef.current,
+            undefined,
+            undefined,
+            watchReadings,
           );
           analysisMs = Date.now() - t0;
 
@@ -392,6 +411,9 @@ export function useSwingCapture({
             result.videoDurationMs ?? null,
             result.videoFrameCount ?? null,
             result.extractionTotalMs ?? null,
+            watchSummary && watchReadings.length > 0
+              ? { readings: watchReadings, summary: watchSummary }
+              : null,
           ).then((swingId) => {
             if (swingId) {
               setCurrentSwingId(swingId);
