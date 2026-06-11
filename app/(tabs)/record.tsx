@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
@@ -60,6 +60,7 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
 
 export default function RecordTab() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
 
   const { width: screenW } = useWindowDimensions();
@@ -541,7 +542,7 @@ export default function RecordTab() {
           weak/error so the live camera + Try Again stay interactive. setProcessing() is
           left untouched, so the center-button double-fire disable still works underneath. */}
       <Modal
-        visible={showBrandOverlay}
+        visible={showBrandOverlay && isFocused}
         transparent
         statusBarTranslucent
         animationType="none"
