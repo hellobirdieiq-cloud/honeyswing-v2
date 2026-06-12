@@ -13,6 +13,33 @@ const COLOR_ARM = 'rgba(59,130,246,1.0)';
 const COLOR_LEG = 'rgba(234,88,12,1.0)';
 const COLOR_FOOT_FILL = 'rgba(251,146,60,0.75)';
 
+// Visual presets selected by the `overlay` prop. `default` is the exact
+// skeleton-only look (unchanged). `overlay` thins bones to ~60% and joint dots
+// to ~70%, and drops the torso/foot fills so the video reads through; the club
+// (hand) trail widths are intentionally identical across presets.
+type SkeletonPreset = {
+  showTorsoFill: boolean;
+  showFootFill: boolean;
+  stroke: { torso: number; thigh: number; calf: number; foot: number; arm: number; hand: number };
+  dot: { key: number; ringOuter: number; ringInner: number };
+};
+
+const PRESET_DEFAULT: SkeletonPreset = {
+  showTorsoFill: true,
+  showFootFill: true,
+  stroke: { torso: 3.5, thigh: 10, calf: 7, foot: 7, arm: 7, hand: 7 },
+  dot: { key: 5, ringOuter: 8, ringInner: 5 },
+};
+
+const PRESET_OVERLAY: SkeletonPreset = {
+  showTorsoFill: false,
+  showFootFill: false,
+  // ~60% of default bone widths.
+  stroke: { torso: 2.1, thigh: 6, calf: 4.2, foot: 4.2, arm: 4.2, hand: 4.2 },
+  // ~70% of default dot radii.
+  dot: { key: 3.5, ringOuter: 5.6, ringInner: 3.5 },
+};
+
 const TORSO_LINES: [JointName, JointName][] = [
   ['leftShoulder', 'rightShoulder'],
   ['leftShoulder', 'leftHip'],
@@ -139,6 +166,13 @@ interface Props {
    * driven mode the chip row is hidden rather than rendering dead chips.
    */
   onPhaseSeek?: (phase: string, index: number) => void;
+  /**
+   * Overlay mode: render the bare SVG with a transparent background and no
+   * margins/radius/controls, so the caller can stack it pixel-flush on top of
+   * the video frame. The caller owns all transport (segmented control + video
+   * speed/play row). Driven (playheadIdx) is expected alongside this.
+   */
+  overlay?: boolean;
 }
 
 export default function SwingSkeletonCanvas({
@@ -148,8 +182,10 @@ export default function SwingSkeletonCanvas({
   height,
   playheadIdx = null,
   onPhaseSeek,
+  overlay = false,
 }: Props) {
   const driven = playheadIdx != null;
+  const preset = overlay ? PRESET_OVERLAY : PRESET_DEFAULT;
   const transform = useMemo(() => {
     if (frames.length === 0) return null;
     if (driven) {
@@ -370,12 +406,18 @@ export default function SwingSkeletonCanvas({
   const rightFootPoly = footPoly('rightAnkle', 'rightHeel', 'rightFootIndex');
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.canvasWrap, { width, height }]}>
+    <View style={overlay ? styles.containerOverlay : styles.container}>
+      <View
+        style={[
+          styles.canvasWrap,
+          { width, height },
+          overlay && styles.canvasWrapOverlay,
+        ]}
+      >
         <Svg width={width} height={height}>
-          {torsoPolyPts && <Polygon points={torsoPolyPts} fill={COLOR_TORSO_FILL} />}
-          {leftFootPoly && <Polygon points={leftFootPoly} fill={COLOR_FOOT_FILL} />}
-          {rightFootPoly && <Polygon points={rightFootPoly} fill={COLOR_FOOT_FILL} />}
+          {preset.showTorsoFill && torsoPolyPts && <Polygon points={torsoPolyPts} fill={COLOR_TORSO_FILL} />}
+          {preset.showFootFill && leftFootPoly && <Polygon points={leftFootPoly} fill={COLOR_FOOT_FILL} />}
+          {preset.showFootFill && rightFootPoly && <Polygon points={rightFootPoly} fill={COLOR_FOOT_FILL} />}
 
           {trails && trails.leftFull !== '' && (
             <G>
@@ -406,17 +448,17 @@ export default function SwingSkeletonCanvas({
             </G>
           )}
 
-          {renderLines(TORSO_LINES, COLOR_TORSO_LINE, 3.5, 'torso')}
-          {renderLines(THIGH_LINES, COLOR_LEG, 10, 'thigh')}
-          {renderLines(CALF_LINES, COLOR_LEG, 7, 'calf')}
-          {renderLines(FOOT_LINES, COLOR_LEG, 7, 'foot')}
-          {renderLines(ARM_LINES, COLOR_ARM, 7, 'arm')}
-          {renderLines(HAND_LINES, COLOR_ARM, 7, 'hand')}
+          {renderLines(TORSO_LINES, COLOR_TORSO_LINE, preset.stroke.torso, 'torso')}
+          {renderLines(THIGH_LINES, COLOR_LEG, preset.stroke.thigh, 'thigh')}
+          {renderLines(CALF_LINES, COLOR_LEG, preset.stroke.calf, 'calf')}
+          {renderLines(FOOT_LINES, COLOR_LEG, preset.stroke.foot, 'foot')}
+          {renderLines(ARM_LINES, COLOR_ARM, preset.stroke.arm, 'arm')}
+          {renderLines(HAND_LINES, COLOR_ARM, preset.stroke.hand, 'hand')}
 
           {KEY_DOTS.map((n) => {
             const p = sp(n);
             if (!p) return null;
-            return <Circle key={`dot-${n}`} cx={p.x} cy={p.y} r={5} fill="#FFFFFF" />;
+            return <Circle key={`dot-${n}`} cx={p.x} cy={p.y} r={preset.dot.key} fill="#FFFFFF" />;
           })}
 
           {RING_DOTS.map((n) => {
@@ -424,8 +466,8 @@ export default function SwingSkeletonCanvas({
             if (!p) return null;
             return (
               <G key={`ring-${n}`}>
-                <Circle cx={p.x} cy={p.y} r={8} fill="#FFFFFF" />
-                <Circle cx={p.x} cy={p.y} r={5} fill={COLOR_ARM} />
+                <Circle cx={p.x} cy={p.y} r={preset.dot.ringOuter} fill="#FFFFFF" />
+                <Circle cx={p.x} cy={p.y} r={preset.dot.ringInner} fill={COLOR_ARM} />
               </G>
             );
           })}
@@ -435,7 +477,7 @@ export default function SwingSkeletonCanvas({
       {/* Driven mode: the video owns transport (play/pause/speed) — hide this
           row. The phase-chip row below stays visible and seeks the video via
           onPhaseSeek, so chips remain reachable right under the skeleton. */}
-      {!driven && (
+      {!driven && !overlay && (
         <View style={styles.controlsRow}>
           {([0.25, 0.5, 1] as const).map((s) => (
             <TouchableOpacity
@@ -453,7 +495,7 @@ export default function SwingSkeletonCanvas({
         </View>
       )}
 
-      {(!driven || !!onPhaseSeek) && (
+      {!overlay && (!driven || !!onPhaseSeek) && (
         <View style={styles.phaseRow}>
           {PHASE_CHIPS.map((entry) => {
             const enabled =
@@ -485,11 +527,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     alignSelf: 'center',
   },
+  // Overlay mode: no margins/radius so the SVG sits flush over the video box.
+  containerOverlay: {
+    alignSelf: 'center',
+  },
   canvasWrap: {
     backgroundColor: '#08080A',
     borderRadius: 16,
     overflow: 'hidden',
     alignSelf: 'center',
+  },
+  canvasWrapOverlay: {
+    backgroundColor: 'transparent',
+    borderRadius: 0,
   },
   controlsRow: {
     flexDirection: 'row',

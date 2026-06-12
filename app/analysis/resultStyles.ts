@@ -38,6 +38,50 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
 
+  // Control row: segmented control (left) + speed chips (right)
+  controlBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  // View-mode segmented control (Video / Overlay / Skeleton)
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  segmentActive: {
+    backgroundColor: GOLD,
+  },
+  segmentText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#111',
+  },
+
+  // Single stage that hosts the video + (optional) skeleton overlay
+  stage: {
+    position: 'relative',
+    alignSelf: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  // Opaque cover that hides the (still-mounted) video in Skeleton mode.
+  skeletonBackdrop: {
+    backgroundColor: '#08080A',
+  },
+
   // Video replay
   videoSection: {
     marginBottom: 20,
@@ -51,8 +95,7 @@ export const styles = StyleSheet.create({
   },
   speedRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
+    gap: 8,
   },
   speedButton: {
     backgroundColor: '#1A1A1C',
@@ -168,29 +211,33 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Phase chips (2×3 grid below video)
+  // Phase chips — single row, equal-width chips that always fit the content
+  // width. flex:1 + small horizontal padding + label auto-shrink (see Text
+  // props) keeps all 5 on one line down to the narrowest supported iPhone
+  // (375pt). minHeight 44 preserves the 44pt touch target.
   phaseChipsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     paddingVertical: 4,
     marginBottom: 16,
   },
   phaseChip: {
+    flex: 1,
+    minHeight: 44,
     backgroundColor: '#1A1A1C',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexBasis: '31%',
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   phaseChipDisabled: {
+    flex: 1,
+    minHeight: 44,
     backgroundColor: '#0E0E10',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexBasis: '31%',
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   phaseChipLabel: {
     color: '#fff',
