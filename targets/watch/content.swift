@@ -15,6 +15,15 @@ struct ContentView: View {
                 Button("Start") { model.arm() }
                     .tint(.green)
 
+            case .arming:
+                // IMU spin-up; not yet recording. A Stop here arms a clean abort
+                // (CaptureModel discards on the first sample — never finalizes 0).
+                Text("Starting…")
+                    .font(.headline)
+                    .foregroundColor(.orange)
+                Button("Cancel") { model.stop(reason: .userTap) }
+                    .tint(.orange)
+
             case .recording:
                 Text("Recording…")
                     .font(.headline)

@@ -20,11 +20,18 @@ final class ImuCapture {
     // fires on an internal CoreMotion queue, so we hop here before mutating.
     private let queue = DispatchQueue(label: "com.honeyswing.watch.imu")
 
+    /// Fires ONCE per capture, on the main queue, when the FIRST real batch arrives —
+    /// carrying that batch's first sample timestamp (boot-relative ms). This is the
+    /// `didStartIMU` signal the state machine arms on (never on calling start()).
+    var onFirstSample: ((_ firstSampleMs: Double) -> Void)?
+    private var didEmitFirstSample = false
+
     func start() {
         guard CMBatchedSensorManager.isDeviceMotionSupported else {
             print("[HoneyWatch][capture] device motion NOT supported")
             return
         }
+        didEmitFirstSample = false
         queue.sync { buffer.reset() }
         manager.startDeviceMotionUpdates { [weak self] data, error in
             guard let self else { return }
@@ -32,11 +39,19 @@ final class ImuCapture {
                 print("[HoneyWatch][capture] device-motion error: \(error.localizedDescription)")
                 return
             }
-            guard let data else { return }
+            guard let data, !data.isEmpty else { return }
             self.queue.async {
                 for motion in data {
                     self.buffer.append(ImuSample(from: motion))
                 }
+            }
+            // First real sample → flip didStartIMU. The CoreMotion handler is serial,
+            // so this once-guard needs no extra locking (matches the existing pattern).
+            if !self.didEmitFirstSample {
+                self.didEmitFirstSample = true
+                let firstMs = data.first.map { $0.timestamp * 1000 } ?? 0
+                let cb = self.onFirstSample
+                DispatchQueue.main.async { cb?(firstMs) }
             }
         }
     }

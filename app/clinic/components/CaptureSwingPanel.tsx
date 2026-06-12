@@ -86,6 +86,9 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
   const {
     capturePhase,
     countdown,
+    preArmed,
+    enterReady,
+    exitReady,
     startCountdownCapture,
     startInstantCapture,
     updateCapturePhase,
@@ -243,6 +246,17 @@ const CaptureSwingPanel = React.memo(function CaptureSwingPanel(props: CaptureSw
                 : isCapturing || isCountdown
                   ? 'RECORDING…'
                   : 'RECORD'}
+            </Text>
+          </Pressable>
+        )}
+        {/* Watch-primary pre-arm: tap Ready, then Start on the watch. */}
+        {canRecord && (
+          <Pressable
+            style={[styles.primaryButton, { backgroundColor: preArmed ? '#2a2a2a' : 'transparent', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' }]}
+            onPress={() => (preArmed ? exitReady() : enterReady())}
+          >
+            <Text style={styles.primaryButtonText}>
+              {preArmed ? 'READY — START FROM WATCH' : 'READY (WATCH)'}
             </Text>
           </Pressable>
         )}

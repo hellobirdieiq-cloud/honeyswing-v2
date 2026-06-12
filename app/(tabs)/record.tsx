@@ -157,6 +157,9 @@ export default function RecordTab() {
   const {
     capturePhase,
     countdown,
+    preArmed,
+    enterReady,
+    exitReady,
     startCountdownCapture,
     startInstantCapture,
     finalizeCapture,
@@ -509,6 +512,27 @@ export default function RecordTab() {
             </Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* Watch-primary pre-arm: tap Ready, then tap Start on the watch. A fresh watch
+          `started` auto-starts video; otherwise the chip just reminds you to start there. */}
+      {capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={[styles.modeSegmentControl, { marginTop: 8 }]}
+          onPress={() => (preArmed ? exitReady() : enterReady())}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.modeSegment, preArmed && styles.modeSegmentActive]}>
+            <Ionicons
+              name="watch-outline"
+              size={14}
+              color={preArmed ? '#1a1a1a' : 'rgba(255,255,255,0.5)'}
+            />
+            <Text style={[styles.modeSegmentText, preArmed && styles.modeSegmentTextActive]}>
+              {preArmed ? 'Ready — start from your watch' : 'Ready (watch)'}
+            </Text>
+          </View>
+        </TouchableOpacity>
       )}
 
       {/* Active-kid chip (top-right) — shows who the next swing is attributed to;

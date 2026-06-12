@@ -13,8 +13,11 @@ import {
   WATCH_IMU_CLOCK_NOTE,
   type WatchImuReading,
   type WatchImuMeasured,
-  type WatchImuSummary,
+  type WatchImuAlignment,
 } from '../packages/domain/swing/watchImu';
+import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
+import { CAPTURE_FPS } from './cameraFormat';
+import { IMU_BATCH_SEQ_LOOKBACK_MS } from './watchImuConstants';
 import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
 import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
@@ -71,6 +74,28 @@ function classifyInsertError(
 export interface CameraGuidanceSnapshot {
   camera_angle_at_start: number | null;
   camera_guidance_color: CameraGuidanceColor | null;
+}
+
+/**
+ * Watch IMU payload persisted alongside a swing: the raw stream, the measured summary, and
+ * (watch-primary) the clock-sync alignment block + captureSeq for the seq→swing late-join map.
+ */
+export interface WatchImuPersist {
+  readings: WatchImuReading[];
+  summary: WatchImuMeasured;
+  alignment?: WatchImuAlignment | null;
+  captureSeq?: number | null;
+}
+
+/** Assemble the swing_debug.watch_imu block (summary + assumption + clock note + alignment). */
+function buildWatchImuDebug(watchImu: WatchImuPersist | null | undefined): Json | null {
+  if (!watchImu || watchImu.readings.length === 0) return null;
+  return {
+    ...watchImu.summary,
+    wornWrist: WORN_WRIST, // EXTERNAL_ASSUMPTION — no wrist detection (Phase 5)
+    clockNote: WATCH_IMU_CLOCK_NOTE,
+    alignment: watchImu.alignment ?? null,
+  } as unknown as Json;
 }
 
 function calcPoseSuccessRate(frames: PoseFrame[]): number {
@@ -203,7 +228,7 @@ export async function persistSwing(
   videoDurationMs?: number | null,
   videoFrameCount?: number | null,
   extractionTotalMs?: number | null,
-  watchImu?: { readings: WatchImuReading[]; summary: WatchImuMeasured } | null,
+  watchImu?: WatchImuPersist | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -239,19 +264,14 @@ export async function persistSwing(
     gravityVector = { x: sum.x / n, y: sum.y / n, z: sum.z / n };
   }
 
-  // Watch IMU: persist the raw stream FULL (mirrors motion_frames — no decimation;
-  // the stream is already bounded to ≤900 by the watch ring buffer) + a summary block.
-  // Null when no watch / toggle off, exactly like gravity_vector above.
-  let watchImuColumn: Json | null = null;
-  let watchImuSummary: WatchImuSummary | null = null;
-  if (watchImu && watchImu.readings.length > 0) {
-    watchImuColumn = watchImu.readings as unknown as Json;
-    watchImuSummary = {
-      ...watchImu.summary,
-      wornWrist: WORN_WRIST, // EXTERNAL_ASSUMPTION — no wrist detection (Phase 5)
-      clockNote: WATCH_IMU_CLOCK_NOTE,
-    };
-  }
+  // Watch IMU: persist the raw stream FULL (mirrors motion_frames — no decimation; the
+  // stream is bounded by the watch ring buffer, ~2× longer in watch-primary) + a summary +
+  // alignment block. Null when no watch / toggle off, exactly like gravity_vector above.
+  const hasWatchImu = !!watchImu && watchImu.readings.length > 0;
+  const watchImuColumn: Json | null = hasWatchImu
+    ? (watchImu!.readings as unknown as Json)
+    : null;
+  const watchImuDebug: Json | null = buildWatchImuDebug(watchImu);
 
   const row: Database['public']['Tables']['swings']['Insert'] = {
     ...(profileId ? { user_id: profileId } : {}),
@@ -302,7 +322,10 @@ export async function persistSwing(
       video_frame_count: videoFrameCount ?? null,
       extraction_total_ms: extractionTotalMs ?? null,
       capture_frame_stats: captureFrameStats ?? null,
-      watch_imu: watchImuSummary,
+      watch_imu: watchImuDebug,
+      // seq→swing mapping for IMU batch late-join; imu_only marks an orphan IMU record.
+      capture_seq: watchImu?.captureSeq ?? null,
+      imu_only: frames.length === 0 && hasWatchImu,
     }) as unknown as Json,
   };
 
@@ -410,4 +433,121 @@ export async function persistSwing(
   }
 
   return swingId;
+}
+
+// ─── Watch IMU late-join (batch drains after the swing is persisted) ─────────────
+
+/**
+ * Find a recently-persisted swing whose swing_debug.capture_seq matches `seq`, within the
+ * lookback window. The persisted-source-of-truth fallback behind the in-memory seq→swingId
+ * map. Filters capture_seq in JS (JSONB equality via the client is awkward); scans the most
+ * recent rows only, bounded by created_at.
+ */
+export async function findSwingIdByCaptureSeq(
+  seq: number,
+  lookbackMs: number = IMU_BATCH_SEQ_LOOKBACK_MS,
+): Promise<string | null> {
+  const userId = await getUserId();
+  if (!userId) return null;
+  const sinceIso = new Date(Date.now() - lookbackMs).toISOString();
+  const { data, error } = await supabase
+    .from('swings')
+    .select('id, swing_debug, created_at')
+    .eq('user_id', userId)
+    .gte('created_at', sinceIso)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error || !data) {
+    if (error) console.warn('[persistSwing] findSwingIdByCaptureSeq query failed', error.message);
+    return null;
+  }
+  for (const r of data) {
+    const debug = r.swing_debug as { capture_seq?: number | null } | null;
+    if (debug && typeof debug.capture_seq === 'number' && debug.capture_seq === seq) {
+      return r.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Attach a late IMU batch to an already-persisted swing: overwrite the watch_imu column +
+ * swing_debug.watch_imu (alignment) + capture_seq. Idempotent — a re-attach writes identical
+ * data. Merges into the existing swing_debug rather than replacing it.
+ */
+export async function attachWatchImuToSwing(
+  swingId: string,
+  watchImu: WatchImuPersist,
+): Promise<void> {
+  if (watchImu.readings.length === 0) return;
+  const { data, error } = await supabase
+    .from('swings')
+    .select('swing_debug')
+    .eq('id', swingId)
+    .single();
+  if (error || !data) {
+    console.warn('[persistSwing] attachWatchImuToSwing: swing fetch failed', error?.message);
+    return;
+  }
+  const existing = (data.swing_debug as Record<string, unknown> | null) ?? {};
+  const mergedDebug = {
+    ...existing,
+    watch_imu: buildWatchImuDebug(watchImu),
+    capture_seq: watchImu.captureSeq ?? (existing.capture_seq ?? null),
+  } as unknown as Json;
+  const { error: updateError } = await supabase
+    .from('swings')
+    .update({
+      watch_imu: watchImu.readings as unknown as Json,
+      swing_debug: mergedDebug,
+    })
+    .eq('id', swingId);
+  if (updateError) {
+    console.warn('[persistSwing] attachWatchImuToSwing: update failed', updateError.message);
+    return;
+  }
+  console.log('[persistSwing] late-join attached watch IMU', {
+    swingId,
+    n: watchImu.readings.length,
+    seq: watchImu.captureSeq ?? null,
+  });
+}
+
+/**
+ * Persist an orphan IMU batch (no paired video/pose) as an IMU-only record — never discarded.
+ * Reuses the empty-frames stub path (analyzePoseSequence([]) → empty analysis), carrying the
+ * watch_imu stream + alignment. swing_debug.imu_only is set by persistSwing when frames=[].
+ */
+export async function persistImuOnlyRecord(
+  watchImu: WatchImuPersist,
+): Promise<string | null> {
+  if (watchImu.readings.length === 0) return null;
+  const emptyAnalysis = analyzePoseSequence(
+    { frames: [], source: 'rtmw-l-2d-v1', metadata: { fps: CAPTURE_FPS, durationMs: 0 } },
+    false,
+    [],
+  );
+  const stubClassification: CaptureClassification = {
+    validity: 'invalid',
+    frameCount: 0,
+    goodFrameCount: 0,
+    poseSuccessRate: 0,
+    reason: 'imu-only',
+  };
+  return persistSwing(
+    [],
+    emptyAnalysis,
+    stubClassification,
+    undefined, // cameraGuidance
+    null, // nativeGrip
+    undefined, // captureFrameStats
+    null, // requestedFps
+    undefined, // gravityReadings
+    undefined, // playerProfileId
+    null, // captureFps
+    null, // videoDurationMs
+    null, // videoFrameCount
+    null, // extractionTotalMs
+    watchImu,
+  );
 }

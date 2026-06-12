@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
@@ -28,6 +28,7 @@ import {
 import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
 import { useWatchImuCapture } from './useWatchImuCapture';
+import { STARTED_FRESHNESS_MS } from './watchImuConstants';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
@@ -84,6 +85,10 @@ export function useSwingCapture({
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
+  // Pre-armed "ready" state: the only state in which a fresh watch `started` may auto-start
+  // video. Entering it runs the clock-sync handshake (watch reachable-only).
+  const [preArmed, setPreArmed] = useState(false);
+  const preArmedRef = useRef(false);
 
   // Apple Watch IMU capture, composed beside tilt capture (tilt is prop-injected;
   // watch is internal so record.tsx needs no change). No-ops entirely when the
@@ -102,6 +107,9 @@ export function useSwingCapture({
   const isLeftHandedRef = useRef<boolean>(false);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+  // Watch-IMU alignment inputs threaded from beginRecording → persist.
+  const recordIntentAtRef = useRef<number | null>(null);
+  const captureOriginRef = useRef<'watch' | 'phone'>('phone');
   // Durable-outbox video entry id for THIS capture. Minted at recording-finish
   // (decoupled from swingId + network); reconciled via attachSwingId on persist
   // success, or abandoned on any terminal capture failure. iOS only.
@@ -238,7 +246,9 @@ export function useSwingCapture({
     }, 1500);
   }
 
-  function beginRecording() {
+  function beginRecording(opts?: { origin?: 'watch' | 'phone' }) {
+    const origin = opts?.origin ?? 'phone';
+    captureOriginRef.current = origin;
     NativeModules.HoneyGripBridge?.resetPoseState?.();
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
@@ -256,9 +266,16 @@ export function useSwingCapture({
     };
 
     startTiltCapture();
-    watch.startCapture();
+    // Watch-primary: a watch-initiated capture is ALREADY recording — do not re-arm it.
+    // The phone warm/legacy path opportunistically arms a reachable watch (IMU absent if not).
+    if (origin === 'phone') {
+      watch.startCapture().catch(() => {});
+    }
     const recordIntentAt = Date.now();
+    recordIntentAtRef.current = recordIntentAt;
     console.log('[KPI] record-intent', recordIntentAt);
+    // Stamp the monotonic video-start anchor (same clock domain as the sync offset).
+    void watch.stampVideoAnchor();
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
       onRecordingFinished: async (video) => {
@@ -337,6 +354,15 @@ export function useSwingCapture({
           // the transfer to land). Empty [] when toggle OFF / no watch / stale.
           const watchReadings = await watch.getReadings();
           const watchSummary = watch.getSummary();
+          const watchSeq = watch.getCurrentSeq();
+          const watchAlignment =
+            watchReadings.length > 0
+              ? await watch.getAlignment(watchReadings, {
+                  videoDurationMs: video.duration * 1000,
+                  recordIntentAtMs: recordIntentAtRef.current,
+                  captureOrigin: captureOriginRef.current,
+                })
+              : null;
 
           const t0 = Date.now();
           const analysis = analyzePoseSequence(
@@ -412,7 +438,12 @@ export function useSwingCapture({
             result.videoFrameCount ?? null,
             result.extractionTotalMs ?? null,
             watchSummary && watchReadings.length > 0
-              ? { readings: watchReadings, summary: watchSummary }
+              ? {
+                  readings: watchReadings,
+                  summary: watchSummary,
+                  alignment: watchAlignment,
+                  captureSeq: watchSeq,
+                }
               : null,
           ).then((swingId) => {
             if (swingId) {
@@ -421,6 +452,8 @@ export function useSwingCapture({
             } else {
               console.warn('[persistSwing] skipped (no user)', { frames: poseFrames.length });
             }
+            // Record seq→swingId for the watch-IMU late-join map (and clear in-flight).
+            watch.registerSwingId(watchSeq, swingId);
             return swingId;
           }).catch((err) => {
             console.error('[persistSwing] FAILED', {
@@ -428,6 +461,9 @@ export function useSwingCapture({
               frames: poseFrames.length,
               classification: classification?.validity ?? 'unknown',
             });
+            // Clear the in-flight seq even on failure so a late batch for this seq can still
+            // drain (→ IMU-only, since no swing row exists) rather than being suppressed.
+            watch.registerSwingId(watchSeq, null);
             return null;
           });
 
@@ -541,9 +577,52 @@ export function useSwingCapture({
     beginRecording();
   }
 
+  // Enter the pre-armed "ready" state: the watch-primary path. Runs the clock-sync handshake
+  // (watch reachable-only) so a subsequent watch-initiated `started` can auto-start video.
+  function enterReady() {
+    preArmedRef.current = true;
+    setPreArmed(true);
+    void watch.prearm();
+  }
+
+  function exitReady() {
+    preArmedRef.current = false;
+    setPreArmed(false);
+  }
+
+  // Auto-start video when the watch initiates a capture AND the screen is pre-armed + the
+  // signal is fresh. A stale / not-pre-armed start only adopts the seq (for alignment /
+  // late-join) — it never starts a recording.
+  useEffect(() => {
+    const unsub = watch.registerStartedHandler((started) => {
+      const fresh = started.startedAgeMs <= STARTED_FRESHNESS_MS;
+      if (preArmedRef.current && fresh && capturePhaseRef.current === 'idle') {
+        console.log('[useSwingCapture] watch started → auto-start video', {
+          seq: started.seq,
+          ageMs: Math.round(started.startedAgeMs),
+        });
+        preArmedRef.current = false;
+        setPreArmed(false);
+        beginRecording({ origin: 'watch' });
+      } else {
+        console.log('[useSwingCapture] watch started (no auto-start)', {
+          preArmed: preArmedRef.current,
+          fresh,
+          phase: capturePhaseRef.current,
+          seq: started.seq,
+        });
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
     capturePhase,
     countdown,
+    preArmed,
+    enterReady,
+    exitReady,
     startCountdownCapture,
     startInstantCapture,
     finalizeCapture,

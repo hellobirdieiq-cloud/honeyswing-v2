@@ -31,6 +31,24 @@ export interface WatchImuSummary extends WatchImuMeasured {
  */
 export const WORN_WRIST = 'lead' as const;
 
-/** Carried into swing_debug.watch_imu so a later session knows not to mis-align. */
+/** Carried into swing_debug.watch_imu so a later session knows the alignment basis. */
 export const WATCH_IMU_CLOCK_NOTE =
-  'watch t is boot-relative ms; not aligned to PoseFrame.timestampMs — impact-spike anchoring is Phase 5.5/6';
+  'watch t is absolute watch-mono ms (CMDeviceMotion.timestamp domain); aligned to video time via clock-sync offset + phoneMonoAtVideoStart (see alignment block, syncConfidence). Impact-spike correction is Phase B.';
+
+// Alignment math lives in clockAlign.ts (pure, unit-tested). Re-exported here so the swing
+// domain has a single watch-IMU entry point.
+export {
+  alignWatchImuToVideo,
+  watchMonoToVideoMs,
+  syncConfidenceFor,
+  isOffsetUsable,
+} from './clockAlign';
+export type {
+  SyncConfidence,
+  ClockSyncResult,
+  VideoAnchor,
+  AlignParams,
+  AlignedWatchImuReading,
+  WatchImuAlignment,
+  AlignResult,
+} from './clockAlign';
