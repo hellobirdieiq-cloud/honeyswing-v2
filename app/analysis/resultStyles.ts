@@ -40,9 +40,9 @@ export const styles = StyleSheet.create({
 
   // Control row: segmented control (left) + speed chips (right)
   controlBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
     marginBottom: 12,
   },
   // View-mode segmented control (Video / Overlay / Skeleton)
@@ -93,28 +93,6 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  speedRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  speedButton: {
-    backgroundColor: '#1A1A1C',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  speedButtonActive: {
-    backgroundColor: GOLD,
-  },
-  speedButtonText: {
-    color: '#999',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  speedButtonTextActive: {
-    color: '#111',
-  },
-
   // Score
   scoreCard: {
     alignItems: 'center',
@@ -211,18 +189,20 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Phase chips — single row, equal-width chips that always fit the content
-  // width. flex:1 + small horizontal padding + label auto-shrink (see Text
-  // props) keeps all 5 on one line down to the narrowest supported iPhone
-  // (375pt). minHeight 44 preserves the 44pt touch target.
+  // Phase chips — single row of content-sized chips at a fixed 13px label (see
+  // phaseChipLabel). Chips hug their label width via paddingHorizontal (no
+  // flex:1, no auto-shrink), gap 6 between them; all 5 fit on one line down to
+  // the narrowest supported iPhone (375pt). minHeight 44 preserves the 44pt
+  // touch target.
   phaseChipsRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 6,
     paddingVertical: 4,
     marginBottom: 16,
   },
   phaseChip: {
-    flex: 1,
+    minWidth: 64,
     minHeight: 44,
     backgroundColor: '#1A1A1C',
     borderRadius: 10,
@@ -231,7 +211,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   phaseChipDisabled: {
-    flex: 1,
+    minWidth: 64,
     minHeight: 44,
     backgroundColor: '#0E0E10',
     borderRadius: 10,

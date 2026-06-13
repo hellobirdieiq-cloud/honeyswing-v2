@@ -685,15 +685,15 @@ export default function ResultScreen() {
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <View style={styles.speedRow}>
+                    <View style={[styles.segmentedControl, { alignSelf: 'stretch' }]}>
                       {([0.25, 0.5, 1] as const).map((s) => (
                         <TouchableOpacity
                           key={s}
-                          style={[styles.speedButton, speed === s && styles.speedButtonActive]}
+                          style={[styles.segment, { flex: 1, alignItems: 'center' }, speed === s && styles.segmentActive]}
                           onPress={() => setSpeed(s)}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.speedButtonText, speed === s && styles.speedButtonTextActive]}>
+                          <Text style={[styles.segmentText, speed === s && styles.segmentTextActive]}>
                             {s}x
                           </Text>
                         </TouchableOpacity>
@@ -780,8 +780,6 @@ export default function ResultScreen() {
                       <Text
                         style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
                         numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.85}
                       >
                         {entry.label}
                       </Text>
@@ -808,8 +806,6 @@ export default function ResultScreen() {
                     <Text
                       style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
                       numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.85}
                     >
                       {entry.label}
                     </Text>
