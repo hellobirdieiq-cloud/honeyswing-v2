@@ -19,8 +19,10 @@ import {
   computeTrailVelocities,
   emptyReliability,
   findSetupEndIndex,
+  findTakeawayOnsetFaceOn,
   msToFrames,
   smoothVelocities,
+  type FaceOnTakeawayOnset,
   type PhaseRuleDebug,
   type PhaseRuleReliability,
 } from "./phaseDetectionShared";
@@ -539,11 +541,32 @@ export function detectFaceOnPhases(input: {
   reliability.swing_start = swingStart.reliability;
   assumptionsUsed.push("faceOn.swingStart");
 
-  // Phase 2 — takeaway directional gate (for fallback address)
+  // Phase 2 — takeaway address candidate. Body-scaled, reversal-rejecting rule
+  // overrides the legacy directional gate when confident; otherwise falls back
+  // to the exact findSetupEndIndex value (always computed → fallback path is
+  // byte-identical to today). Both spaces are trail-space.
   const velocities = computeTrailVelocities(trail);
   const smoothed = smoothVelocities(velocities, 5);
-  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
+  const fallbackIdx = findSetupEndIndex(smoothed, trail);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   reliability.takeaway = "medium";
+
+  const trailIdxToFrame = (idx: number | null): number | null => {
+    if (idx == null || idx < 0 || idx >= trail.length) return null;
+    const f = frames.findIndex((fr) => fr.timestampMs === trail[idx].timestamp);
+    return f === -1 ? null : f;
+  };
+  const takeawayTelemetry = {
+    takeaway_path: takeawayOnset.fired
+      ? ("body_scaled" as const)
+      : ("fallback_gate" as const),
+    takeaway_locked_body_height: takeawayOnset.lockedBodyHeight,
+    takeaway_body_scaled_frame: trailIdxToFrame(takeawayOnset.onsetTrailIdx),
+    takeaway_fallback_idx: trailIdxToFrame(fallbackIdx),
+    takeaway_travel_bh: takeawayOnset.travelBH,
+    takeaway_fallback_reason: takeawayOnset.fallbackReason,
+  };
 
   // Phase 4 — PROVISIONAL impact (arc-bottom or test override). Used to bound the
   // top/finish search; the thumb crossing (computed below) becomes the final impact
@@ -566,6 +589,7 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          ...takeawayTelemetry,
         },
       };
     }
@@ -584,6 +608,7 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          ...takeawayTelemetry,
         },
       };
     }
@@ -604,6 +629,7 @@ export function detectFaceOnPhases(input: {
         true_address_frame: null,
         reliability,
         external_assumptions_used: assumptionsUsed,
+        ...takeawayTelemetry,
       },
     };
   }
@@ -664,6 +690,7 @@ export function detectFaceOnPhases(input: {
         true_address_frame: null,
         reliability,
         external_assumptions_used: assumptionsUsed,
+        ...takeawayTelemetry,
         impact_source: impactSource,
         impact_thumb: impactThumb,
         impact_arcbottom: impactArcbottom,
@@ -688,6 +715,7 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          ...takeawayTelemetry,
           impact_source: impactSource,
           impact_thumb: impactThumb,
           impact_arcbottom: impactArcbottom,
@@ -709,6 +737,7 @@ export function detectFaceOnPhases(input: {
           true_address_frame: null,
           reliability,
           external_assumptions_used: assumptionsUsed,
+          ...takeawayTelemetry,
           impact_source: impactSource,
           impact_thumb: impactThumb,
           impact_arcbottom: impactArcbottom,
@@ -741,6 +770,7 @@ export function detectFaceOnPhases(input: {
       true_address_frame: null,
       reliability,
       external_assumptions_used: assumptionsUsed,
+      ...takeawayTelemetry,
       impact_source: impactSource,
       impact_thumb: impactThumb,
       impact_arcbottom: impactArcbottom,
@@ -774,6 +804,13 @@ export type FaceOnPhasesDebugResult = {
   impactDelta: number | null;
   impactCrossCheckMismatch: boolean | null;
   impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"] | null;
+  // Body-scaled, reversal-rejecting takeaway gate (mirrors detectFaceOnPhases).
+  takeawayPath: "body_scaled" | "fallback_gate" | null;
+  takeawayLockedBodyHeight: number | null;
+  takeawayBodyScaledFrame: number | null;
+  takeawayFallbackIdx: number | null;
+  takeawayTravelBH: number | null;
+  takeawayFallbackReason: FaceOnTakeawayOnset["fallbackReason"];
   triggerA: { fired: boolean; condition: string };
   triggerB: { fired: boolean; offendingPair: string | null };
   wouldFallbackGate: FallbackGate | null;
@@ -807,6 +844,12 @@ export function detectFaceOnPhasesDebug(input: {
     impactDelta: null,
     impactCrossCheckMismatch: null,
     impactFallbackReason: null,
+    takeawayPath: null,
+    takeawayLockedBodyHeight: null,
+    takeawayBodyScaledFrame: null,
+    takeawayFallbackIdx: null,
+    takeawayTravelBH: null,
+    takeawayFallbackReason: null,
     triggerA: { fired: false, condition: "n/a (missing indices)" },
     triggerB: { fired: false, offendingPair: null },
     wouldFallbackGate: null,
@@ -822,9 +865,23 @@ export function detectFaceOnPhasesDebug(input: {
 
   const velocities = computeTrailVelocities(trail);
   const smoothed = smoothVelocities(velocities, 5);
-  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
+  const fallbackIdx = findSetupEndIndex(smoothed, trail);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   result.takeawayAddressIdx = takeawayAddressIdx;
   result.addressIdx = takeawayAddressIdx;
+
+  const trailIdxToFrame = (idx: number | null): number | null => {
+    if (idx == null || idx < 0 || idx >= trail.length) return null;
+    const f = frames.findIndex((fr) => fr.timestampMs === trail[idx].timestamp);
+    return f === -1 ? null : f;
+  };
+  result.takeawayPath = takeawayOnset.fired ? "body_scaled" : "fallback_gate";
+  result.takeawayLockedBodyHeight = takeawayOnset.lockedBodyHeight;
+  result.takeawayBodyScaledFrame = trailIdxToFrame(takeawayOnset.onsetTrailIdx);
+  result.takeawayFallbackIdx = trailIdxToFrame(fallbackIdx);
+  result.takeawayTravelBH = takeawayOnset.travelBH;
+  result.takeawayFallbackReason = takeawayOnset.fallbackReason;
 
   // Provisional arc-bottom impact (bounds top/finish search).
   const impact = detectFaceOnImpact(frames, msPerFrame);

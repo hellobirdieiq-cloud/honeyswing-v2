@@ -132,6 +132,21 @@ export type PhaseRuleDebug = {
     | "invalid_window"
     | "no_crossing"
     | "low_coverage";
+  // Body-scaled, reversal-rejecting takeaway gate (FACE-ON only; optional →
+  // DTL/legacy unaffected). Records which path produced the takeaway index and
+  // the body-scaled rule's findings EVEN WHEN the legacy gate was used.
+  takeaway_path?: "body_scaled" | "fallback_gate";
+  takeaway_locked_body_height?: number | null; // trimmed-mean nose↔rightAnkle (normalized)
+  takeaway_body_scaled_frame?: number | null;  // body-scaled onset candidate, FRAME space
+  takeaway_fallback_idx?: number | null;        // findSetupEndIndex result, FRAME space
+  takeaway_travel_bh?: number | null;           // max peak-above-running-min lead-wrist travel
+  takeaway_fallback_reason?:
+    | "trail_too_short"
+    | "ruler_unreliable"
+    | "no_qualifying_climb"
+    | "no_confirmed_trigger"
+    | "onset_too_late"
+    | null;
 };
 
 export function emptyReliability(): PhaseRuleReliability {
@@ -279,4 +294,215 @@ export function smoothVelocities(
     for (let j = start; j <= end; j++) sum += velocities[j];
     return sum / (end - start + 1);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Body-scaled, reversal-rejecting takeaway onset — FACE-ON ONLY.
+//
+// Additive override for findSetupEndIndex: when a confident, reversal-clean
+// lead-wrist climb of >= TAKEAWAY_MIN_TRAVEL_BH body-heights exists, returns its
+// onset (TRAIL-space index, same space findSetupEndIndex returns); otherwise
+// returns null so the caller falls back to the legacy directional gate. Never
+// throws — any bad/missing data yields a null onset.
+//
+// The signal is the LEAD-wrist x = trail[].trailX (the historically inverted
+// trail-naming trap; see buildTrailPoints in analysisPipeline.ts). Δx > 0 is the
+// takeaway direction in canonical space for BOTH handedness.
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum lead-wrist travel (in body-heights) for the body-scaled gate to fire.
+ * EXTERNAL ASSUMPTION (N=2): data-derived midpoint of the measured feint (0.20
+ * BH) vs real-takeaway (1.08 BH) travel gap on swing 6623e3e8.
+ */
+export const TAKEAWAY_MIN_TRAVEL_BH = 0.5;
+
+const BODY_HEIGHT_MIN_FRAMES = 20;  // fewer confident nose↔ankle frames → ruler unreliable
+const BODY_HEIGHT_TRIM = 0.2;       // drop top/bottom 20% before averaging
+const BODY_HEIGHT_MIN_CONFIDENCE = 0.5;
+
+/**
+ * Consecutive strictly-decreasing smoothed frames that mark a real reversal (a
+ * waggle/feint turning back) and reject a trigger group before it confirms.
+ * EXTERNAL ASSUMPTION (N=3 swings); wide margin — observed waggles climbed
+ * 0.09–0.22 BH before reversing, real takeaways climbed 0.51–0.56 BH.
+ */
+const SUSTAINED_REVERSAL_FRAMES = 3;
+
+export type FaceOnTakeawayOnset = {
+  /** Trail-space onset index; null ⇒ caller must fall back to findSetupEndIndex. */
+  onsetTrailIdx: number | null;
+  /** Trimmed-mean nose↔rightAnkle distance (normalized); null when unreliable. */
+  lockedBodyHeight: number | null;
+  /** Onset candidate (trail-space) even when the gate did NOT fire — telemetry. */
+  candidateTrailIdx: number | null;
+  /** Max peak-above-running-min lead-wrist travel, in body-heights. */
+  travelBH: number | null;
+  fired: boolean;
+  fallbackReason:
+    | "trail_too_short"
+    | "ruler_unreliable"
+    | "no_qualifying_climb"
+    | "no_confirmed_trigger"
+    | "onset_too_late"
+    | null;
+};
+
+/**
+ * Body-scale ruler: trimmed mean of euclidean(nose, rightAnkle) over frames
+ * where BOTH joints have confidence >= 0.5. Height-only by design — tolerant of
+ * the known lower-body L/R swap. Returns null when too few confident frames.
+ */
+function lockedBodyHeightFromFrames(frames: PoseFrame[]): number | null {
+  const heights: number[] = [];
+  for (const f of frames) {
+    const nose = f.joints.nose;
+    const ankle = f.joints.rightAnkle;
+    if (!nose || !ankle) continue;
+    if ((nose.confidence ?? 0) < BODY_HEIGHT_MIN_CONFIDENCE) continue;
+    if ((ankle.confidence ?? 0) < BODY_HEIGHT_MIN_CONFIDENCE) continue;
+    const dx = nose.x - ankle.x;
+    const dy = nose.y - ankle.y;
+    heights.push(Math.sqrt(dx * dx + dy * dy));
+  }
+  if (heights.length < BODY_HEIGHT_MIN_FRAMES) return null;
+  heights.sort((a, b) => a - b);
+  const lo = Math.floor(heights.length * BODY_HEIGHT_TRIM);
+  const hi = heights.length - lo;
+  const mid = heights.slice(lo, hi);
+  if (mid.length === 0) return null;
+  let sum = 0;
+  for (const h of mid) sum += h;
+  const bh = sum / mid.length;
+  return bh > 0 ? bh : null;
+}
+
+export function findTakeawayOnsetFaceOn(
+  trail: SwingTrailPoint[],
+  frames: PoseFrame[],
+): FaceOnTakeawayOnset {
+  const nullResult = (
+    fallbackReason: FaceOnTakeawayOnset["fallbackReason"],
+    extra?: Partial<FaceOnTakeawayOnset>,
+  ): FaceOnTakeawayOnset => ({
+    onsetTrailIdx: null,
+    lockedBodyHeight: null,
+    candidateTrailIdx: null,
+    travelBH: null,
+    fired: false,
+    fallbackReason,
+    ...extra,
+  });
+
+  try {
+    if (trail.length < MEDIAN_GATE_WINDOW + 1) {
+      return nullResult("trail_too_short");
+    }
+
+    const bh = lockedBodyHeightFromFrames(frames);
+    if (bh == null) {
+      return nullResult("ruler_unreliable");
+    }
+
+    // Smooth the LEAD-wrist x (trailX) position series with the existing box-mean.
+    // This is the confirm/travel signal; Δx > 0 is the takeaway direction for both
+    // handedness (the historical trail-naming inversion; see buildTrailPoints).
+    const leadX = trail.map((p) => p.trailX);
+    const s = smoothVelocities(leadX, 5);
+
+    // Candidate generator — re-run the OLD 6-of-8 directional-window test
+    // (findSetupEndIndex's window math, left unmodified there) on the wrist-
+    // MIDPOINT x, but emit EVERY passing window-start instead of only the first.
+    // Each window of 8 raw deltas is sorted, its min+max dropped, and the middle
+    // 6 required strictly positive → a committed directional move, not a spike.
+    const windowStarts: number[] = [];
+    for (let i = MEDIAN_GATE_WINDOW; i < trail.length; i++) {
+      const window: number[] = [];
+      for (let j = i - (MEDIAN_GATE_WINDOW - 1); j <= i; j++) {
+        window.push(trail[j].x - trail[j - 1].x);
+      }
+      window.sort((a, b) => a - b);
+      let allPositive = true;
+      for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
+        if (window[k] <= 0) { allPositive = false; break; }
+      }
+      if (allPositive) windowStarts.push(i - MEDIAN_GATE_WINDOW);
+    }
+
+    // Group contiguous window-starts (gap > 1 ⇒ new trigger group); each group's
+    // first start is its trigger frame.
+    const triggers: number[] = [];
+    for (let i = 0; i < windowStarts.length; i++) {
+      if (i === 0 || windowStarts[i] - windowStarts[i - 1] > 1) {
+        triggers.push(windowStarts[i]);
+      }
+    }
+
+    const candidateTrailIdx = triggers.length > 0 ? triggers[0] : null;
+    const target = TAKEAWAY_MIN_TRAVEL_BH * bh;
+
+    // Confirm each trigger group in order: walk forward from its start along the
+    // smoothed lead-wrist position. CONFIRM the instant the climb above the start
+    // reaches the body-scaled target. REJECT the group if a run of
+    // SUSTAINED_REVERSAL_FRAMES strictly-decreasing smoothed frames hits first (a
+    // real reversal — waggle/feint turning back), or if the series ends with
+    // neither. A flat or rising frame resets the reversal counter. Track each
+    // group's max climb-BH for fallback telemetry when nothing confirms.
+    let confirmedOnset: number | null = null;
+    let confirmTravelBH = 0;
+    let bestGroupTravelBH = 0;
+    for (const c of triggers) {
+      let reversalRun = 0;
+      let groupMaxTravel = 0;
+      let confirmedHere = false;
+      for (let i = c + 1; i < s.length; i++) {
+        const climb = s[i] - s[c];
+        if (climb > groupMaxTravel) groupMaxTravel = climb;
+        if (climb >= target) {
+          confirmedOnset = c;
+          confirmTravelBH = climb / bh;
+          confirmedHere = true;
+          break;
+        }
+        if (s[i] < s[i - 1]) {
+          reversalRun++;
+          if (reversalRun >= SUSTAINED_REVERSAL_FRAMES) break; // sustained reversal → reject
+        } else {
+          reversalRun = 0; // flat OR rising resets
+        }
+      }
+      const groupTravelBH = groupMaxTravel / bh;
+      if (groupTravelBH > bestGroupTravelBH) bestGroupTravelBH = groupTravelBH;
+      if (confirmedHere) break;
+    }
+
+    if (confirmedOnset === null) {
+      return nullResult("no_confirmed_trigger", {
+        lockedBodyHeight: bh,
+        candidateTrailIdx,
+        travelBH: triggers.length > 0 ? bestGroupTravelBH : null,
+      });
+    }
+
+    // Late guard — applied to the FINAL confirmed onset only.
+    const lastIdx = trail.length - 1;
+    if (confirmedOnset > TAKEAWAY_MAX_ADDRESS_FRACTION * lastIdx) {
+      return nullResult("onset_too_late", {
+        lockedBodyHeight: bh,
+        candidateTrailIdx,
+        travelBH: confirmTravelBH,
+      });
+    }
+
+    return {
+      onsetTrailIdx: confirmedOnset,
+      lockedBodyHeight: bh,
+      candidateTrailIdx,
+      travelBH: confirmTravelBH,
+      fired: true,
+      fallbackReason: null,
+    };
+  } catch {
+    return nullResult("ruler_unreliable");
+  }
 }
