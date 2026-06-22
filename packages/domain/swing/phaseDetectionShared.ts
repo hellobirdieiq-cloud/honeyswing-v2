@@ -84,6 +84,12 @@ export const EXTERNAL_ASSUMPTIONS = {
       thumbHoldFrames: 2,       // crossing must hold positive this many consecutive valid frames
       thumbMinValidCoverage: 0.5, // fraction of window frames that must pass conf, else fall back
       crossCheckThresholdFrames: 6, // |thumb − arcBottom| above this sets the reliability flag
+      // [EXTERNAL ASSUMPTION / NO SOURCE — clinic-calibrated, N=12 (10 real / 2 artifact)]
+      // Reject the thumb crossing → arc-bottom when |thumb − arcBottom| exceeds this. SEPARATE
+      // from crossCheckThresholdFrames (6, reliability downgrade only). 15 = center of the empty
+      // gap measured offline: reals max |delta| 3.3, artifacts min |delta| 23.8 → 15 sits ~12
+      // frames above the worst real and ~9 below the nearest artifact. Re-validate as corpus grows.
+      impactRejectDeltaFrames: 15,
     },
     finish: {
       rollingWindow: 5,
@@ -124,14 +130,17 @@ export type PhaseRuleDebug = {
   impact_cross_check_mismatch?: boolean; // |delta| > crossCheckThresholdFrames
   // Why arc-bottom was used instead of the thumb crossing (set only when
   // impact_source === "arc_bottom"). "lh_ungated" = LH skips the unvalidated thumb
-  // primary this ticket; "override" = test seam; the rest are RH thumb misses.
+  // primary this ticket; "override" = test seam; "cross_check_mismatch" = thumb crossing
+  // disagreed with arc-bottom by > impactRejectDeltaFrames (egregious, rejected); the rest
+  // are RH thumb misses.
   impact_fallback_reason?:
     | "lh_ungated"
     | "override"
     | "no_precanonical"
     | "invalid_window"
     | "no_crossing"
-    | "low_coverage";
+    | "low_coverage"
+    | "cross_check_mismatch";
   // Body-scaled, reversal-rejecting takeaway gate (FACE-ON only; optional →
   // DTL/legacy unaffected). Records which path produced the takeaway index and
   // the body-scaled rule's findings EVEN WHEN the legacy gate was used.

@@ -289,7 +289,7 @@ type ImpactSelection = {
   impactReliability: "high" | "medium";
 };
 
-function selectFaceOnImpact(args: {
+export function selectFaceOnImpact(args: {
   arcBottomFrame: number;
   thumb: ThumbCrossingResult | null;
   isLeftHanded: boolean;
@@ -302,6 +302,10 @@ function selectFaceOnImpact(args: {
   const impactDelta = impactThumb != null ? impactThumb - impactArcbottom : null;
   const impactCrossCheckMismatch =
     impactDelta != null && Math.abs(impactDelta) > A.impact.crossCheckThresholdFrames;
+  // Egregious thumb↔arc-bottom disagreement (> impactRejectDeltaFrames, looser than the
+  // reliability-downgrade threshold) rejects the thumb crossing → arc-bottom directly.
+  const impactRejectByDelta =
+    impactDelta != null && Math.abs(impactDelta) > A.impact.impactRejectDeltaFrames;
 
   // Precedence: override → LH gate → no pre-canonical → RH thumb (primary) → fallback.
   let impactIdx: number;
@@ -321,16 +325,23 @@ function selectFaceOnImpact(args: {
     impactIdx = arcBottomFrame;
     impactSource = "arc_bottom";
     impactFallbackReason = "no_precanonical";
-  } else if (thumb && thumb.frame != null && thumb.coverage >= A.impact.thumbMinValidCoverage) {
+  } else if (
+    thumb &&
+    thumb.frame != null &&
+    thumb.coverage >= A.impact.thumbMinValidCoverage &&
+    !impactRejectByDelta
+  ) {
     impactIdx = Math.round(thumb.frame);
     impactSource = "thumb_crossing";
-    // Cross-check disagreement keeps the thumb frame but downgrades confidence.
+    // Mild cross-check disagreement (> crossCheckThresholdFrames, ≤ impactRejectDeltaFrames)
+    // keeps the thumb frame but downgrades confidence.
     impactReliability = impactCrossCheckMismatch ? "medium" : "high";
   } else {
     impactIdx = arcBottomFrame;
     impactSource = "arc_bottom";
-    impactFallbackReason =
-      thumb && thumb.reason === "invalid_window"
+    impactFallbackReason = impactRejectByDelta
+      ? "cross_check_mismatch"
+      : thumb && thumb.reason === "invalid_window"
         ? "invalid_window"
         : thumb && thumb.frame == null
           ? "no_crossing"

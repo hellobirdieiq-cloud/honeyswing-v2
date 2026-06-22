@@ -23,7 +23,7 @@
  * Run with: npx --yes tsx packages/domain/swing/phaseDetectionFaceOn.test.ts
  */
 
-import { detectFaceOnPhases } from './phaseDetectionFaceOn';
+import { detectFaceOnPhases, selectFaceOnImpact } from './phaseDetectionFaceOn';
 import { detectDTLPhases } from './phaseDetectionDTL';
 import type { SwingTrailPoint } from './phaseDetection';
 import {
@@ -245,6 +245,65 @@ console.log('\n── Case B: DTL stores a trail index that downstream reads as 
     const intendedCenter = frames.findIndex(f => f.timestampMs === impact.timestamp);
     assert(intendedCenter === impact.index,
       `Case B: impact angle-window center (frames[${impact.index}]) matches the meant frame (${intendedCenter})`);
+  }
+}
+
+// ===========================================================================
+// Case C — delta-reject impact gate (selectFaceOnImpact)
+// |delta| = |impact_thumb − impact_arcbottom|. Reject thumb → arc-bottom when
+// |delta| > impactRejectDeltaFrames (15). 6 < |delta| ≤ 15 keeps thumb but
+// downgrades reliability (unchanged). |delta| ≤ 6 keeps thumb at high reliability.
+// ===========================================================================
+console.log('\n── Case C: delta-reject impact gate ──');
+{
+  // Helper: build a take-last thumb result (structural — ThumbCrossingResult shape).
+  const thumbAt = (frame: number) => ({
+    frame, coverage: 1, nCrossings: 1, reason: 'ok' as const,
+  });
+  const select = (thumbFrame: number, arcBottomFrame: number) =>
+    selectFaceOnImpact({
+      arcBottomFrame,
+      thumb: thumbAt(thumbFrame),
+      isLeftHanded: false,
+      hasPreCanonical: true,
+      isOverride: false,
+    });
+
+  // (a) |delta| > 15 → reject → arc-bottom (mirrors 120ef93c: thumb 90 vs arc-bottom 114).
+  {
+    const s = select(90, 114); // delta = -24, |delta| = 24 > 15
+    assert(s.impactSource === 'arc_bottom', 'Case C(a): |delta|=24 → impactSource=arc_bottom');
+    assert(s.impactFallbackReason === 'cross_check_mismatch',
+      `Case C(a): fallback reason = cross_check_mismatch (got ${s.impactFallbackReason})`);
+    assert(s.impactIdx === 114, `Case C(a): impactIdx = arc-bottom 114 (got ${s.impactIdx})`);
+  }
+
+  // (b) 6 < |delta| ≤ 15 → thumb KEPT, reliability downgraded medium (unchanged behavior).
+  {
+    const s = select(120, 110); // delta = 10
+    assert(s.impactSource === 'thumb_crossing', 'Case C(b): |delta|=10 → impactSource=thumb_crossing');
+    assert(s.impactIdx === 120, `Case C(b): impactIdx = thumb 120 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'medium', `Case C(b): reliability downgraded medium (got ${s.impactReliability})`);
+    assert(s.impactCrossCheckMismatch === true, 'Case C(b): cross_check_mismatch flag set (downgrade)');
+  }
+
+  // (c) |delta| ≤ 6 → thumb KEPT, high reliability (no-op regression).
+  {
+    const s = select(112, 110); // delta = 2
+    assert(s.impactSource === 'thumb_crossing', 'Case C(c): |delta|=2 → impactSource=thumb_crossing');
+    assert(s.impactIdx === 112, `Case C(c): impactIdx = thumb 112 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'high', `Case C(c): reliability high (got ${s.impactReliability})`);
+    assert(s.impactCrossCheckMismatch === false, 'Case C(c): no cross-check mismatch');
+  }
+
+  // (d) reject routes to arc-bottom DIRECTLY — never to the (rejected) thumb frame. The
+  // rejected thumb is still recorded in telemetry (impactThumb) but is NOT the chosen impact.
+  {
+    const s = select(60, 130); // delta = -70, |delta| = 70 > 15
+    assert(s.impactIdx === 130 && s.impactIdx === s.impactArcbottom,
+      `Case C(d): rejected → impactIdx = arc-bottom 130 (got ${s.impactIdx})`);
+    assert(s.impactThumb === 60 && s.impactIdx !== s.impactThumb,
+      'Case C(d): rejected thumb frame recorded but not selected (no walk-back)');
   }
 }
 

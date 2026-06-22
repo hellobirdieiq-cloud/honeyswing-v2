@@ -297,6 +297,26 @@ async function main() {
   const d = find("4e1cf438");
   console.log(`  INFO  4e1cf438 disambiguation: handedness=${d?.handedness} source=${d?.impact_source ?? "n/a"} fallback_reason=${d?.fallback_reason ?? "n/a"} gate=${d?.gate ?? "n/a"}`);
 
+  // (7) delta-reject gate: egregious thumb↔arc-bottom disagreement (|delta| > 15) rejects the
+  // thumb crossing → arc-bottom with reason cross_check_mismatch; small-delta reals are untouched.
+  for (const id8 of ["120ef93c", "c0b6f0e1"]) {
+    const x = find(id8);
+    assert(
+      `${id8} delta-rejected → arc_bottom + cross_check_mismatch`,
+      !!x && x.impact_source === "arc_bottom" && x.fallback_reason === "cross_check_mismatch",
+      x ? `source=${x.impact_source} reason=${x.fallback_reason} delta=${x.impact_delta} gate=${x.gate}` : "not found",
+    );
+  }
+  // Reals with |delta| ≤ 3.3 stay thumb-primary (regression guard; esp. 15a83abd that arc-% broke).
+  for (const id8 of ["15a83abd", "b7b6fe1a", "838c539e"]) {
+    const x = find(id8);
+    assert(
+      `${id8} stays thumb_crossing (small |delta|, not delta-rejected)`,
+      !!x && x.impact_source === "thumb_crossing" && x.fallback_reason == null,
+      x ? `source=${x.impact_source} delta=${x.impact_delta} reason=${x.fallback_reason} impact_new=${x.impact_new}` : "not found",
+    );
+  }
+
   console.log(`\n${pass} passed, ${fail} failed (of hard assertions; INFO lines are descriptive).`);
 }
 
