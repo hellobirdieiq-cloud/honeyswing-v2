@@ -229,6 +229,7 @@ export async function persistSwing(
   videoFrameCount?: number | null,
   extractionTotalMs?: number | null,
   watchImu?: WatchImuPersist | null,
+  isLeftHandedOverride?: boolean,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -243,13 +244,19 @@ export async function persistSwing(
   }
   const profileId = authUserId;
 
+  // For the record flow the caller always supplies a concrete id (snapshotted at
+  // button-press, after beginRecording hard-blocks a missing profile). Legacy
+  // callers (clinic, failed-swing/IMU stubs) pass undefined → fall back to the
+  // primary profile, exactly as before.
   const resolvedPlayerProfileId =
     playerProfileId !== undefined ? playerProfileId : ((await getPrimaryProfile())?.id ?? null);
 
   const cloudGrip = getGripClassification();
 
   const coachCode = await getCoachCode();
-  const isLeftHanded = await getActiveProfileHandedness();
+  // Prefer the button-press snapshot threaded from the caller; fall back to a
+  // fresh read only for legacy/stub paths that pass no override.
+  const isLeftHanded = isLeftHandedOverride ?? (await getActiveProfileHandedness());
   const ageTier = await getAgeTier();
 
   const enrichedFrames = enrichFramesWithVelocity(frames);

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable, Alert } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -121,6 +121,15 @@ export default function RecordTab() {
     [refreshProfiles]
   );
 
+  // Synchronous snapshot of the kid shown in the chip, read at button-press by
+  // useSwingCapture.beginRecording (kept fresh each render). This is the exact
+  // profile + handedness the swing is attributed to — never re-read at persist.
+  const activeProfileRef = useRef<{ id: string; isLeftHanded: boolean } | null>(null);
+  const activeProfile = profiles.find((p) => p.id === primaryId);
+  activeProfileRef.current = activeProfile
+    ? { id: activeProfile.id, isLeftHanded: activeProfile.isLeftHanded }
+    : null;
+
   // Camera device/format selection
   const device = useCameraDevice('back');
 
@@ -180,6 +189,12 @@ export default function RecordTab() {
     cameraReady,
     onBeginRecording: () => {},
     targetFps,
+    getActiveProfile: () => activeProfileRef.current,
+    onMissingProfile: () =>
+      Alert.alert(
+        'Select a player',
+        'Choose a player profile before recording so the swing is saved to the right kid.',
+      ),
   });
 
   // Live refs so the tab-bar-registered shutter/stop closures always re-read the
@@ -518,7 +533,7 @@ export default function RecordTab() {
           `started` auto-starts video; otherwise the chip just reminds you to start there. */}
       {capturePhase === 'idle' && cameraReady && (
         <TouchableOpacity
-          style={[styles.modeSegmentControl, { marginTop: 8 }]}
+          style={styles.preArmChip}
           onPress={() => (preArmed ? exitReady() : enterReady())}
           activeOpacity={0.7}
         >

@@ -26,6 +26,7 @@ export type CameraAngleResult = {
 const FACE_ON_THRESHOLD = 0.40;
 // [EXTERNAL ASSUMPTION] empirically derived from 6 swings (3 DTL, 3 face-on)
 const DTL_THRESHOLD = 0.55;
+// TODO(DTL launch path + face-on-only policy): recorder-selected capture mode + DTL rule set.
 // STOPGAP (2026-06-07): forces face_on for all current (all-face-on) captures.
 // All footIndexNorm >= 0.175 -> face_on; unknown unreachable. A real DTL swing
 // WILL misclassify as face_on. REVERT by switching the >= comparison below back

@@ -27,6 +27,7 @@ import {
 } from './outbox';
 import { classifyCapture } from './captureValidity';
 import { getActiveProfileHandedness } from './handedness';
+import { resolveAttribution, type ActiveProfileSnapshot } from './swingAttribution';
 import { useWatchImuCapture } from './useWatchImuCapture';
 import { STARTED_FRESHNESS_MS } from './watchImuConstants';
 import type { CameraGuidanceColor } from './cameraGuidance';
@@ -62,6 +63,11 @@ interface UseSwingCaptureOptions {
   targetFps?: number;
   onSwingPersisted?: (swingId: string | null) => void;
   skipResultNavigation?: boolean;
+  // Synchronous read of the active profile shown in the kid chip, sampled at
+  // button-press. Returns null when no profile is selected → recording is blocked.
+  // Optional: legacy callers (clinic) omit it and keep the persist-time fallback.
+  getActiveProfile?: () => ActiveProfileSnapshot | null;
+  onMissingProfile?: () => void;
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -82,6 +88,8 @@ export function useSwingCapture({
   targetFps,
   onSwingPersisted,
   skipResultNavigation = false,
+  getActiveProfile,
+  onMissingProfile,
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -105,6 +113,13 @@ export function useSwingCapture({
   const isFinalizingRef = useRef(false);
   const gravityReadingsRef = useRef<GravityReading[]>([]);
   const isLeftHandedRef = useRef<boolean>(false);
+  // Active-profile snapshot taken at beginRecording (button-press), threaded
+  // through analysis + persist so a mid-extraction kid-switch can't re-attribute
+  // the swing. getActiveProfileRef is kept fresh each render so the watch-started
+  // effect (mounted once) never reads a stale closure.
+  const getActiveProfileRef = useRef(getActiveProfile);
+  getActiveProfileRef.current = getActiveProfile;
+  const activeProfileSnapshotRef = useRef<ActiveProfileSnapshot | null>(null);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   // Watch-IMU alignment inputs threaded from beginRecording → persist.
@@ -204,6 +219,8 @@ export function useSwingCapture({
         camera_guidance_color: guidanceSnapshotRef.current.color,
       },
       gravityReadings: gravityReadingsRef.current,
+      playerProfileId: activeProfileSnapshotRef.current?.id,
+      isLeftHanded: activeProfileSnapshotRef.current?.isLeftHanded,
     }).catch((err) => {
       console.error('[persistFailedSwing] FAILED', err);
       return null;
@@ -235,7 +252,12 @@ export function useSwingCapture({
     stopTiltCapture();
     watch.stopCapture();
     gravityReadingsRef.current = getTiltReadings();
-    isLeftHandedRef.current = await getActiveProfileHandedness();
+    // Record flow captured handedness from the button-press snapshot
+    // (isLeftHandedRef, set in beginRecording). Legacy callers without a profile
+    // provider still read it here at finalize, as before.
+    if (!activeProfileSnapshotRef.current) {
+      isLeftHandedRef.current = await getActiveProfileHandedness();
+    }
     cameraRef.current?.stopRecording()?.catch(() => {});
 
     // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
@@ -247,6 +269,30 @@ export function useSwingCapture({
   }
 
   function beginRecording(opts?: { origin?: 'watch' | 'phone' }) {
+    // Sample the active profile at button-press and hard-block if none is set —
+    // a swing must never be recorded (and later persisted) without a kid to
+    // attribute it to. Handedness comes from the same snapshot, so analysis and
+    // persistence agree with the kid shown in the chip at this instant. Legacy
+    // callers without a provider (clinic) skip this and keep the persist-time
+    // fallback (snapshot left null → finalizeCapture reads handedness, persist
+    // resolves the primary profile).
+    const provider = getActiveProfileRef.current;
+    if (provider) {
+      const attribution = resolveAttribution(provider());
+      if (!attribution) {
+        console.warn('[useSwingCapture] beginRecording blocked — no active profile');
+        onMissingProfile?.();
+        return;
+      }
+      activeProfileSnapshotRef.current = {
+        id: attribution.playerProfileId,
+        isLeftHanded: attribution.isLeftHanded,
+      };
+      isLeftHandedRef.current = attribution.isLeftHanded;
+    } else {
+      activeProfileSnapshotRef.current = null;
+    }
+
     const origin = opts?.origin ?? 'phone';
     captureOriginRef.current = origin;
     NativeModules.HoneyGripBridge?.resetPoseState?.();
@@ -432,7 +478,7 @@ export function useSwingCapture({
             captureFrameStats,
             targetFps ?? null,
             gravityReadingsRef.current,
-            undefined,
+            activeProfileSnapshotRef.current?.id,
             result.captureFps ?? null,
             result.videoDurationMs ?? null,
             result.videoFrameCount ?? null,
@@ -445,6 +491,7 @@ export function useSwingCapture({
                   captureSeq: watchSeq,
                 }
               : null,
+            activeProfileSnapshotRef.current?.isLeftHanded,
           ).then((swingId) => {
             if (swingId) {
               setCurrentSwingId(swingId);

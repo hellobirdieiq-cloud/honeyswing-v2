@@ -10,6 +10,10 @@ export interface FailedSwingContext {
   targetFps: number | null;
   cameraGuidance: CameraGuidanceSnapshot;
   gravityReadings: GravityReading[];
+  // Button-press snapshot, threaded so a failed capture is attributed to the
+  // same kid as a successful one (no stale/default re-read at persist time).
+  playerProfileId?: string | null;
+  isLeftHanded?: boolean;
 }
 
 export async function persistFailedSwing(
@@ -37,5 +41,12 @@ export async function persistFailedSwing(
     ctx.captureFrameStats,
     ctx.targetFps,
     ctx.gravityReadings,
+    ctx.playerProfileId,
+    null, // captureFps
+    null, // videoDurationMs
+    null, // videoFrameCount
+    null, // extractionTotalMs
+    null, // watchImu
+    ctx.isLeftHanded,
   );
 }
