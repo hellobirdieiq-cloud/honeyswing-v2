@@ -141,22 +141,33 @@ function detectFaceOnSwingStart(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4 — impact: speed-banded lead-wrist (leftWrist) Y-arc-bottom.
-// Validated via scripts/testLeadWristImpact.ts (T=0.90: +9 recoveries on
-// impact_search_bounds, 1 regression). Replaces the prior trail-hand (rightWrist)
-// X-rise-vs-footRef heuristic, which keyed off the wrong hand/axis for face-on.
+// Phase 4 — impact: speed-banded Y-arc-bottom of canonical `leftWrist`.
+//
+// NAMING CORRECTION: `leftWrist` here is the canonical TRAIL wrist, NOT the lead
+// hand (canonicalTransform.ts M docstring: "label left* is the TRAIL arm";
+// buildTrailPoints' leadX/trailX inversion note). The TRAIL wrist is the
+// empirically-accurate face-on impact joint: across the real RH population its
+// arc-bottom agrees with the INDEPENDENT thumb-crossing impact to within Δ0–3
+// frames (11/13 thumb-source swings), whereas the LEAD wrist (`rightWrist`) misses
+// by up to ~60+ frames (one outlier ~215) and regresses LH gating. The original
+// "+9 recoveries" validation (scripts/testLeadWristImpact.ts) measured GATE
+// recovery on impact_search_bounds, not impact ACCURACY — hence the prior
+// "lead-wrist" misnomer. DO NOT switch this to `rightWrist`; see the joint-choice
+// guard in faceOnImpactJoint.test.ts. (Replaced the even older trail-hand
+// X-rise-vs-footRef heuristic, which keyed off the wrong axis for face-on.)
 // ---------------------------------------------------------------------------
 
 const IMPACT_SPEED_LOOKBACK = 3; // frames; 2D leftWrist displacement window
 const IMPACT_PEAK_PERCENTILE = 0.95; // robust max (ignores a single noisy spike)
 const IMPACT_BAND_THRESHOLD = 0.9; // band = speed >= threshold * peak
 
-function detectFaceOnImpact(
+// Exported for faceOnImpactJoint.test.ts (pins the TRAIL-wrist joint choice).
+export function detectFaceOnImpact(
   frames: PoseFrame[],
   msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
-  // 2D leftWrist (lead hand) speed with k-frame lookback; speed[0..k-1]=0, and 0
-  // when either frame's joint is missing. (Mirrors testLeadWristImpact.leadWristSpeed.)
+  // 2D leftWrist (canonical TRAIL wrist) speed with k-frame lookback; speed[0..k-1]=0,
+  // and 0 when either frame's joint is missing. (Mirrors testLeadWristImpact.leadWristSpeed.)
   const n = frames.length;
   if (n === 0) return { frame: null, reliability: null };
   const speed = new Array<number>(n).fill(0);
@@ -175,8 +186,9 @@ function detectFaceOnImpact(
   const peak = sorted[Math.min(Math.floor(IMPACT_PEAK_PERCENTILE * n), n - 1)];
   if (!(peak > 0)) return { frame: null, reliability: null };
 
-  // Impact = the band frame (speed >= threshold*peak) with MAX leftWrist.y. y is
-  // top-down 0..1, so arc bottom = max y. Restricting the search to the high-speed
+  // Impact = the band frame (speed >= threshold*peak) with MAX leftWrist.y (canonical
+  // TRAIL wrist — the validated impact joint). y is top-down 0..1, so arc bottom = max y.
+  // Restricting the search to the high-speed
   // band keeps it out of the slow address/finish regions where a global max lands.
   // (Mirrors testLeadWristImpact.bandedArcBottom.)
   const floor = IMPACT_BAND_THRESHOLD * peak;
