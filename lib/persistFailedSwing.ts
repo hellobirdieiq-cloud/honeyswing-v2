@@ -1,8 +1,10 @@
 import { persistSwing, type CameraGuidanceSnapshot } from './persistSwing';
+import { persistPoseFull } from './persistPoseFull';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from './captureValidity';
 import type { CaptureFrameStats } from './usePoseFrameHandler';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
+import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';
 import { CAPTURE_FPS } from './cameraFormat';
 
 export interface FailedSwingContext {
@@ -14,6 +16,10 @@ export interface FailedSwingContext {
   // same kid as a successful one (no stale/default re-read at persist time).
   playerProfileId?: string | null;
   isLeftHanded?: boolean;
+  // Raw pose stream retained for debugging (#4) when extraction produced frames
+  // but the swing was still rejected. Attached to the stub row's pose_full via a
+  // side-effect-free UPDATE. Null/empty for the genuinely-frameless failures.
+  rtmw?: Rtmw133Frame[] | null;
 }
 
 export async function persistFailedSwing(
@@ -32,7 +38,7 @@ export async function persistFailedSwing(
     poseSuccessRate: 0,
     reason,
   };
-  return persistSwing(
+  const swingId = await persistSwing(
     [],
     emptyAnalysis,
     stubClassification,
@@ -49,4 +55,16 @@ export async function persistFailedSwing(
     null, // watchImu
     ctx.isLeftHanded,
   );
+
+  // Retain the raw stream on the stub row for debugging (#4). persistPoseFull is
+  // a pure UPDATE of pose_full + pose_source (no count/event/clinic side effect),
+  // so the stub stays side-effect-suppressed. Skip when there's no row (anonymous
+  // / no user → swingId null) or no frames (genuinely-empty failure).
+  if (swingId && ctx.rtmw?.length) {
+    await persistPoseFull(swingId, ctx.rtmw).catch((err) =>
+      console.warn('[persistFailedSwing] pose_full attach failed', err),
+    );
+  }
+
+  return swingId;
 }

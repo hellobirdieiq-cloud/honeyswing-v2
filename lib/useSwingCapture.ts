@@ -5,6 +5,7 @@ import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
 import type { PoseSequence } from '../packages/pose/PoseTypes';
+import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
@@ -186,7 +187,11 @@ export function useSwingCapture({
     router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
 
-  function handleCaptureFailure(reason: string) {
+  // rtmw: raw frames retained for debugging when extraction DID produce a stream
+  // but the swing was still rejected (no-person, or analysis/phase-detection
+  // threw). Attached to the stub row's pose_full so #4 can replay the rejection.
+  // Omitted for the genuinely-empty failures (zero-frames, recording-error).
+  function handleCaptureFailure(reason: string, rtmw?: Rtmw133Frame[] | null) {
     // A failed capture never uploads its video — abandon the durable entry so it
     // isn't stranded pending until the orphan sweep.
     const strandedVideoEntry = videoOutboxEntryIdRef.current;
@@ -221,6 +226,7 @@ export function useSwingCapture({
       gravityReadings: gravityReadingsRef.current,
       playerProfileId: activeProfileSnapshotRef.current?.id,
       isLeftHanded: activeProfileSnapshotRef.current?.isLeftHanded,
+      rtmw: rtmw ?? null,
     }).catch((err) => {
       console.error('[persistFailedSwing] FAILED', err);
       return null;
@@ -348,6 +354,10 @@ export function useSwingCapture({
 
         let extractionMs = 0;
         let analysisMs = 0;
+        // Hoisted so the catch can retain the raw stream on a post-extraction
+        // throw (e.g. face-on phase-detection breach) — null until extraction
+        // succeeds, so a pre-extraction throw correctly persists no frames.
+        let rtmwForFailure: Rtmw133Frame[] | null = null;
 
         try {
           // EXTERNAL ASSUMPTION — 45s pipeline timeout. Covers observed worst-case extraction (~30s on a 5s clip) plus margin; revisit if clip length grows. Not a measured ceiling.
@@ -369,7 +379,7 @@ export function useSwingCapture({
           extractionMs = result.rtmw.reduce((acc, f) => acc + (f.extractionMs ?? 0), 0);
 
           if (result.failure === 'no-person') {
-            handleCaptureFailure('no-person');
+            handleCaptureFailure('no-person', result.rtmw);
             return;
           }
           if (result.rtmw.length === 0) {
@@ -378,6 +388,7 @@ export function useSwingCapture({
           }
 
           const { poseFrames, rtmw } = result;
+          rtmwForFailure = rtmw; // retain for a post-extraction throw (see catch)
           // Layer 0 routing — corrected stream feeds ONE consumer: the live
           // replay store (setCurrentSwingMotion), i.e. the kid-visible
           // skeleton. Everything else deliberately reads RAW poseFrames:
@@ -578,7 +589,7 @@ export function useSwingCapture({
           } else {
             console.warn('[HoneySwing] extract-or-analyze threw:', msg);
           }
-          handleCaptureFailure('extract-or-analyze-threw');
+          handleCaptureFailure('extract-or-analyze-threw', rtmwForFailure);
         }
       },
       onRecordingError: (e) => {
