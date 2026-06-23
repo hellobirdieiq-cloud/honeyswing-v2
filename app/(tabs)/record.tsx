@@ -15,6 +15,7 @@ import {
   type FocusData,
 } from '../../lib/swingMotionStore';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
+import FaceOnSetupOverlay from '../../components/FaceOnSetupOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
@@ -98,6 +99,9 @@ export default function RecordTab() {
   const [guidanceLabel, setGuidanceLabel] = useState<string | null>(null);
 
   const [captureMode, setCaptureMode] = useState<'instant' | 'countdown'>('instant');
+
+  // #11 face-on setup guide — per-session show/hide (resets ON each mount; not persisted).
+  const [showGuide, setShowGuide] = useState(true);
 
   // Active-kid chip — second UI entry point to the SAME primary-profile switch
   // (setPrimaryProfile / getPrimaryProfile) that Settings + swing attribution use.
@@ -434,6 +438,12 @@ export default function RecordTab() {
               }
             }}
           />
+          {capturePhase === 'idle' && cameraReady && showGuide && (
+            <FaceOnSetupOverlay
+              height={containerH}
+              mirrored={!!activeProfile?.isLeftHanded}
+            />
+          )}
           <LiveSkeleton
             updateRef={skeletonUpdateRef}
             width={screenW}
@@ -566,6 +576,21 @@ export default function RecordTab() {
         </TouchableOpacity>
       )}
 
+      {/* #11 guide show/hide — eye chip on the right rail, directly below the kid chip. */}
+      {capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={localStyles.guideToggle}
+          onPress={() => setShowGuide((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={showGuide ? 'eye' : 'eye-off'}
+            size={16}
+            color={showGuide ? GOLD : 'rgba(255,255,255,0.5)'}
+          />
+        </TouchableOpacity>
+      )}
+
       {/* Kid picker dropdown — selecting routes through setPrimaryProfile (same switch as Settings). */}
       <Modal
         visible={pickerOpen}
@@ -619,6 +644,14 @@ export default function RecordTab() {
 }
 
 const localStyles = StyleSheet.create({
+  guideToggle: {
+    position: 'absolute',
+    top: 102, // below kidChip (top:60 right:16, ~34px tall); mirrors preArmChip's offset on the right rail
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    padding: 9,
+  },
   brandOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#111111',
