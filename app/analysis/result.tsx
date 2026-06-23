@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { styles } from './resultStyles';
 import {
@@ -191,10 +192,14 @@ export default function ResultScreen() {
       : 33;
   }, [effectiveMotion]);
 
-  useEffect(() => {
-    getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
-    getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
+  // Re-read on focus (not just mount) so a profile switched while this screen was
+  // backgrounded is reflected when the viewer regains focus.
+  useFocusEffect(
+    useCallback(() => {
+      getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
+      getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
+    }, []),
+  );
 
   // Local capture file wins (live swing, byte-identical to the previous
   // behavior); remote signed URL is the historical-view fallback. useVideoPlayer
@@ -319,19 +324,23 @@ export default function ResultScreen() {
     return () => clearTimeout(t);
   }, [videoSectionY]);
 
-  useEffect(() => {
-    getActiveProfileHandedness().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
-    getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
+  // Re-read on focus so the skeleton orientation reflects the ACTIVE profile's
+  // handedness after a profile switch (was once-only on mount → stale skeleton).
+  useFocusEffect(
+    useCallback(() => {
+      getActiveProfileHandedness().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
+      getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
 
-    // Check swing limit after this swing was persisted
-    checkSwingLimit().then((status) => {
-      if (!status.allowed) {
-        getUser().then((user) => {
-          if (!user) setLimitHit(true);
-        }).catch((err) => console.error('[HoneySwing]', err));
-      }
-    }).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
+      // Check swing limit after this swing was persisted
+      checkSwingLimit().then((status) => {
+        if (!status.allowed) {
+          getUser().then((user) => {
+            if (!user) setLimitHit(true);
+          }).catch((err) => console.error('[HoneySwing]', err));
+        }
+      }).catch((err) => console.error('[HoneySwing]', err));
+    }, []),
+  );
 
   useEffect(() => {
     if (!swingId) return;

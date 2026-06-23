@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
+import { clearCurrentSwingMotion } from './swingMotionStore';
 
 export type PlayerProfile = {
   id: string;
@@ -64,6 +65,13 @@ export async function setPrimaryProfile(id: string): Promise<void> {
   const existing = await getProfiles();
   const updated = existing.map((p) => ({ ...p, isPrimary: p.id === id }));
   await saveProfiles(updated);
+  // Invalidate the in-memory "current swing" singleton on every profile switch.
+  // It survives navigation (module-level, not zustand/context) and the viewer
+  // (app/analysis/result.tsx) renders it whenever isLiveSwing is true — so a
+  // switch without clearing leaves the previous kid's video + wrong-handedness
+  // skeleton on screen until an app reload. Clearing forces the viewer back to
+  // the authoritative per-swing DB load.
+  clearCurrentSwingMotion();
 }
 
 export async function getPrimaryProfile(): Promise<PlayerProfile | null> {
