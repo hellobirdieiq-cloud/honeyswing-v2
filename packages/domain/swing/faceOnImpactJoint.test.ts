@@ -2,8 +2,8 @@
  * faceOnImpactJoint.test.ts — pins the JOINT CHOICE of the face-on arc-bottom
  * impact detector (detectFaceOnImpact, phaseDetectionFaceOn.ts).
  *
- * Background: canonical `leftWrist` is the TRAIL wrist (canonicalTransform.ts M
- * docstring; analysisPipeline.ts buildTrailPoints leadX/trailX inversion note).
+ * Background: canonical `leftWrist` is the TRAIL wrist (canonicalTransform.ts
+ * CANONICAL_TRAIL / M docstring).
  * The detector reads `leftWrist` (trail). A prior ticket suspected this was a bug
  * and proposed switching to `rightWrist` (lead). That was FALSIFIED on the real
  * `swings` population (scratchpad/leadVsTrailImpact.ts): on RH swings whose impact

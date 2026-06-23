@@ -208,7 +208,8 @@ function detectDTLTrueAddress(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 — top of backswing (lead wrist X minimum + lookahead guard)
+// Phase 3 — top of backswing (trail wrist X minimum + lookahead guard).
+// Reads the canonical TRAIL wrist (leftWrist) via SwingTrailPoint.trailX.
 // ---------------------------------------------------------------------------
 
 function detectDTLTop(
@@ -223,17 +224,17 @@ function detectDTLTop(
 
   let windowMax = -Infinity;
   for (let F = Math.max(topSearchStart, 1); F <= topSearchEnd - 2; F++) {
-    const lWx = points[F].leadX;
-    if (lWx > windowMax) windowMax = lWx;
+    const tWx = points[F].trailX;
+    if (tWx > windowMax) windowMax = tWx;
     if (
-      lWx < points[F - 1].leadX &&
-      lWx < points[F + 1].leadX &&
-      points[F + 1].leadX < points[F + 2].leadX &&
-      lWx < windowMax - A.top.minTravel
+      tWx < points[F - 1].trailX &&
+      tWx < points[F + 1].trailX &&
+      points[F + 1].trailX < points[F + 2].trailX &&
+      tWx < windowMax - A.top.minTravel
     ) {
       let hasDeeperMin = false;
       for (let k = 1; k <= A.top.lookaheadFrames && F + k <= topSearchEnd; k++) {
-        if (points[F + k].leadX < lWx) {
+        if (points[F + k].trailX < tWx) {
           hasDeeperMin = true;
           break;
         }

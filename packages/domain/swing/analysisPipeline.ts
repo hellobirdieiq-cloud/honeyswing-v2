@@ -10,7 +10,7 @@ import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle, detectCameraAngleEarly } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
-import { toCanonicalSequence } from "./canonicalTransform";
+import { toCanonicalSequence, CANONICAL_LEAD, CANONICAL_TRAIL } from "./canonicalTransform";
 import {
   detectSwingPhasesWithDebug,
   DetectedPhase,
@@ -137,19 +137,21 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   const points: SwingTrailPoint[] = [];
 
   for (const frame of sequence.frames) {
-    const lw = frame.joints.leftWrist;
-    const rw = frame.joints.rightWrist;
+    // Honest lead/trail: in canonical space the LEAD arm is right*, the TRAIL arm
+    // is left* (CANONICAL_LEAD/TRAIL — single source of truth in canonicalTransform).
+    const lead = frame.joints[CANONICAL_LEAD.wrist];
+    const trail = frame.joints[CANONICAL_TRAIL.wrist];
 
-    if (!lw || !rw) continue;
+    if (!lead || !trail) continue;
 
     points.push({
-      x: (lw.x + rw.x) / 2,
-      y: (lw.y + rw.y) / 2,
+      x: (lead.x + trail.x) / 2,
+      y: (lead.y + trail.y) / 2,
       timestamp: frame.timestampMs,
-      leadX: lw.x,   // NAMING IS HISTORICAL: canonical label left* = TRAIL arm
-      leadY: lw.y,   // (both RH and LH) — corpus convention; see mirrorToCanonical
-      trailX: rw.x,  // canonical label right* = LEAD arm (both RH and LH)
-      trailY: rw.y,
+      leadX: lead.x,
+      leadY: lead.y,
+      trailX: trail.x,
+      trailY: trail.y,
     });
   }
 

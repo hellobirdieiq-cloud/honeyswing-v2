@@ -93,10 +93,10 @@ group('A3. Ideal and tolerance values match repo code (SCR-0b-1: asymmetric)');
 group('A4. Label values');
 {
   assertEq(METRIC_DEFINITIONS.spineAngle.label, 'Spine tilt', 'spineAngle label');
-  assertEq(METRIC_DEFINITIONS.leftElbowAngle.label, 'Lead arm', 'leftElbowAngle label');
-  assertEq(METRIC_DEFINITIONS.rightElbowAngle.label, 'Trail arm', 'rightElbowAngle label');
-  assertEq(METRIC_DEFINITIONS.leftKneeAngle.label, 'Lead knee', 'leftKneeAngle label');
-  assertEq(METRIC_DEFINITIONS.rightKneeAngle.label, 'Trail knee', 'rightKneeAngle label');
+  assertEq(METRIC_DEFINITIONS.leftElbowAngle.label, 'Trail arm', 'leftElbowAngle label (canonical left* = trail)');
+  assertEq(METRIC_DEFINITIONS.rightElbowAngle.label, 'Lead arm', 'rightElbowAngle label (canonical right* = lead)');
+  assertEq(METRIC_DEFINITIONS.leftKneeAngle.label, 'Trail knee', 'leftKneeAngle label (canonical left* = trail)');
+  assertEq(METRIC_DEFINITIONS.rightKneeAngle.label, 'Lead knee', 'rightKneeAngle label (canonical right* = lead)');
   assertEq(METRIC_DEFINITIONS.shoulderTilt.label, 'Shoulders', 'shoulderTilt label');
 }
 
@@ -138,26 +138,26 @@ group('B2. leftElbowAngle cues');
 {
   const { cue, ideal } = METRIC_DEFINITIONS.leftElbowAngle;
   // v < ideal → junior
-  assertEq(cue(ideal - 20, ideal, 'junior'), 'Keep your front arm straighter', 'below ideal, junior');
+  assertEq(cue(ideal - 20, ideal, 'junior'), 'Keep your back arm straighter', 'below ideal, junior');
   // v < ideal → adult
-  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your lead arm is too bent through the swing \u2014 try to keep it straighter', 'below ideal, adult');
+  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your trail arm is too bent through the swing \u2014 try to keep it straighter', 'below ideal, adult');
   // v >= ideal → junior
-  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your front arm a tiny bit', 'above ideal, junior');
+  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your back arm a tiny bit', 'above ideal, junior');
   // v >= ideal → adult
-  assertEq(cue(ideal + 10, ideal, 'adult'), 'Your lead arm is locking out \u2014 keep a slight bend through impact', 'above ideal, adult');
+  assertEq(cue(ideal + 10, ideal, 'adult'), 'Your trail arm is locking out \u2014 keep a slight bend through impact', 'above ideal, adult');
   // v === ideal → falls to else (v >= i)
-  assertEq(cue(ideal, ideal, 'junior'), 'Bend your front arm a tiny bit', 'at ideal, junior (else branch)');
+  assertEq(cue(ideal, ideal, 'junior'), 'Bend your back arm a tiny bit', 'at ideal, junior (else branch)');
   assert(cue(ideal - 20, ideal, 'junior') !== cue(ideal - 20, ideal, 'adult'), 'junior/adult differ');
 }
 
 group('B3. rightElbowAngle cues');
 {
   const { cue, ideal } = METRIC_DEFINITIONS.rightElbowAngle;
-  assertEq(cue(ideal - 20, ideal, 'junior'), 'Stretch your back arm out more', 'below ideal, junior');
-  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your trail elbow is too bent at the top \u2014 extend it more', 'below ideal, adult');
-  assertEq(cue(ideal + 10, ideal, 'junior'), 'Let your back arm bend a little', 'above ideal, junior');
-  assertEq(cue(ideal + 10, ideal, 'adult'), 'Your trail arm is too straight \u2014 let it fold naturally at the top', 'above ideal, adult');
-  assertEq(cue(ideal, ideal, 'junior'), 'Let your back arm bend a little', 'at ideal, junior (else branch)');
+  assertEq(cue(ideal - 20, ideal, 'junior'), 'Stretch your front arm out more', 'below ideal, junior');
+  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your lead elbow is too bent at the top \u2014 extend it more', 'below ideal, adult');
+  assertEq(cue(ideal + 10, ideal, 'junior'), 'Let your front arm bend a little', 'above ideal, junior');
+  assertEq(cue(ideal + 10, ideal, 'adult'), 'Your lead arm is too straight \u2014 let it fold naturally at the top', 'above ideal, adult');
+  assertEq(cue(ideal, ideal, 'junior'), 'Let your front arm bend a little', 'at ideal, junior (else branch)');
   assert(cue(ideal - 20, ideal, 'junior') !== cue(ideal - 20, ideal, 'adult'), 'junior/adult differ');
 }
 
@@ -166,9 +166,9 @@ group('B4. leftKneeAngle cues');
   const { cue, ideal } = METRIC_DEFINITIONS.leftKneeAngle;
   assertEq(cue(ideal - 20, ideal, 'junior'), 'Stand a little taller in your legs', 'below ideal, junior');
   assertEq(cue(ideal - 20, ideal, 'adult'), 'Too much knee bend at setup \u2014 stay athletic, not crouched', 'below ideal, adult');
-  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your front knee a tiny bit', 'above ideal, junior');
-  assertEq(cue(ideal + 10, ideal, 'adult'), 'Soften your lead knee at address \u2014 a little flex helps your turn', 'above ideal, adult');
-  assertEq(cue(ideal, ideal, 'junior'), 'Bend your front knee a tiny bit', 'at ideal, junior (else branch)');
+  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your back knee a tiny bit', 'above ideal, junior');
+  assertEq(cue(ideal + 10, ideal, 'adult'), 'Soften your trail knee at address \u2014 a little flex helps your turn', 'above ideal, adult');
+  assertEq(cue(ideal, ideal, 'junior'), 'Bend your back knee a tiny bit', 'at ideal, junior (else branch)');
   assert(cue(ideal - 20, ideal, 'junior') !== cue(ideal - 20, ideal, 'adult'), 'junior/adult differ');
 }
 
@@ -176,10 +176,10 @@ group('B5. rightKneeAngle cues');
 {
   const { cue, ideal } = METRIC_DEFINITIONS.rightKneeAngle;
   assertEq(cue(ideal - 20, ideal, 'junior'), 'Stand a little taller in your legs', 'below ideal, junior');
-  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your trail knee is too bent at setup \u2014 straighten up a little', 'below ideal, adult');
-  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your back knee a tiny bit', 'above ideal, junior');
-  assertEq(cue(ideal + 10, ideal, 'adult'), 'Soften your trail knee at address \u2014 stay ready to rotate', 'above ideal, adult');
-  assertEq(cue(ideal, ideal, 'junior'), 'Bend your back knee a tiny bit', 'at ideal, junior (else branch)');
+  assertEq(cue(ideal - 20, ideal, 'adult'), 'Your lead knee is too bent at setup \u2014 straighten up a little', 'below ideal, adult');
+  assertEq(cue(ideal + 10, ideal, 'junior'), 'Bend your front knee a tiny bit', 'above ideal, junior');
+  assertEq(cue(ideal + 10, ideal, 'adult'), 'Soften your lead knee at address \u2014 stay ready to rotate', 'above ideal, adult');
+  assertEq(cue(ideal, ideal, 'junior'), 'Bend your front knee a tiny bit', 'at ideal, junior (else branch)');
   assert(cue(ideal - 20, ideal, 'junior') !== cue(ideal - 20, ideal, 'adult'), 'junior/adult differ');
 }
 

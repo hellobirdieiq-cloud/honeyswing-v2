@@ -69,10 +69,10 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
       x: (lw.x + rw.x) / 2,
       y: (lw.y + rw.y) / 2,
       timestamp: frame.timestampMs,
-      leadX: lw.x,
-      leadY: lw.y,
-      trailX: rw.x,
-      trailY: rw.y,
+      leadX: rw.x,   // canonical LEAD = right* (CANONICAL_LEAD); TRAIL = left*
+      leadY: rw.y,
+      trailX: lw.x,
+      trailY: lw.y,
     });
   }
   return points;

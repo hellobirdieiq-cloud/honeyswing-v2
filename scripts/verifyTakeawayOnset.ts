@@ -81,10 +81,10 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
       x: (lw.x + rw.x) / 2,
       y: (lw.y + rw.y) / 2,
       timestamp: frame.timestampMs,
-      leadX: lw.x,
-      leadY: lw.y,
-      trailX: rw.x,
-      trailY: rw.y,
+      leadX: rw.x,   // canonical LEAD = right* (CANONICAL_LEAD); TRAIL = left*
+      leadY: rw.y,
+      trailX: lw.x,
+      trailY: lw.y,
     });
   }
   return points;
@@ -220,7 +220,7 @@ async function main() {
 
       // TRACE — per-frame travel-in-BH for frames 20–90.
       const bh = r.lockedBodyHeight ?? 1;
-      const s = smoothVelocities(trail.map((p) => p.trailX), 5);
+      const s = smoothVelocities(trail.map((p) => p.leadX), 5);
       let runMin = s[0];
       console.log(`\n  --- TRACE (frame : smoothed leadX : travel-in-BH) ---`);
       for (let i = 0; i < s.length; i++) {

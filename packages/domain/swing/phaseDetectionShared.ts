@@ -314,9 +314,9 @@ export function smoothVelocities(
 // returns null so the caller falls back to the legacy directional gate. Never
 // throws — any bad/missing data yields a null onset.
 //
-// The signal is the LEAD-wrist x = trail[].trailX (the historically inverted
-// trail-naming trap; see buildTrailPoints in analysisPipeline.ts). Δx > 0 is the
-// takeaway direction in canonical space for BOTH handedness.
+// The signal is the LEAD-wrist x = trail[].leadX (canonical lead arm = right*; see
+// CANONICAL_LEAD in canonicalTransform.ts). Δx > 0 is the takeaway direction in
+// canonical space for BOTH handedness.
 // ---------------------------------------------------------------------------
 
 /**
@@ -413,10 +413,10 @@ export function findTakeawayOnsetFaceOn(
       return nullResult("ruler_unreliable");
     }
 
-    // Smooth the LEAD-wrist x (trailX) position series with the existing box-mean.
+    // Smooth the LEAD-wrist x (leadX) position series with the existing box-mean.
     // This is the confirm/travel signal; Δx > 0 is the takeaway direction for both
-    // handedness (the historical trail-naming inversion; see buildTrailPoints).
-    const leadX = trail.map((p) => p.trailX);
+    // handedness.
+    const leadX = trail.map((p) => p.leadX);
     const s = smoothVelocities(leadX, 5);
 
     // Candidate generator — re-run the OLD 6-of-8 directional-window test

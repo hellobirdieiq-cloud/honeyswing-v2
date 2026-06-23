@@ -143,9 +143,8 @@ function detectFaceOnSwingStart(
 // ---------------------------------------------------------------------------
 // Phase 4 — impact: speed-banded Y-arc-bottom of canonical `leftWrist`.
 //
-// NAMING CORRECTION: `leftWrist` here is the canonical TRAIL wrist, NOT the lead
-// hand (canonicalTransform.ts M docstring: "label left* is the TRAIL arm";
-// buildTrailPoints' leadX/trailX inversion note). The TRAIL wrist is the
+// NAMING: `leftWrist` here is the canonical TRAIL wrist (canonicalTransform.ts
+// CANONICAL_TRAIL / M docstring: "label left* is the TRAIL arm"). The TRAIL wrist is the
 // empirically-accurate face-on impact joint: across the real RH population its
 // arc-bottom agrees with the INDEPENDENT thumb-crossing impact to within Δ0–3
 // frames (11/13 thumb-source swings), whereas the LEAD wrist (`rightWrist`) misses

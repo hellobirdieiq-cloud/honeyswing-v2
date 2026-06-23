@@ -40,41 +40,41 @@ export const METRIC_DEFINITIONS: Record<MetricKey, MetricDefinition> = {
   leftElbowAngle: {
     segments: [['leftShoulder', 'leftElbow'], ['leftElbow', 'leftWrist']],
     ideal: 165, underTolerance: 40, overTolerance: 26.67,
-    label: 'Lead arm',
+    label: 'Trail arm',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
-      if (v < i) return junior ? 'Keep your front arm straighter' : 'Your lead arm is too bent through the swing — try to keep it straighter';
-      return junior ? 'Bend your front arm a tiny bit' : 'Your lead arm is locking out — keep a slight bend through impact';
+      if (v < i) return junior ? 'Keep your back arm straighter' : 'Your trail arm is too bent through the swing — try to keep it straighter';
+      return junior ? 'Bend your back arm a tiny bit' : 'Your trail arm is locking out — keep a slight bend through impact';
     },
   },
   rightElbowAngle: {
     segments: [['rightShoulder', 'rightElbow'], ['rightElbow', 'rightWrist']],
     ideal: 165, underTolerance: 40, overTolerance: 26.67,
-    label: 'Trail arm',
+    label: 'Lead arm',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
-      if (v < i) return junior ? 'Stretch your back arm out more' : 'Your trail elbow is too bent at the top — extend it more';
-      return junior ? 'Let your back arm bend a little' : 'Your trail arm is too straight — let it fold naturally at the top';
+      if (v < i) return junior ? 'Stretch your front arm out more' : 'Your lead elbow is too bent at the top — extend it more';
+      return junior ? 'Let your front arm bend a little' : 'Your lead arm is too straight — let it fold naturally at the top';
     },
   },
   leftKneeAngle: {
     segments: [['leftHip', 'leftKnee'], ['leftKnee', 'leftAnkle']],
     ideal: 155, underTolerance: 35, overTolerance: 23.33,
-    label: 'Lead knee',
+    label: 'Trail knee',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
       if (v < i) return junior ? 'Stand a little taller in your legs' : 'Too much knee bend at setup — stay athletic, not crouched';
-      return junior ? 'Bend your front knee a tiny bit' : 'Soften your lead knee at address — a little flex helps your turn';
+      return junior ? 'Bend your back knee a tiny bit' : 'Soften your trail knee at address — a little flex helps your turn';
     },
   },
   rightKneeAngle: {
     segments: [['rightHip', 'rightKnee'], ['rightKnee', 'rightAnkle']],
     ideal: 155, underTolerance: 35, overTolerance: 23.33,
-    label: 'Trail knee',
+    label: 'Lead knee',
     cue: (v, i, ageTier) => {
       const junior = ageTier === 'junior';
-      if (v < i) return junior ? 'Stand a little taller in your legs' : 'Your trail knee is too bent at setup — straighten up a little';
-      return junior ? 'Bend your back knee a tiny bit' : 'Soften your trail knee at address — stay ready to rotate';
+      if (v < i) return junior ? 'Stand a little taller in your legs' : 'Your lead knee is too bent at setup — straighten up a little';
+      return junior ? 'Bend your front knee a tiny bit' : 'Soften your lead knee at address — stay ready to rotate';
     },
   },
   shoulderTilt: {

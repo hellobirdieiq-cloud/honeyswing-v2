@@ -208,10 +208,10 @@ function assertClose(actual: number | null, expected: number, tol: number, label
   );
 }
 
-// Lead-wrist signal lives in trailX (the historically inverted trail-naming
-// trap). Mirror it into x too so the legacy midpoint gate sees the same motion.
-function makeLeadPoint(trailX: number, frameIdx: number): SwingTrailPoint {
-  return { x: trailX, y: 0.5, timestamp: frameIdx * FRAME_DT_MS, leadX: 0, leadY: 0, trailX, trailY: 0.5 };
+// Lead-wrist signal lives in leadX (canonical lead arm = right*). Mirror it into x
+// too so the legacy midpoint gate sees the same motion.
+function makeLeadPoint(leadX: number, frameIdx: number): SwingTrailPoint {
+  return { x: leadX, y: 0.5, timestamp: frameIdx * FRAME_DT_MS, leadX, leadY: 0, trailX: 0, trailY: 0.5 };
 }
 
 // nose at y=0.1, rightAnkle at y=0.9, same x ⇒ body height = 0.8 ⇒ 0.5 BH = 0.4.

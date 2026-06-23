@@ -102,24 +102,25 @@ export function tryHeuristicDetection(
     return { phases: [], failureGate: "top_search_bounds" };
   }
 
-  // Lead-wrist X minimum + lookahead guard (canonical S151).
+  // Trail-wrist X minimum + lookahead guard (canonical S151). Reads the canonical
+  // TRAIL wrist (leftWrist) via SwingTrailPoint.trailX.
   const MIN_TRAVEL = 0.04;
   const MIN_LOOKAHEAD_FRAMES = 10;
 
   let windowMax = -Infinity;
   let topIdx: number | null = null;
   for (let F = Math.max(topSearchStart, 1); F <= topSearchEnd - 2; F++) {
-    const lWx = points[F].leadX;
-    if (lWx > windowMax) windowMax = lWx;
+    const tWx = points[F].trailX;
+    if (tWx > windowMax) windowMax = tWx;
     if (
-      lWx < points[F - 1].leadX &&
-      lWx < points[F + 1].leadX &&
-      points[F + 1].leadX < points[F + 2].leadX &&
-      lWx < windowMax - MIN_TRAVEL
+      tWx < points[F - 1].trailX &&
+      tWx < points[F + 1].trailX &&
+      points[F + 1].trailX < points[F + 2].trailX &&
+      tWx < windowMax - MIN_TRAVEL
     ) {
       let hasDeeperMin = false;
       for (let k = 1; k <= MIN_LOOKAHEAD_FRAMES && F + k <= topSearchEnd; k++) {
-        if (points[F + k].leadX < lWx) {
+        if (points[F + k].trailX < tWx) {
           hasDeeperMin = true;
           break;
         }
