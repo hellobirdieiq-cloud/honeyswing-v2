@@ -166,7 +166,7 @@ async function main() {
     return cam === "face_on" || cam === "front";
   });
 
-  const GROUND_TRUTH: Record<string, number> = { "81f0b197": 137.6 };
+  const GROUND_TRUTH: Record<string, number> = { "81f0b197": 137.6, dec6edd1: 120 };
   const rows: Row[] = [];
 
   for (const r of faceOn) {
@@ -261,6 +261,17 @@ async function main() {
       `impact_new=${ref.impact_new} thumb=${ref.impact_thumb} source=${ref.impact_source} (gt=${gt})`,
     );
   } else assert("81f0b197 present", false);
+
+  // (1b) dec6edd1 = 120 via the low-y-gated FIRST crossing (was 117 arc_bottom under the LAST rule).
+  const ref2 = find("dec6edd1");
+  if (ref2) {
+    const gt2 = GROUND_TRUTH["dec6edd1"];
+    assert(
+      "dec6edd1 impact_new = 120 via thumb_crossing (low-y first)",
+      ref2.impact_source === "thumb_crossing" && ref2.impact_new != null && Math.abs(ref2.impact_new - gt2) <= 1.0,
+      `impact_new=${ref2.impact_new} thumb=${ref2.impact_thumb} source=${ref2.impact_source} (gt=${gt2})`,
+    );
+  } else assert("dec6edd1 present", false);
 
   // (2) LH swings → arc_bottom + lh_ungated (only meaningful when not gated out)
   for (const x of rows.filter((r) => r.handedness === "left")) {

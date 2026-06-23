@@ -90,6 +90,17 @@ export const EXTERNAL_ASSUMPTIONS = {
       // gap measured offline: reals max |delta| 3.3, artifacts min |delta| 23.8 → 15 sits ~12
       // frames above the worst real and ~9 below the nearest artifact. Re-validate as corpus grows.
       impactRejectDeltaFrames: 15,
+      // ── Low-Y-gated FIRST-crossing selector (primary thumb pick) ──────────────────────────
+      // [EXTERNAL ASSUMPTION — UNTESTED BEYOND N=2: validated only on dec6edd1 (impact 120) and
+      // 81f0b197 (137.x), pinned in scripts/replayThumbImpact.ts. Re-validate as ground truth grows.]
+      // Impact = FIRST neg→pos thumb crossing after top where BOTH wrists sit in the bottom
+      // LOW_Y_FRACTION of their y-range, measured over the lowYZoneWindow. Rejects early-transition
+      // and follow-through-noise crossings the LAST rule chased. Falls back to the LAST-crossing
+      // path (above) when no low-y crossing qualifies or it fails the arc-bottom cross-check.
+      lowYFraction: 0.5,        // y top-down: low-y zone = y ≥ min + (1 − lowYFraction)·range
+      lowYZoneWindow: ["top", "follow_through"] as const, // phases bounding the y-range measurement
+      teleportDxAmplitude: 0.05, // skip crossings whose bounding |dx| exceeds this (teleport spike;
+                                 // clean impact crossings ≈0.008–0.015, dec6edd1's noise spike ≈0.19)
     },
     finish: {
       rollingWindow: 5,

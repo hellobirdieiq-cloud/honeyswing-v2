@@ -257,8 +257,9 @@ console.log('\n── Case B: DTL stores a trail index that downstream reads as 
 console.log('\n── Case C: delta-reject impact gate ──');
 {
   // Helper: build a take-last thumb result (structural — ThumbCrossingResult shape).
-  const thumbAt = (frame: number) => ({
-    frame, coverage: 1, nCrossings: 1, reason: 'ok' as const,
+  // frameLowY=null exercises the LEGACY fallback path (selector uses `frame`, the LAST crossing).
+  const thumbAt = (frame: number, frameLowY: number | null = null) => ({
+    frame, frameLowY, coverage: 1, nCrossings: 1, reason: 'ok' as const,
   });
   const select = (thumbFrame: number, arcBottomFrame: number) =>
     selectFaceOnImpact({
@@ -304,6 +305,48 @@ console.log('\n── Case C: delta-reject impact gate ──');
       `Case C(d): rejected → impactIdx = arc-bottom 130 (got ${s.impactIdx})`);
     assert(s.impactThumb === 60 && s.impactIdx !== s.impactThumb,
       'Case C(d): rejected thumb frame recorded but not selected (no walk-back)');
+  }
+}
+
+// ===========================================================================
+// Case D — low-y-gated FIRST crossing is the PRIMARY pick (selectFaceOnImpact)
+// frameLowY (the first crossing with both wrists physically low) is preferred over the
+// LAST crossing (`frame`) when it passes the arc-bottom cross-check; otherwise the selector
+// falls back to the legacy LAST path. Mirrors dec6edd1 (lowY 119.5 beats LAST 165.25).
+// ===========================================================================
+console.log('\n── Case D: low-y first crossing is primary ──');
+{
+  const select = (frame: number, frameLowY: number | null, arcBottomFrame: number) =>
+    selectFaceOnImpact({
+      arcBottomFrame,
+      thumb: { frame, frameLowY, coverage: 1, nCrossings: 2, reason: 'ok' as const },
+      isLeftHanded: false,
+      hasPreCanonical: true,
+      isOverride: false,
+    });
+
+  // (a) low-y present & within reject delta → it WINS over the LAST crossing (dec6edd1 shape).
+  {
+    const s = select(165, 119, 117); // LAST=165, lowY=119, arc=117 → |119-117|=2 ≤ 15
+    assert(s.impactSource === 'thumb_crossing', 'Case D(a): impactSource=thumb_crossing');
+    assert(s.impactIdx === 119, `Case D(a): impactIdx = low-y 119, not LAST 165 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'high', `Case D(a): high reliability (|delta|=2) (got ${s.impactReliability})`);
+  }
+
+  // (b) low-y FAILS the reject delta → fall back to the LAST crossing + its own cross-check.
+  {
+    const s = select(160, 119, 150); // lowY 119 vs arc 150 → |31|>15 fails; LAST 160 vs 150 → |10|≤15 keeps
+    assert(s.impactSource === 'thumb_crossing', 'Case D(b): falls back to LAST → thumb_crossing');
+    assert(s.impactIdx === 160, `Case D(b): impactIdx = LAST 160 (low-y rejected) (got ${s.impactIdx})`);
+  }
+
+  // (c) low-y present but BOTH it and LAST fail the reject delta → arc-bottom (c0b6f0e1 shape).
+  {
+    const s = select(349, 135, 160); // lowY 135 vs 160 → |25|>15; LAST 349 vs 160 → |189|>15
+    assert(s.impactSource === 'arc_bottom', 'Case D(c): both reject → arc_bottom');
+    assert(s.impactFallbackReason === 'cross_check_mismatch',
+      `Case D(c): fallback reason = cross_check_mismatch (got ${s.impactFallbackReason})`);
+    assert(s.impactIdx === 160, `Case D(c): impactIdx = arc-bottom 160 (got ${s.impactIdx})`);
   }
 }
 

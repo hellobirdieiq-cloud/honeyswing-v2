@@ -207,14 +207,22 @@ export function detectFaceOnImpact(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4 (primary) — lead-thumb-line last zero-crossing.
+// Phase 4 (primary) — lead-thumb-line zero-crossing.
 // dx = thumbTip.x − thumbCMC.x in PRE-canonical (unmirrored, normalized) space —
 // the same x-sign space the rule was validated in (scripts/output/_thumbCrossing.mjs,
 // RH swing 81f0b197: crossing 137.5 vs ground truth 137.6). Within [top, follow_through]:
-// LAST negative→positive crossing that holds positive thumbHoldFrames consecutive valid
-// frames; sub-frame via linear interpolation. Frames where either thumb joint conf <
-// thumbConfMin are skipped. LAST (not first) — an early transition crossing right after
-// 'top' confounds the literal first crossing (81f0b197 first=112.5 wrong).
+// negative→positive crossings that hold positive thumbHoldFrames consecutive valid frames;
+// sub-frame via linear interpolation. Frames where either thumb joint conf < thumbConfMin
+// are skipped.
+//
+// PRIMARY pick = `frameLowY`: the FIRST crossing where BOTH wrists are physically low
+// (bottom lowYFraction of their y-range over [top, follow_through]), skipping teleport-
+// amplitude dx spikes. This rejects early-transition crossings (81f0b197 first=112.5, wrists
+// still high) and follow-through noise (dec6edd1 165.25) that the old LAST pick chased.
+// FALLBACK pick = `frame` (LAST crossing) is retained for the selector to use when no low-y
+// crossing qualifies or it fails the arc-bottom cross-check (see selectFaceOnImpact).
+// [EXTERNAL ASSUMPTION — lowYFraction/lowYZoneWindow/teleportDxAmplitude UNTESTED beyond N=2
+//  (dec6edd1→120, 81f0b197→137.x); pinned in scripts/replayThumbImpact.ts.]
 //
 // Handedness: RH lead hand = LEFT thumb (CMC=leftThumb idx 92, tip=leftThumbTip idx 95),
 // neg→pos crossing. LH lead hand = RIGHT thumb (113/116) with the sign FLIPPED (the rule
@@ -223,11 +231,48 @@ export function detectFaceOnImpact(
 // ---------------------------------------------------------------------------
 
 type ThumbCrossingResult = {
-  frame: number | null;
+  frame: number | null;      // LAST crossing — legacy/fallback pick
+  frameLowY: number | null;  // FIRST low-y-gated crossing — primary pick (null if none qualify)
   coverage: number;
   nCrossings: number;
   reason: "ok" | "invalid_window" | "no_crossing";
 };
+
+// Low-y zone threshold for a wrist over [lo,hi]: y ≥ min + (1 − lowYFraction)·range. y is
+// top-down (0=top,1=bottom) so "physically low" = HIGH y. Null when no finite samples.
+function lowWristYThreshold(
+  frames: PoseFrame[],
+  joint: "leftWrist" | "rightWrist",
+  lo: number,
+  hi: number,
+): number | null {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = Math.max(0, lo); i <= Math.min(frames.length - 1, hi); i++) {
+    const y = frames[i]?.joints[joint]?.y;
+    if (y == null || !Number.isFinite(y)) continue;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return null;
+  return minY + (1 - A.impact.lowYFraction) * (maxY - minY);
+}
+
+// Linear-interpolated wrist y at a fractional frame.
+function interpWristY(
+  frames: PoseFrame[],
+  joint: "leftWrist" | "rightWrist",
+  frame: number,
+): number | null {
+  const f0 = Math.floor(frame);
+  if (f0 < 0 || f0 >= frames.length) return null;
+  const y0 = frames[f0]?.joints[joint]?.y;
+  if (y0 == null || !Number.isFinite(y0)) return null;
+  const f1 = Math.min(frames.length - 1, f0 + 1);
+  const y1 = frames[f1]?.joints[joint]?.y;
+  if (y1 == null || !Number.isFinite(y1)) return y0;
+  return y0 + (y1 - y0) * (frame - f0);
+}
 
 export function detectFaceOnThumbCrossing(
   preFrames: PoseFrame[],
@@ -243,7 +288,7 @@ export function detectFaceOnThumbCrossing(
   const end = Math.min(preFrames.length - 1, followIdx);
   // Defense-in-depth: a degenerate/inverted window (incl. any sentinel followIdx)
   // is reported, never silently coerced to a 0-length search.
-  if (end <= start) return { frame: null, coverage: 0, nCrossings: 0, reason: "invalid_window" };
+  if (end <= start) return { frame: null, frameLowY: null, coverage: 0, nCrossings: 0, reason: "invalid_window" };
 
   const confMin = A.impact.thumbConfMin;
   const samples: { frame: number; dx: number }[] = [];
@@ -261,8 +306,9 @@ export function detectFaceOnThumbCrossing(
   const coverage = windowLen > 0 ? samples.length / windowLen : 0;
 
   // All neg→pos crossings that hold positive thumbHoldFrames consecutive valid frames.
+  // Each carries its bounding |dx| amplitude for the teleport-spike guard.
   const hold = A.impact.thumbHoldFrames;
-  const crossings: number[] = [];
+  const crossings: { cross: number; amp: number }[] = [];
   for (let k = 0; k + 1 < samples.length; k++) {
     const a = samples[k];
     const b = samples[k + 1];
@@ -275,11 +321,31 @@ export function detectFaceOnThumbCrossing(
     }
     if (!holds) continue;
     const cross = a.frame + ((0 - a.dx) / (b.dx - a.dx)) * (b.frame - a.frame);
-    crossings.push(cross);
+    crossings.push({ cross, amp: Math.max(Math.abs(a.dx), Math.abs(b.dx)) });
   }
-  const last = crossings.length > 0 ? crossings[crossings.length - 1] : null;
+  // LAST crossing — legacy pick, retained as the selector's fallback.
+  const last = crossings.length > 0 ? crossings[crossings.length - 1].cross : null;
+
+  // PRIMARY — FIRST crossing inside the low-y zone (both wrists physically low over
+  // [top, follow_through]), skipping teleport-amplitude dx spikes.
+  const zoneL = lowWristYThreshold(preFrames, "leftWrist", start, end);
+  const zoneR = lowWristYThreshold(preFrames, "rightWrist", start, end);
+  let frameLowY: number | null = null;
+  if (zoneL != null && zoneR != null) {
+    for (const c of crossings) {
+      if (c.amp > A.impact.teleportDxAmplitude) continue; // skip teleport spike
+      const lwY = interpWristY(preFrames, "leftWrist", c.cross);
+      const rwY = interpWristY(preFrames, "rightWrist", c.cross);
+      if (lwY != null && rwY != null && lwY >= zoneL && rwY >= zoneR) {
+        frameLowY = c.cross;
+        break;
+      }
+    }
+  }
+
   return {
     frame: last,
+    frameLowY,
     coverage,
     nCrossings: crossings.length,
     reason: last != null ? "ok" : "no_crossing",
@@ -308,7 +374,19 @@ export function selectFaceOnImpact(args: {
   isOverride: boolean;
 }): ImpactSelection {
   const { arcBottomFrame, thumb, isLeftHanded, hasPreCanonical, isOverride } = args;
-  const impactThumb = thumb && thumb.frame != null ? thumb.frame : null;
+  // Prefer the low-y-gated FIRST crossing when present AND it passes the arc-bottom cross-check;
+  // otherwise fall back to the legacy LAST crossing (thumb.frame) + the existing cross-check below.
+  // This keeps the old path intact: when no low-y crossing qualifies (or it disagrees egregiously
+  // with arc-bottom), behavior is identical to the prior LAST-crossing selector.
+  const lowYPasses =
+    thumb != null &&
+    thumb.frameLowY != null &&
+    Math.abs(thumb.frameLowY - arcBottomFrame) <= A.impact.impactRejectDeltaFrames;
+  const impactThumb = lowYPasses
+    ? thumb!.frameLowY
+    : thumb && thumb.frame != null
+      ? thumb.frame
+      : null;
   const impactArcbottom = arcBottomFrame;
   const impactDelta = impactThumb != null ? impactThumb - impactArcbottom : null;
   const impactCrossCheckMismatch =
@@ -338,11 +416,11 @@ export function selectFaceOnImpact(args: {
     impactFallbackReason = "no_precanonical";
   } else if (
     thumb &&
-    thumb.frame != null &&
+    impactThumb != null &&
     thumb.coverage >= A.impact.thumbMinValidCoverage &&
     !impactRejectByDelta
   ) {
-    impactIdx = Math.round(thumb.frame);
+    impactIdx = Math.round(impactThumb);
     impactSource = "thumb_crossing";
     // Mild cross-check disagreement (> crossCheckThresholdFrames, ≤ impactRejectDeltaFrames)
     // keeps the thumb frame but downgrades confidence.
@@ -354,7 +432,7 @@ export function selectFaceOnImpact(args: {
       ? "cross_check_mismatch"
       : thumb && thumb.reason === "invalid_window"
         ? "invalid_window"
-        : thumb && thumb.frame == null
+        : thumb && impactThumb == null
           ? "no_crossing"
           : "low_coverage";
   }
