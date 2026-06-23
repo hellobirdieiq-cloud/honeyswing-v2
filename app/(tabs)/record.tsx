@@ -578,20 +578,14 @@ export default function RecordTab() {
         </Pressable>
       </Modal>
 
-      {/* Branded post-capture overlay — full-screen Modal so it renders ABOVE the floating
-          tab bar (which mounts outside the screen tree). This hides the live-feed flash AND
-          the tab bar's own processing spinner + "Analyzing swing…" caption for the full
-          pre-navigation wait, leaving exactly one "Analyzing your swing…" line on screen.
-          Visible strictly on the existing processing|complete gate; fully unmounted on
-          weak/error so the live camera + Try Again stay interactive. setProcessing() is
-          left untouched, so the center-button double-fire disable still works underneath. */}
-      <Modal
-        visible={showBrandOverlay && isFocused}
-        transparent
-        statusBarTranslucent
-        animationType="none"
-        onRequestClose={() => {}}
-      >
+      {/* Branded post-capture overlay — opaque full-screen view covering the live feed +
+          controls for the processing|complete wait, leaving one "Analyzing your swing…" line.
+          INVARIANT: must stay IN-TREE and the FINAL sibling of GestureHandlerRootView (sibling
+          order is the z-order, so it must render after the Camera + every control above). Do NOT
+          convert back to a <Modal>: a stranded native Modal window froze the Record controls
+          after empty/failed captures. As an in-tree View it no longer covers the floating tab
+          bar (separate tree), so the tab bar's own processing UI may briefly show. */}
+      {showBrandOverlay && isFocused && (
         <View style={localStyles.brandOverlay}>
           <Image
             source={require('../../assets/images/icon.png')}
@@ -603,7 +597,7 @@ export default function RecordTab() {
             <Text style={localStyles.brandLabel}>Analyzing your swing…</Text>
           </View>
         </View>
-      </Modal>
+      )}
 
     </GestureHandlerRootView>
   );
