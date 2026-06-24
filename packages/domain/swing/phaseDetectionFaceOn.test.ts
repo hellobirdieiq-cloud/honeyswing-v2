@@ -101,8 +101,9 @@ console.log('\n── Case A: face-on assembly indexes trail with frame indices 
   const N = 60;
   const MS = 1000 / 120;
 
-  // Lead (leftWrist) + trail (rightWrist): x rises through backswing (takeaway
-  // Δx>0); rightWrist has a near-still dwell at ~frame 30 → top velocity min.
+  // Lead (leftWrist) + trail (rightWrist): x rises through backswing (takeaway Δx>0).
+  // The live top is now the canonical-x extreme of the lead landmarks; rightShoulder.x
+  // peaks at ~frame 30 (then recedes) → X-extreme top ≈ 30, well clear of impact (45).
   const leadKF: KF[] = [
     { f: 0, x: 0.50, y: 0.62 }, { f: 11, x: 0.50, y: 0.62 },
     { f: 28, x: 0.64, y: 0.32 }, { f: 32, x: 0.645, y: 0.31 },
@@ -117,7 +118,7 @@ console.log('\n── Case A: face-on assembly indexes trail with frame indices 
     { f: 0, x: 0.46, y: 0.30 }, { f: 30, x: 0.50, y: 0.29 }, { f: 59, x: 0.50, y: 0.30 },
   ];
   const rShoKF: KF[] = [
-    { f: 0, x: 0.58, y: 0.30 }, { f: 45, x: 0.60, y: 0.30 },
+    { f: 0, x: 0.58, y: 0.30 }, { f: 30, x: 0.66, y: 0.29 }, { f: 45, x: 0.58, y: 0.30 },
   ];
 
   const frames: PoseFrame[] = [];

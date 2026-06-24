@@ -765,6 +765,16 @@ export function detectFaceOnPhases(input: {
     takeaway_fallback_reason: takeawayOnset.fallbackReason,
   };
 
+  // Phase 1 (frame-space) — takeaway onset. takeawayAddressIdx is a TRAIL-space index;
+  // map it to frame-space via timestamp so it can anchor the top search and so phases[].index
+  // agrees with topIdx/impactIdx. Computed here (before the top search) because the top window
+  // now anchors on the takeaway instead of the late-prone swingStart.
+  const takeawayTimestamp = trail[takeawayAddressIdx].timestamp;
+  const takeawayIdx = frames.findIndex((f) => f.timestampMs === takeawayTimestamp);
+  if (takeawayIdx === -1) {
+    throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
+  }
+
   // Phase 4 — PROVISIONAL impact (arc-bottom or test override). Used to bound the
   // top/finish search; the thumb crossing (computed below) becomes the final impact
   // for RH swings. impactOverride is a test seam (testLeadWristImpact) and bypasses
@@ -812,11 +822,15 @@ export function detectFaceOnPhases(input: {
     arcBottomFrame = impact.frame;
   }
 
-  // Phase 3 — top (uses swing_start and provisional impact for search bounds)
-  const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
-  const top = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame);
+  // Phase 3 — top of backswing. PRIMARY = median X-extreme (rotational top), anchored on
+  // the frame-mapped takeaway and the provisional arc-bottom. The legacy velocity-min rule
+  // (detectFaceOnTop) is retained as a logged shadow only (top_velmin_shadow); it mis-picks
+  // over the wider takeaway-anchored window, so it is no longer the top source.
+  const topSearchAnchor = takeawayIdx;
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
   assumptionsUsed.push("faceOn.top");
-  if (top.frame == null) {
+  if (topXExtreme.frame == null) {
     return {
       phases: [],
       fallbackGate: "top_search_bounds",
@@ -827,16 +841,13 @@ export function detectFaceOnPhases(input: {
         reliability,
         external_assumptions_used: assumptionsUsed,
         ...takeawayTelemetry,
+        top_x_extreme: topXExtreme,
+        top_velmin_shadow: topVelMin.frame,
       },
     };
   }
-  const topIdx = top.frame;
-  reliability.top = top.reliability ?? "medium";
-
-  // SHADOW (Phase 2): X-extreme top, parallel-computed for ground-truth comparison.
-  // Same anchors as the live top → identical window basis; arc-bottom is independent
-  // of top, so non-circular. Surfaced via ruleDebug.top_x_extreme; NOT wired as topIdx.
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  const topIdx = topXExtreme.frame;
+  reliability.top = topXExtreme.reliability ?? "medium";
 
   // Phase 5 — finish (computed against provisional impact; gives the follow-through
   // window upper bound for the thumb crossing).
@@ -871,14 +882,7 @@ export function detectFaceOnPhases(input: {
   reliability.impact = selection.impactReliability;
   if (impactSource === "thumb_crossing") assumptionsUsed.push("faceOn.impact:thumbCrossing");
 
-  // Phase 1 — takeaway onset (first committed club movement) from findSetupEndIndex.
-  // takeawayAddressIdx is a TRAIL-space index; convert to frame-space so phases[].index
-  // is canonical and agrees with topIdx/impactIdx.
-  const takeawayTimestamp = trail[takeawayAddressIdx].timestamp;
-  const takeawayIdx = frames.findIndex(f => f.timestampMs === takeawayTimestamp);
-  if (takeawayIdx === -1) {
-    throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
-  }
+  // takeawayIdx (frame-space) was computed above, before the top search, so it can anchor it.
   reliability.true_address = "low";
 
   // Sanity: takeaway must precede top must precede impact (final impact).
@@ -925,6 +929,7 @@ export function detectFaceOnPhases(input: {
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
           top_x_extreme: topXExtreme,
+          top_velmin_shadow: topVelMin.frame,
         },
       };
     }
@@ -948,6 +953,7 @@ export function detectFaceOnPhases(input: {
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
           top_x_extreme: topXExtreme,
+          top_velmin_shadow: topVelMin.frame,
         },
       };
     }
@@ -982,6 +988,7 @@ export function detectFaceOnPhases(input: {
       impact_cross_check_mismatch: impactCrossCheckMismatch,
       impact_fallback_reason: impactFallbackReason,
       top_x_extreme: topXExtreme,
+      top_velmin_shadow: topVelMin.frame,
     },
   };
 }
@@ -1004,6 +1011,8 @@ export type FaceOnPhasesDebugResult = {
   finishFrame: number | null;
   // Shadow X-extreme top (Phase 2 parallel compute; mirrors detectFaceOnPhases).
   topXExtreme: FaceOnTopXExtreme | null;
+  // Shadow velocity-min top (legacy rule, retained for comparison; mirrors detectFaceOnPhases).
+  topVelMinShadow: number | null;
   // Impact provenance + cross-check (mirrors detectFaceOnPhases via selectFaceOnImpact).
   impactSource: "thumb_crossing" | "arc_bottom" | null;
   impactThumb: number | null;
@@ -1046,6 +1055,7 @@ export function detectFaceOnPhasesDebug(input: {
     impactIdx: null,
     finishFrame: null,
     topXExtreme: null,
+    topVelMinShadow: null,
     impactSource: null,
     impactThumb: null,
     impactArcbottom: null,
@@ -1100,20 +1110,25 @@ export function detectFaceOnPhasesDebug(input: {
   }
   const arcBottomFrame = impact.frame;
 
-  const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
-  const top = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame);
-  result.topIdx = top.frame;
-  // SHADOW (Phase 2): X-extreme top, independent of the live top result.
-  result.topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  // Top anchors on the frame-mapped takeaway (mirrors detectFaceOnPhases). takeawayAddressIdx
+  // is TRAIL-space; map to frame-space for the search. PRIMARY top = median X-extreme;
+  // velocity-min is retained as a logged shadow only.
+  const takeawayIdxFrame = trailIdxToFrame(takeawayAddressIdx) ?? takeawayAddressIdx;
+  const topSearchAnchor = takeawayIdxFrame;
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  result.topVelMinShadow = topVelMin.frame;
+  result.topXExtreme = topXExtreme;
+  result.topIdx = topXExtreme.frame;
 
-  if (top.frame == null) {
+  if (topXExtreme.frame == null) {
     result.impactIdx = arcBottomFrame; // best available before the gate
     result.wouldFallbackGate = "top_search_bounds";
     return result;
   }
 
-  const takeawayIdx = takeawayAddressIdx;
-  const topIdx = top.frame;
+  const takeawayIdx = takeawayIdxFrame;
+  const topIdx = topXExtreme.frame;
 
   // Finish bounds the thumb window; computed against provisional impact.
   const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);

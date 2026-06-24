@@ -161,6 +161,10 @@ export type PhaseRuleDebug = {
   external_assumptions_used: string[];
   // Shadow X-extreme top (face-on only; Phase 2). Optional → DTL/legacy unaffected.
   top_x_extreme?: FaceOnTopXExtreme;
+  // Shadow velocity-min top (face-on only). The X-extreme median is now the live top;
+  // the legacy velocity-min rule is retained here for one release for live comparison
+  // before deletion. Optional → DTL/legacy unaffected.
+  top_velmin_shadow?: number | null;
   // Face-on impact provenance + cross-check (optional → DTL/legacy unaffected).
   // Records BOTH candidates and their disagreement on every swing, so neither
   // detector is silently trusted.
