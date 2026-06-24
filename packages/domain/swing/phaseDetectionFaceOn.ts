@@ -7,7 +7,7 @@
  * (matches legacy behavior and keeps tempo math consistent).
  */
 
-import type { PoseFrame, PoseSequence } from "../../pose/PoseTypes";
+import type { JointName, PoseFrame, PoseSequence } from "../../pose/PoseTypes";
 import type {
   DetectedPhase,
   FallbackGate,
@@ -23,6 +23,7 @@ import {
   msToFrames,
   smoothVelocities,
   type FaceOnTakeawayOnset,
+  type FaceOnTopXExtreme,
   type PhaseRuleDebug,
   type PhaseRuleReliability,
 } from "./phaseDetectionShared";
@@ -519,6 +520,102 @@ function detectFaceOnTop(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3 (SHADOW) — X-extreme top. Parallel-computed beside detectFaceOnTop for
+// ground-truth validation; NOT wired as the real top this phase.
+//
+// top = round(mean of the MAX-canonical-x frames) of 3 canonical LEAD landmarks
+// (nose, rightShoulder, rightEar). MAX x for BOTH handedness — canonicalization
+// normalizes lefty/righty to the same direction (measured: RH 16c98eeb MAX@~85,
+// LH d5084eb5 MAX@~98), so no isLeftHanded branch (same as detectFaceOnTop, which
+// hardcodes canonical lead = right*). Window anchors on swingStart + the
+// INDEPENDENT arc-bottom impact → non-circular. Owns its own search fractions
+// (A.topXExtreme) so the live rule's baseline is untouched.
+// ---------------------------------------------------------------------------
+
+const TOP_XEXTREME_LEAD: { key: keyof FaceOnTopXExtreme["perLandmark"]; joint: JointName }[] = [
+  { key: "nose", joint: "nose" },
+  { key: "leadShoulder", joint: "rightShoulder" },
+  { key: "leadEar", joint: "rightEar" },
+];
+
+function detectFaceOnTopXExtreme(
+  frames: PoseFrame[],
+  swingStartIdx: number,
+  impactIdx: number,
+): FaceOnTopXExtreme {
+  const empty: FaceOnTopXExtreme = {
+    frame: null,
+    mean: null,
+    reliability: null,
+    perLandmark: { nose: null, leadShoulder: null, leadEar: null },
+    median: null,
+    spread: null,
+    window: null,
+  };
+
+  const totalSpan = impactIdx - swingStartIdx;
+  if (totalSpan < 6) return empty;
+
+  const from = swingStartIdx + Math.round(totalSpan * A.topXExtreme.searchStartFraction);
+  const to = impactIdx - Math.round(totalSpan * A.topXExtreme.searchEndFraction);
+  if (to <= from) return empty;
+
+  const minConf = A.topXExtreme.minConfidence;
+  const perLandmark: FaceOnTopXExtreme["perLandmark"] = { nose: null, leadShoulder: null, leadEar: null };
+
+  // Per landmark: frame of MAX canonical x within [from, to], gated on confidence.
+  // Strict > keeps the FIRST occurrence on a flat plateau (defined tie-break).
+  for (const { key, joint } of TOP_XEXTREME_LEAD) {
+    let bestFi: number | null = null;
+    let bestX = -Infinity;
+    for (let F = from; F <= to; F++) {
+      const j = frames[F].joints[joint];
+      if (!j || (j.confidence ?? 0) < minConf) continue;
+      if (j.x > bestX) {
+        bestX = j.x;
+        bestFi = F;
+      }
+    }
+    perLandmark[key] = bestFi;
+  }
+
+  const picks = [perLandmark.nose, perLandmark.leadShoulder, perLandmark.leadEar].filter(
+    (v): v is number => v != null,
+  );
+  if (picks.length === 0) return { ...empty, window: { from, to } };
+
+  const mean = picks.reduce((s, v) => s + v, 0) / picks.length;
+  const sorted = [...picks].sort((a, b) => a - b);
+  const median =
+    sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : Math.round((sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2);
+  const spread = sorted[sorted.length - 1] - sorted[0];
+
+  // Reliability mirrors detectFaceOnTop's tiering: all 3 present and tightly
+  // clustered = high; ≥2 = medium; a single landmark = low.
+  const reliability: "high" | "medium" | "low" =
+    picks.length === 3 && spread <= A.top.consensusWindowFrames
+      ? "high"
+      : picks.length >= 2
+        ? "medium"
+        : "low";
+
+  return {
+    // MEDIAN is the combined pick — robust to a single drifting landmark (the LH
+    // nose pulls the mean late/early; median ignores it). mean kept in `mean` for
+    // comparison only.
+    frame: median,
+    mean: Math.round(mean),
+    reliability,
+    perLandmark,
+    median,
+    spread,
+    window: { from, to },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Phase 5 — finish (trail shoulder x plateau)
 // ---------------------------------------------------------------------------
 
@@ -736,6 +833,11 @@ export function detectFaceOnPhases(input: {
   const topIdx = top.frame;
   reliability.top = top.reliability ?? "medium";
 
+  // SHADOW (Phase 2): X-extreme top, parallel-computed for ground-truth comparison.
+  // Same anchors as the live top → identical window basis; arc-bottom is independent
+  // of top, so non-circular. Surfaced via ruleDebug.top_x_extreme; NOT wired as topIdx.
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+
   // Phase 5 — finish (computed against provisional impact; gives the follow-through
   // window upper bound for the thumb crossing).
   const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);
@@ -822,6 +924,7 @@ export function detectFaceOnPhases(input: {
           impact_delta: impactDelta,
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
+          top_x_extreme: topXExtreme,
         },
       };
     }
@@ -844,6 +947,7 @@ export function detectFaceOnPhases(input: {
           impact_delta: impactDelta,
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
+          top_x_extreme: topXExtreme,
         },
       };
     }
@@ -877,6 +981,7 @@ export function detectFaceOnPhases(input: {
       impact_delta: impactDelta,
       impact_cross_check_mismatch: impactCrossCheckMismatch,
       impact_fallback_reason: impactFallbackReason,
+      top_x_extreme: topXExtreme,
     },
   };
 }
@@ -897,6 +1002,8 @@ export type FaceOnPhasesDebugResult = {
   downswingIdx: number | null;
   impactIdx: number | null;
   finishFrame: number | null;
+  // Shadow X-extreme top (Phase 2 parallel compute; mirrors detectFaceOnPhases).
+  topXExtreme: FaceOnTopXExtreme | null;
   // Impact provenance + cross-check (mirrors detectFaceOnPhases via selectFaceOnImpact).
   impactSource: "thumb_crossing" | "arc_bottom" | null;
   impactThumb: number | null;
@@ -938,6 +1045,7 @@ export function detectFaceOnPhasesDebug(input: {
     downswingIdx: null,
     impactIdx: null,
     finishFrame: null,
+    topXExtreme: null,
     impactSource: null,
     impactThumb: null,
     impactArcbottom: null,
@@ -995,6 +1103,8 @@ export function detectFaceOnPhasesDebug(input: {
   const topSearchAnchor = swingStart.frame ?? takeawayAddressIdx;
   const top = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame);
   result.topIdx = top.frame;
+  // SHADOW (Phase 2): X-extreme top, independent of the live top result.
+  result.topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
 
   if (top.frame == null) {
     result.impactIdx = arcBottomFrame; // best available before the gate

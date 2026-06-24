@@ -71,6 +71,16 @@ export const EXTERNAL_ASSUMPTIONS = {
       searchStartFraction: 0.25,
       searchEndFraction: 0.20,
     },
+    // Shadow X-extreme top rule (Phase 2 parallel compute — NOT wired as the real
+    // top). Separate fractions so the live `top` rule above keeps its baseline.
+    topXExtreme: {
+      searchStartFraction: 0.30,
+      // 0.10 (was 0.06): more end-margin before impact. e212431b showed the
+      // canonical lead-X max contaminates near impact (~150, downswing); a wider
+      // right margin keeps the search off the downswing.
+      searchEndFraction: 0.10,
+      minConfidence: 0.5,
+    },
     impact: {
       lagCorrectionMs: 27,
       riseRateThreshold: 0.03,
@@ -125,12 +135,32 @@ export type PhaseRuleReliability = {
   finish: PhaseReliability | null;
 };
 
+// Shadow X-extreme top candidate — Phase 2 parallel compute, logged beside the
+// live top for ground-truth comparison (not wired as the real top). perLandmark /
+// median / spread / window are surfaced so nose drift and near-impact contamination
+// are visible without re-running the detector.
+export type FaceOnTopXExtreme = {
+  frame: number | null; // combined pick = median (robust to a drifting landmark)
+  mean: number | null;  // mean of picks — kept for comparison only, not the pick
+  reliability: PhaseReliability | null;
+  perLandmark: {
+    nose: number | null;
+    leadShoulder: number | null;
+    leadEar: number | null;
+  };
+  median: number | null;
+  spread: number | null;
+  window: { from: number; to: number } | null;
+};
+
 export type PhaseRuleDebug = {
   detector: "dtl" | "face_on" | "legacy";
   swing_start_frame: number | null;
   true_address_frame: number | null;
   reliability: PhaseRuleReliability;
   external_assumptions_used: string[];
+  // Shadow X-extreme top (face-on only; Phase 2). Optional → DTL/legacy unaffected.
+  top_x_extreme?: FaceOnTopXExtreme;
   // Face-on impact provenance + cross-check (optional → DTL/legacy unaffected).
   // Records BOTH candidates and their disagreement on every swing, so neither
   // detector is silently trusted.
