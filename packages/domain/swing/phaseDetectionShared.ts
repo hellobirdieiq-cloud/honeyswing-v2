@@ -111,6 +111,29 @@ export const EXTERNAL_ASSUMPTIONS = {
       lowYZoneWindow: ["top", "follow_through"] as const, // phases bounding the y-range measurement
       teleportDxAmplitude: 0.05, // skip crossings whose bounding |dx| exceeds this (teleport spike;
                                  // clean impact crossings ≈0.008–0.015, dec6edd1's noise spike ≈0.19)
+      // ── xCross CONSENSUS impact (ported from honeyswing-swing-inspector/src/lib/impactRule.ts) ──
+      // The validated replacement for the arc-bottom/thumb selector: a geometric CONSENSUS
+      // (S1=xCross, S2=arm-vertical, S3=wrist-lowest) refined by a sub-frame thumb crossing.
+      // Computed over [topIdx, follow_through] on PRE-CANONICAL (raw/un-mirrored) frames — the same
+      // x-sign space the viewer validated in. Shadow-only this PR (does NOT feed impactIdx).
+      // [EXTERNAL ASSUMPTION — n=6 RH drivers; validated 6/6 in the viewer, avg|Δ| 0.43 / max 1.0.]
+      consensus: {
+        // Impact search window = [topIdx, topIdx + downswingBudget] (viewer design). The viewer
+        // anchored on a takeaway-derived freshTop ≈ the app's topXExtreme; the budget keeps the
+        // search OFF the broken stored/derived finish. Validated: [topIdx, finish] truncates
+        // 9d1606a6 (finish 103 < impact 125) and over-widens e212431b (decoys at 184/196).
+        // ⚠️ 50 frames is validated ONLY at 60 fps (all 6 ground-truth swings = 16.667 ms/frame
+        // = 0.83 s of downswing). It is a FRAME count, not a duration — convert via
+        // msToFrames(~833, msPerFrame) before any non-60-fps capture rate ships.
+        downswingBudget: 50,       // raised 45→50 in the viewer after 3a814184's ~47-frame downswing
+        xcrossLeadOffset: 0.06,    // L: shaft-lean offset — wrist leads the feet midpoint at impact
+        xcrossAnchorRadius: 11,    // pick the xCross crossing nearest the provisional anchor within ±this
+        xcrossConfMin: 0.6,        // selected-wrist confidence floor at a crossing
+        xcrossSustainFrames: 2,    // g must hold ≥ L for this many consecutive frames (hold ≥2)
+        availConfMin: 0.6,         // a geometric signal is "available" iff its min joint conf ≥ this
+        refineRadius: 6,           // thumb crossing must land within ±this of the consensus anchor
+        thumbRefineConfMin: 0.5,   // min(tip,base) confidence for a thumb refine crossing to count
+      },
     },
     finish: {
       rollingWindow: 5,
@@ -166,26 +189,25 @@ export type PhaseRuleDebug = {
   // before deletion. Optional → DTL/legacy unaffected.
   top_velmin_shadow?: number | null;
   // Face-on impact provenance + cross-check (optional → DTL/legacy unaffected).
-  // Records BOTH candidates and their disagreement on every swing, so neither
-  // detector is silently trusted.
-  impact_source?: "thumb_crossing" | "arc_bottom";
-  impact_thumb?: number | null;       // sub-frame thumb crossing (null when none / gated)
+  // Records the consensus FINAL and its disagreement with the old arc-bottom on every swing, so
+  // neither detector is silently trusted. (PR2: consensus is the primary; arc-bottom the fallback.)
+  impact_source?: "consensus" | "arc_bottom";
+  impact_consensus_final?: number | null; // sub-frame consensus FINAL used (null when none / gated)
   impact_arcbottom?: number | null;   // arc-bottom fallback frame (null when none)
-  impact_delta?: number | null;       // impact_thumb − impact_arcbottom (null when either absent)
-  impact_cross_check_mismatch?: boolean; // |delta| > crossCheckThresholdFrames
-  // Why arc-bottom was used instead of the thumb crossing (set only when
-  // impact_source === "arc_bottom"). "lh_ungated" = LH skips the unvalidated thumb
-  // primary this ticket; "override" = test seam; "cross_check_mismatch" = thumb crossing
-  // disagreed with arc-bottom by > impactRejectDeltaFrames (egregious, rejected); the rest
-  // are RH thumb misses.
+  impact_delta?: number | null;       // round(impact_consensus_final) − impact_arcbottom (cross-check)
+  impact_cross_check_mismatch?: boolean; // |delta| > crossCheckThresholdFrames (FLAG, not a rejection)
+  // Why arc-bottom was used instead of the consensus (set only when impact_source === "arc_bottom"):
+  // "lh_ungated" = LH sign path unvalidated (still persisted for future LH ground truth);
+  // "override" = test seam; "no_precanonical" = no raw frames to run the consensus on;
+  // "no_signals" = 0 geometric signals available (consensus null). All carry reliability.impact=low.
   impact_fallback_reason?:
     | "lh_ungated"
     | "override"
     | "no_precanonical"
-    | "invalid_window"
-    | "no_crossing"
-    | "low_coverage"
-    | "cross_check_mismatch";
+    | "no_signals";
+  // xCross CONSENSUS impact detail (face-on only). Full provenance of the primary detector
+  // (s1/s2/s3, provAnchor, thumb-refine, signFlip). Optional → DTL/legacy unaffected.
+  impact_consensus?: FaceOnImpactConsensusShadow | null;
   // Body-scaled, reversal-rejecting takeaway gate (FACE-ON only; optional →
   // DTL/legacy unaffected). Records which path produced the takeaway index and
   // the body-scaled rule's findings EVEN WHEN the legacy gate was used.
@@ -201,6 +223,26 @@ export type PhaseRuleDebug = {
     | "no_confirmed_trigger"
     | "onset_too_late"
     | null;
+};
+
+// Shadow xCross CONSENSUS impact (face-on only; PR1). Flattened from
+// faceOnImpactConsensus.FaceOnImpactConsensus for logging — defined here (not imported) to keep
+// phaseDetectionShared free of a module cycle. Frames are FRAME-space; sub-frame values kept raw.
+export type FaceOnImpactConsensusShadow = {
+  final: number | null;       // sub-frame: thumb if qualifies, else consensus, else null
+  source: "thumb" | "consensus" | "none";
+  consensus: number | null;
+  provAnchor: number | null;
+  anchor: number | null;
+  s1: number | null;          // xCross pick frame (nearest-anchor)
+  s2: number | null;          // arm-vertical
+  s3: number | null;          // wrist-lowest
+  footPick: number | null;    // wrist-over-foot anchor seed
+  xCross: number | null;      // first sustained crossing sub-frame (pre nearest-anchor)
+  thumbQualifies: boolean;
+  signFlip: number;
+  lowReliability: boolean;
+  window: [number, number];
 };
 
 export function emptyReliability(): PhaseRuleReliability {

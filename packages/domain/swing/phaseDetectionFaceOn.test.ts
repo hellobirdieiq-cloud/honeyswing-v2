@@ -24,6 +24,7 @@
  */
 
 import { detectFaceOnPhases, selectFaceOnImpact } from './phaseDetectionFaceOn';
+import type { FaceOnImpactConsensus } from './faceOnImpactConsensus';
 import { detectDTLPhases } from './phaseDetectionDTL';
 import type { SwingTrailPoint } from './phaseDetection';
 import {
@@ -250,104 +251,109 @@ console.log('\n── Case B: DTL stores a trail index that downstream reads as 
 }
 
 // ===========================================================================
-// Case C — delta-reject impact gate (selectFaceOnImpact)
-// |delta| = |impact_thumb − impact_arcbottom|. Reject thumb → arc-bottom when
-// |delta| > impactRejectDeltaFrames (15). 6 < |delta| ≤ 15 keeps thumb but
-// downgrades reliability (unchanged). |delta| ≤ 6 keeps thumb at high reliability.
+// Case C — consensus is the PRIMARY impact; the arc-bottom cross-check is a FLAG, never a
+// rejection (PR2 cutover). selectFaceOnImpact reads ONLY consensus.final; impactIdx = round(final).
+// |delta| = |round(final) − arcBottom|: > crossCheckThresholdFrames (6) downgrades reliability to
+// medium but KEEPS the consensus — there is no delta-reject (that would un-fix 9d1606a6, delta 23).
 // ===========================================================================
-console.log('\n── Case C: delta-reject impact gate ──');
+console.log('\n── Case C: consensus is primary; cross-check is a flag, not a rejection ──');
 {
-  // Helper: build a take-last thumb result (structural — ThumbCrossingResult shape).
-  // frameLowY=null exercises the LEGACY fallback path (selector uses `frame`, the LAST crossing).
-  const thumbAt = (frame: number, frameLowY: number | null = null) => ({
-    frame, frameLowY, coverage: 1, nCrossings: 1, reason: 'ok' as const,
-  });
-  const select = (thumbFrame: number, arcBottomFrame: number) =>
+  // Minimal fixture — the selector only reads consensus.final.
+  const consensusWith = (final: number | null) => ({ final }) as unknown as FaceOnImpactConsensus;
+  const select = (final: number, arcBottomFrame: number) =>
     selectFaceOnImpact({
       arcBottomFrame,
-      thumb: thumbAt(thumbFrame),
+      consensus: consensusWith(final),
       isLeftHanded: false,
       hasPreCanonical: true,
       isOverride: false,
     });
 
-  // (a) |delta| > 15 → reject → arc-bottom (mirrors 120ef93c: thumb 90 vs arc-bottom 114).
+  // (a) |delta| ≤ 6 → consensus, high reliability, no mismatch.
   {
-    const s = select(90, 114); // delta = -24, |delta| = 24 > 15
-    assert(s.impactSource === 'arc_bottom', 'Case C(a): |delta|=24 → impactSource=arc_bottom');
-    assert(s.impactFallbackReason === 'cross_check_mismatch',
-      `Case C(a): fallback reason = cross_check_mismatch (got ${s.impactFallbackReason})`);
-    assert(s.impactIdx === 114, `Case C(a): impactIdx = arc-bottom 114 (got ${s.impactIdx})`);
+    const s = select(112, 110); // delta 2
+    assert(s.impactSource === 'consensus', 'Case C(a): impactSource=consensus');
+    assert(s.impactIdx === 112, `Case C(a): impactIdx = round(final) 112 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'high', `Case C(a): high reliability (|delta|=2) (got ${s.impactReliability})`);
+    assert(s.impactCrossCheckMismatch === false, 'Case C(a): no cross-check mismatch');
   }
 
-  // (b) 6 < |delta| ≤ 15 → thumb KEPT, reliability downgraded medium (unchanged behavior).
+  // (b) 6 < |delta| → consensus KEPT, mismatch flag set, reliability downgraded medium.
   {
-    const s = select(120, 110); // delta = 10
-    assert(s.impactSource === 'thumb_crossing', 'Case C(b): |delta|=10 → impactSource=thumb_crossing');
-    assert(s.impactIdx === 120, `Case C(b): impactIdx = thumb 120 (got ${s.impactIdx})`);
-    assert(s.impactReliability === 'medium', `Case C(b): reliability downgraded medium (got ${s.impactReliability})`);
-    assert(s.impactCrossCheckMismatch === true, 'Case C(b): cross_check_mismatch flag set (downgrade)');
+    const s = select(120, 110); // delta 10
+    assert(s.impactSource === 'consensus', 'Case C(b): |delta|=10 stays consensus (flag, not reject)');
+    assert(s.impactIdx === 120, `Case C(b): impactIdx 120 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'medium', `Case C(b): downgraded medium (got ${s.impactReliability})`);
+    assert(s.impactCrossCheckMismatch === true, 'Case C(b): cross-check mismatch flag set');
   }
 
-  // (c) |delta| ≤ 6 → thumb KEPT, high reliability (no-op regression).
+  // (c) LARGE |delta| (>15 — what the OLD selector rejected) STILL stays consensus. The cross-check
+  // never rejects. Encodes 9d1606a6: consensus 125 vs arc-bottom 102, delta 23 → kept, medium.
   {
-    const s = select(112, 110); // delta = 2
-    assert(s.impactSource === 'thumb_crossing', 'Case C(c): |delta|=2 → impactSource=thumb_crossing');
-    assert(s.impactIdx === 112, `Case C(c): impactIdx = thumb 112 (got ${s.impactIdx})`);
-    assert(s.impactReliability === 'high', `Case C(c): reliability high (got ${s.impactReliability})`);
-    assert(s.impactCrossCheckMismatch === false, 'Case C(c): no cross-check mismatch');
+    const s = select(125, 102); // delta 23
+    assert(s.impactSource === 'consensus', 'Case C(c): |delta|=23 still consensus (no delta-reject)');
+    assert(s.impactIdx === 125, `Case C(c): impactIdx = 125, NOT arc-bottom 102 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'medium', `Case C(c): medium on mismatch (got ${s.impactReliability})`);
+    assert(s.impactArcbottom === 102 && s.impactDelta === 23,
+      `Case C(c): arc-bottom + delta recorded for provenance (got ${s.impactArcbottom}/${s.impactDelta})`);
   }
 
-  // (d) reject routes to arc-bottom DIRECTLY — never to the (rejected) thumb frame. The
-  // rejected thumb is still recorded in telemetry (impactThumb) but is NOT the chosen impact.
+  // (d) sub-frame final rounds to the nearest integer impactIdx; the sub-frame value is recorded.
   {
-    const s = select(60, 130); // delta = -70, |delta| = 70 > 15
-    assert(s.impactIdx === 130 && s.impactIdx === s.impactArcbottom,
-      `Case C(d): rejected → impactIdx = arc-bottom 130 (got ${s.impactIdx})`);
-    assert(s.impactThumb === 60 && s.impactIdx !== s.impactThumb,
-      'Case C(d): rejected thumb frame recorded but not selected (no walk-back)');
+    const s = select(124.6, 100);
+    assert(s.impactIdx === 125, `Case C(d): round(124.6) = 125 (got ${s.impactIdx})`);
+    assert(s.impactConsensusFinal === 124.6, 'Case C(d): sub-frame final recorded verbatim');
   }
 }
 
 // ===========================================================================
-// Case D — low-y-gated FIRST crossing is the PRIMARY pick (selectFaceOnImpact)
-// frameLowY (the first crossing with both wrists physically low) is preferred over the
-// LAST crossing (`frame`) when it passes the arc-bottom cross-check; otherwise the selector
-// falls back to the legacy LAST path. Mirrors dec6edd1 (lowY 119.5 beats LAST 165.25).
+// Case D — per-reason arc-bottom FALLBACK (PR2). The consensus is the primary; arc-bottom is used
+// only when the consensus cannot/should-not run, and every fallback carries reliability.impact=low
+// so downstream can suppress a confident score. The consensus final is still recorded for provenance.
 // ===========================================================================
-console.log('\n── Case D: low-y first crossing is primary ──');
+console.log('\n── Case D: per-reason arc-bottom fallback (reliability low) ──');
 {
-  const select = (frame: number, frameLowY: number | null, arcBottomFrame: number) =>
-    selectFaceOnImpact({
-      arcBottomFrame,
-      thumb: { frame, frameLowY, coverage: 1, nCrossings: 2, reason: 'ok' as const },
-      isLeftHanded: false,
-      hasPreCanonical: true,
-      isOverride: false,
-    });
+  const consensusWith = (final: number | null) => ({ final }) as unknown as FaceOnImpactConsensus;
+  const base = {
+    arcBottomFrame: 130,
+    consensus: consensusWith(150),
+    isLeftHanded: false,
+    hasPreCanonical: true,
+    isOverride: false,
+  };
 
-  // (a) low-y present & within reject delta → it WINS over the LAST crossing (dec6edd1 shape).
+  // (a) LH → arc-bottom, lh_ungated, low. Consensus final still recorded (future LH ground truth).
   {
-    const s = select(165, 119, 117); // LAST=165, lowY=119, arc=117 → |119-117|=2 ≤ 15
-    assert(s.impactSource === 'thumb_crossing', 'Case D(a): impactSource=thumb_crossing');
-    assert(s.impactIdx === 119, `Case D(a): impactIdx = low-y 119, not LAST 165 (got ${s.impactIdx})`);
-    assert(s.impactReliability === 'high', `Case D(a): high reliability (|delta|=2) (got ${s.impactReliability})`);
+    const s = selectFaceOnImpact({ ...base, isLeftHanded: true });
+    assert(s.impactSource === 'arc_bottom' && s.impactFallbackReason === 'lh_ungated',
+      `Case D(a): LH → arc_bottom/lh_ungated (got ${s.impactSource}/${s.impactFallbackReason})`);
+    assert(s.impactIdx === 130, `Case D(a): impactIdx = arc-bottom 130 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'low', `Case D(a): reliability low (got ${s.impactReliability})`);
+    assert(s.impactConsensusFinal === 150, 'Case D(a): consensus final still recorded (not selected)');
   }
 
-  // (b) low-y FAILS the reject delta → fall back to the LAST crossing + its own cross-check.
+  // (b) no pre-canonical (consensus null) → arc-bottom, no_precanonical, low.
   {
-    const s = select(160, 119, 150); // lowY 119 vs arc 150 → |31|>15 fails; LAST 160 vs 150 → |10|≤15 keeps
-    assert(s.impactSource === 'thumb_crossing', 'Case D(b): falls back to LAST → thumb_crossing');
-    assert(s.impactIdx === 160, `Case D(b): impactIdx = LAST 160 (low-y rejected) (got ${s.impactIdx})`);
+    const s = selectFaceOnImpact({ ...base, consensus: null, hasPreCanonical: false });
+    assert(s.impactSource === 'arc_bottom' && s.impactFallbackReason === 'no_precanonical',
+      `Case D(b): no preCanonical → arc_bottom/no_precanonical (got ${s.impactFallbackReason})`);
+    assert(s.impactReliability === 'low', `Case D(b): reliability low (got ${s.impactReliability})`);
   }
 
-  // (c) low-y present but BOTH it and LAST fail the reject delta → arc-bottom (c0b6f0e1 shape).
+  // (c) consensus ran but resolved nothing (final null = 0 geometric signals) → arc-bottom, no_signals, low.
   {
-    const s = select(349, 135, 160); // lowY 135 vs 160 → |25|>15; LAST 349 vs 160 → |189|>15
-    assert(s.impactSource === 'arc_bottom', 'Case D(c): both reject → arc_bottom');
-    assert(s.impactFallbackReason === 'cross_check_mismatch',
-      `Case D(c): fallback reason = cross_check_mismatch (got ${s.impactFallbackReason})`);
-    assert(s.impactIdx === 160, `Case D(c): impactIdx = arc-bottom 160 (got ${s.impactIdx})`);
+    const s = selectFaceOnImpact({ ...base, consensus: consensusWith(null) });
+    assert(s.impactSource === 'arc_bottom' && s.impactFallbackReason === 'no_signals',
+      `Case D(c): final null → arc_bottom/no_signals (got ${s.impactFallbackReason})`);
+    assert(s.impactReliability === 'low', `Case D(c): reliability low (got ${s.impactReliability})`);
+  }
+
+  // (d) test-override seam → arc-bottom, override, low.
+  {
+    const s = selectFaceOnImpact({ ...base, isOverride: true });
+    assert(s.impactSource === 'arc_bottom' && s.impactFallbackReason === 'override',
+      `Case D(d): override → arc_bottom/override (got ${s.impactFallbackReason})`);
+    assert(s.impactReliability === 'low', `Case D(d): reliability low (got ${s.impactReliability})`);
   }
 }
 

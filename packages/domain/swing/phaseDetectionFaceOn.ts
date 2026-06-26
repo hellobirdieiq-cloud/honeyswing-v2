@@ -22,13 +22,58 @@ import {
   findTakeawayOnsetFaceOn,
   msToFrames,
   smoothVelocities,
+  type FaceOnImpactConsensusShadow,
   type FaceOnTakeawayOnset,
   type FaceOnTopXExtreme,
   type PhaseRuleDebug,
   type PhaseRuleReliability,
 } from "./phaseDetectionShared";
+import {
+  computeFaceOnImpactConsensus,
+  type FaceOnImpactConsensus,
+} from "./faceOnImpactConsensus";
 
 const A = EXTERNAL_ASSUMPTIONS.faceOn;
+
+// ---------------------------------------------------------------------------
+// Shadow xCross CONSENSUS impact (PR1) — computed beside the live impact, never feeds impactIdx.
+// Runs the ported viewer pipeline (faceOnImpactConsensus) over [topIdx, topIdx + downswingBudget]
+// on the PRE-CANONICAL frames (the raw/un-mirrored x-sign space the rule was validated in). The
+// BUDGET window (not [topIdx, follow_through]) is the viewer's validated design — the stored/derived
+// finish is anchored on the broken arc-bottom and either truncates before the true impact
+// (9d1606a6) or over-widens past it onto follow-through decoys (e212431b). Returns null when
+// preCanonical is absent (no behavior change for those swings).
+// ---------------------------------------------------------------------------
+
+function toImpactConsensusShadow(r: FaceOnImpactConsensus): FaceOnImpactConsensusShadow {
+  return {
+    final: r.final,
+    source: r.source,
+    consensus: r.consensus,
+    provAnchor: r.provAnchor,
+    anchor: r.anchor,
+    s1: r.s1.frame,
+    s2: r.s2.frame,
+    s3: r.s3.frame,
+    footPick: r.footPick.frame,
+    xCross: r.xCross,
+    thumbQualifies: r.thumb.qualifies,
+    signFlip: r.signFlip,
+    lowReliability: r.lowReliability,
+    window: r.window,
+  };
+}
+
+function computeImpactConsensus(
+  preCanonical: PoseSequence | undefined,
+  topIdx: number,
+  isLeftHanded: boolean,
+): FaceOnImpactConsensus | null {
+  if (!preCanonical) return null;
+  // hi is clamped to the array inside computeFaceOnImpactConsensus.
+  const hi = topIdx + A.impact.consensus.downswingBudget;
+  return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded });
+}
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
   takeaway: "Takeaway",
@@ -358,95 +403,65 @@ export function detectFaceOnThumbCrossing(
 // the two paths can never drift. Returns the chosen frame + full provenance.
 type ImpactSelection = {
   impactIdx: number;
-  impactSource: "thumb_crossing" | "arc_bottom";
-  impactThumb: number | null;
+  impactSource: "consensus" | "arc_bottom";
+  impactConsensusFinal: number | null; // sub-frame consensus FINAL used (null if not computed/none)
   impactArcbottom: number;
-  impactDelta: number | null;
+  impactDelta: number | null; // round(consensusFinal) − arcBottom (cross-check vs the old detector)
   impactCrossCheckMismatch: boolean;
   impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"];
-  impactReliability: "high" | "medium";
+  impactReliability: "high" | "medium" | "low";
 };
 
+// PR2 cutover — the ported xCross CONSENSUS (faceOnImpactConsensus) is now the PRIMARY face-on
+// impact. Arc-bottom is the per-reason FALLBACK only; it never wins when the consensus resolves.
+// Precedence: override → LH (unvalidated sign path) → no pre-canonical → consensus-null → CONSENSUS.
+// The arc-bottom↔consensus cross-check is a FLAG (downgrade), never a rejection — the consensus is
+// validated and is trusted when it resolves. Every fallback carries reliability.impact = "low" so
+// downstream can suppress a confident score (see the convergence ticket).
 export function selectFaceOnImpact(args: {
   arcBottomFrame: number;
-  thumb: ThumbCrossingResult | null;
+  consensus: FaceOnImpactConsensus | null;
   isLeftHanded: boolean;
   hasPreCanonical: boolean;
   isOverride: boolean;
 }): ImpactSelection {
-  const { arcBottomFrame, thumb, isLeftHanded, hasPreCanonical, isOverride } = args;
-  // Prefer the low-y-gated FIRST crossing when present AND it passes the arc-bottom cross-check;
-  // otherwise fall back to the legacy LAST crossing (thumb.frame) + the existing cross-check below.
-  // This keeps the old path intact: when no low-y crossing qualifies (or it disagrees egregiously
-  // with arc-bottom), behavior is identical to the prior LAST-crossing selector.
-  const lowYPasses =
-    thumb != null &&
-    thumb.frameLowY != null &&
-    Math.abs(thumb.frameLowY - arcBottomFrame) <= A.impact.impactRejectDeltaFrames;
-  const impactThumb = lowYPasses
-    ? thumb!.frameLowY
-    : thumb && thumb.frame != null
-      ? thumb.frame
-      : null;
+  const { arcBottomFrame, consensus, isLeftHanded, hasPreCanonical, isOverride } = args;
   const impactArcbottom = arcBottomFrame;
-  const impactDelta = impactThumb != null ? impactThumb - impactArcbottom : null;
+  const finalSub = consensus?.final ?? null;
+  const finalRounded = finalSub != null ? Math.round(finalSub) : null;
+  const impactDelta = finalRounded != null ? finalRounded - impactArcbottom : null;
   const impactCrossCheckMismatch =
     impactDelta != null && Math.abs(impactDelta) > A.impact.crossCheckThresholdFrames;
-  // Egregious thumb↔arc-bottom disagreement (> impactRejectDeltaFrames, looser than the
-  // reliability-downgrade threshold) rejects the thumb crossing → arc-bottom directly.
-  const impactRejectByDelta =
-    impactDelta != null && Math.abs(impactDelta) > A.impact.impactRejectDeltaFrames;
 
-  // Precedence: override → LH gate → no pre-canonical → RH thumb (primary) → fallback.
-  let impactIdx: number;
-  let impactSource: "thumb_crossing" | "arc_bottom";
-  let impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"];
-  let impactReliability: "high" | "medium" = "medium";
-
-  if (isOverride) {
-    impactIdx = arcBottomFrame;
-    impactSource = "arc_bottom";
-    impactFallbackReason = "override";
-  } else if (isLeftHanded) {
-    impactIdx = arcBottomFrame;
-    impactSource = "arc_bottom";
-    impactFallbackReason = "lh_ungated";
-  } else if (!hasPreCanonical) {
-    impactIdx = arcBottomFrame;
-    impactSource = "arc_bottom";
-    impactFallbackReason = "no_precanonical";
-  } else if (
-    thumb &&
-    impactThumb != null &&
-    thumb.coverage >= A.impact.thumbMinValidCoverage &&
-    !impactRejectByDelta
-  ) {
-    impactIdx = Math.round(impactThumb);
-    impactSource = "thumb_crossing";
-    // Mild cross-check disagreement (> crossCheckThresholdFrames, ≤ impactRejectDeltaFrames)
-    // keeps the thumb frame but downgrades confidence.
-    impactReliability = impactCrossCheckMismatch ? "medium" : "high";
-  } else {
-    impactIdx = arcBottomFrame;
-    impactSource = "arc_bottom";
-    impactFallbackReason = impactRejectByDelta
-      ? "cross_check_mismatch"
-      : thumb && thumb.reason === "invalid_window"
-        ? "invalid_window"
-        : thumb && impactThumb == null
-          ? "no_crossing"
-          : "low_coverage";
-  }
-
-  return {
-    impactIdx,
-    impactSource,
-    impactThumb,
+  // Arc-bottom fallback — preserves today's graceful behavior; reliability LOW so a low-credibility
+  // impact can be suppressed downstream. final/delta still logged for provenance.
+  const fallback = (reason: PhaseRuleDebug["impact_fallback_reason"]): ImpactSelection => ({
+    impactIdx: arcBottomFrame,
+    impactSource: "arc_bottom",
+    impactConsensusFinal: finalSub,
     impactArcbottom,
     impactDelta,
     impactCrossCheckMismatch,
-    impactFallbackReason,
-    impactReliability,
+    impactFallbackReason: reason,
+    impactReliability: "low",
+  });
+
+  if (isOverride) return fallback("override"); // test seam (impactOverride) bypasses the consensus
+  if (isLeftHanded) return fallback("lh_ungated"); // LH sign path unvalidated — persist for future GT
+  if (!hasPreCanonical || consensus == null) return fallback("no_precanonical");
+  if (finalSub == null) return fallback("no_signals"); // 0 geometric signals → consensus null
+
+  // CONSENSUS PRIMARY. Cross-check disagreement with arc-bottom downgrades confidence (flag), but
+  // never rejects: the consensus is the validated signal.
+  return {
+    impactIdx: finalRounded as number,
+    impactSource: "consensus",
+    impactConsensusFinal: finalSub,
+    impactArcbottom,
+    impactDelta,
+    impactCrossCheckMismatch,
+    impactFallbackReason: undefined,
+    impactReliability: impactCrossCheckMismatch ? "medium" : "high",
   };
 }
 
@@ -849,23 +864,17 @@ export function detectFaceOnPhases(input: {
   const topIdx = topXExtreme.frame;
   reliability.top = topXExtreme.reliability ?? "medium";
 
-  // Phase 5 — finish (computed against provisional impact; gives the follow-through
-  // window upper bound for the thumb crossing).
-  const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);
-  assumptionsUsed.push("faceOn.finish");
-  reliability.finish = finish.reliability;
-
-  // Phase 4 (PRIMARY) — lead-thumb-line last zero-crossing within [top, follow_through].
-  // Selection precedence: test override → arc-bottom (bypass thumb); LH → arc-bottom
-  // (unvalidated thumb path, gated off this ticket); otherwise RH thumb crossing when a
-  // qualifying crossing exists and conf coverage is adequate, else arc-bottom fallback.
-  const thumb =
-    input.impactOverride == null && !isLeftHanded && input.preCanonical
-      ? detectFaceOnThumbCrossing(input.preCanonical.frames, topIdx, finish.frame, isLeftHanded)
-      : null;
+  // Phase 4 (PRIMARY) — xCross CONSENSUS impact over [topIdx, topIdx+downswingBudget] on
+  // preCanonical (the raw/un-mirrored x-sign space it was validated in). Arc-bottom is the
+  // per-reason fallback only (override / LH / no-preCanonical / no-signals); see selectFaceOnImpact.
+  // The consensus window is takeaway/top-anchored — it does NOT depend on finish, so finish can be
+  // computed AFTER impact (re-anchored on it below) with no cycle.
+  const consensus =
+    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded) : null;
+  const impactConsensusShadow = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,
-    thumb,
+    consensus,
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: input.impactOverride != null,
@@ -873,14 +882,22 @@ export function detectFaceOnPhases(input: {
   const impactIdx = selection.impactIdx;
   const {
     impactSource,
-    impactThumb,
+    impactConsensusFinal,
     impactArcbottom,
     impactDelta,
     impactCrossCheckMismatch,
     impactFallbackReason,
   } = selection;
   reliability.impact = selection.impactReliability;
-  if (impactSource === "thumb_crossing") assumptionsUsed.push("faceOn.impact:thumbCrossing");
+  if (impactSource === "consensus") assumptionsUsed.push("faceOn.impact:consensus");
+
+  // Phase 5 — finish, RE-ANCHORED on the FINAL impact (not the provisional arc-bottom). Wiring
+  // change only — detectFaceOnFinish is unchanged; it just searches the plateau after the corrected
+  // impact. Required so a corrected impact later than the old arc-bottom-anchored finish does not
+  // trip the impact<finish monotonicity gate (e.g. 9d1606a6: impact 125 vs old finish 103).
+  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
+  assumptionsUsed.push("faceOn.finish");
+  reliability.finish = finish.reliability;
 
   // takeawayIdx (frame-space) was computed above, before the top search, so it can anchor it.
   reliability.true_address = "low";
@@ -898,11 +915,12 @@ export function detectFaceOnPhases(input: {
         external_assumptions_used: assumptionsUsed,
         ...takeawayTelemetry,
         impact_source: impactSource,
-        impact_thumb: impactThumb,
+        impact_consensus_final: impactConsensusFinal,
         impact_arcbottom: impactArcbottom,
         impact_delta: impactDelta,
         impact_cross_check_mismatch: impactCrossCheckMismatch,
         impact_fallback_reason: impactFallbackReason,
+        impact_consensus: impactConsensusShadow,
       },
     };
   }
@@ -923,13 +941,14 @@ export function detectFaceOnPhases(input: {
           external_assumptions_used: assumptionsUsed,
           ...takeawayTelemetry,
           impact_source: impactSource,
-          impact_thumb: impactThumb,
+          impact_consensus_final: impactConsensusFinal,
           impact_arcbottom: impactArcbottom,
           impact_delta: impactDelta,
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
           top_x_extreme: topXExtreme,
           top_velmin_shadow: topVelMin.frame,
+          impact_consensus: impactConsensusShadow,
         },
       };
     }
@@ -947,13 +966,14 @@ export function detectFaceOnPhases(input: {
           external_assumptions_used: assumptionsUsed,
           ...takeawayTelemetry,
           impact_source: impactSource,
-          impact_thumb: impactThumb,
+          impact_consensus_final: impactConsensusFinal,
           impact_arcbottom: impactArcbottom,
           impact_delta: impactDelta,
           impact_cross_check_mismatch: impactCrossCheckMismatch,
           impact_fallback_reason: impactFallbackReason,
           top_x_extreme: topXExtreme,
           top_velmin_shadow: topVelMin.frame,
+          impact_consensus: impactConsensusShadow,
         },
       };
     }
@@ -982,13 +1002,14 @@ export function detectFaceOnPhases(input: {
       external_assumptions_used: assumptionsUsed,
       ...takeawayTelemetry,
       impact_source: impactSource,
-      impact_thumb: impactThumb,
+      impact_consensus_final: impactConsensusFinal,
       impact_arcbottom: impactArcbottom,
       impact_delta: impactDelta,
       impact_cross_check_mismatch: impactCrossCheckMismatch,
       impact_fallback_reason: impactFallbackReason,
       top_x_extreme: topXExtreme,
       top_velmin_shadow: topVelMin.frame,
+      impact_consensus: impactConsensusShadow,
     },
   };
 }
@@ -1014,12 +1035,15 @@ export type FaceOnPhasesDebugResult = {
   // Shadow velocity-min top (legacy rule, retained for comparison; mirrors detectFaceOnPhases).
   topVelMinShadow: number | null;
   // Impact provenance + cross-check (mirrors detectFaceOnPhases via selectFaceOnImpact).
-  impactSource: "thumb_crossing" | "arc_bottom" | null;
-  impactThumb: number | null;
+  impactSource: "consensus" | "arc_bottom" | null;
+  impactConsensusFinal: number | null;
   impactArcbottom: number | null;
   impactDelta: number | null;
   impactCrossCheckMismatch: boolean | null;
   impactFallbackReason: PhaseRuleDebug["impact_fallback_reason"] | null;
+  // Shadow xCross CONSENSUS impact (PR1 — computed over [topIdx, follow_through] on preCanonical;
+  // null when preCanonical absent). Does NOT feed impactIdx; the validation harness reads this.
+  impactConsensus: FaceOnImpactConsensusShadow | null;
   // Body-scaled, reversal-rejecting takeaway gate (mirrors detectFaceOnPhases).
   takeawayPath: "body_scaled" | "fallback_gate" | null;
   takeawayLockedBodyHeight: number | null;
@@ -1056,8 +1080,9 @@ export function detectFaceOnPhasesDebug(input: {
     finishFrame: null,
     topXExtreme: null,
     topVelMinShadow: null,
+    impactConsensus: null,
     impactSource: null,
-    impactThumb: null,
+    impactConsensusFinal: null,
     impactArcbottom: null,
     impactDelta: null,
     impactCrossCheckMismatch: null,
@@ -1130,18 +1155,13 @@ export function detectFaceOnPhasesDebug(input: {
   const takeawayIdx = takeawayIdxFrame;
   const topIdx = topXExtreme.frame;
 
-  // Finish bounds the thumb window; computed against provisional impact.
-  const finish = detectFaceOnFinish(frames, arcBottomFrame, msPerFrame);
-  result.finishFrame = finish.frame;
-
-  // Final impact: thumb crossing (RH, primary) vs arc-bottom (fallback) — shared selector.
-  const thumb =
-    !isLeftHanded && input.preCanonical
-      ? detectFaceOnThumbCrossing(input.preCanonical.frames, topIdx, finish.frame, isLeftHanded)
-      : null;
+  // Final impact: xCross CONSENSUS (primary) vs arc-bottom (per-reason fallback) — shared selector.
+  // Computed over [topIdx, topIdx+downswingBudget] on preCanonical; mirrors detectFaceOnPhases.
+  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded);
+  result.impactConsensus = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,
-    thumb,
+    consensus,
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: false,
@@ -1149,11 +1169,15 @@ export function detectFaceOnPhasesDebug(input: {
   const impactIdx = selection.impactIdx;
   result.impactIdx = impactIdx;
   result.impactSource = selection.impactSource;
-  result.impactThumb = selection.impactThumb;
+  result.impactConsensusFinal = selection.impactConsensusFinal;
   result.impactArcbottom = selection.impactArcbottom;
   result.impactDelta = selection.impactDelta;
   result.impactCrossCheckMismatch = selection.impactCrossCheckMismatch;
   result.impactFallbackReason = selection.impactFallbackReason;
+
+  // Finish RE-ANCHORED on the FINAL impact (mirrors detectFaceOnPhases). Wiring only.
+  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
+  result.finishFrame = finish.frame;
 
   const triggerAOk = takeawayIdx < topIdx && topIdx < impactIdx;
   result.triggerA = {
