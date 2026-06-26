@@ -14,7 +14,7 @@
  *
  * Asserts (see ASSERTIONS at the end):
  *   - 81f0b197 impact_new ≈ 137.5 (vs ground truth 137.6)
- *   - 4 LH swings → arc_bottom + lh_ungated
+ *   - LH swings → consensus (gate flipped; bounded arc_bottom fallback when consensus null)
  *   - mismatch flag on a761da0e + 4b47009e
  *   - 8d85c860 stays thumb-primary at coverage ≥ 0.5; 7692a2b8 coverage reported
  *   - no swing that had a stored impact is newly gated
@@ -273,12 +273,16 @@ async function main() {
     );
   } else assert("dec6edd1 present", false);
 
-  // (2) LH swings → arc_bottom + lh_ungated (only meaningful when not gated out)
+  // (2) LH swings → consensus (gate flipped — LH now runs the xCross consensus exactly like RH).
+  //     A consensus-null LH still falls back to arc_bottom/no_precanonical|no_signals; gated swings skip.
   for (const x of rows.filter((r) => r.handedness === "left")) {
     const detail = `source=${x.impact_source} reason=${x.fallback_reason} gate=${x.gate}`;
     assert(
-      `LH ${x.swing_id.slice(0, 8)} → arc_bottom + lh_ungated (or gated)`,
-      (x.impact_source === "arc_bottom" && x.fallback_reason === "lh_ungated") || x.gate != null,
+      `LH ${x.swing_id.slice(0, 8)} → consensus (or bounded arc_bottom fallback / gated)`,
+      x.impact_source === "consensus" ||
+        (x.impact_source === "arc_bottom" &&
+          (x.fallback_reason === "no_precanonical" || x.fallback_reason === "no_signals")) ||
+        x.gate != null,
       detail,
     );
   }

@@ -447,7 +447,8 @@ export function selectFaceOnImpact(args: {
   });
 
   if (isOverride) return fallback("override"); // test seam (impactOverride) bypasses the consensus
-  if (isLeftHanded) return fallback("lh_ungated"); // LH sign path unvalidated — persist for future GT
+  // LH gate removed: the LH sign path (signFlip=-1) is validated, so LH runs the consensus exactly
+  // like RH. A LH swing whose consensus is null still falls through to no_precanonical / no_signals.
   if (!hasPreCanonical || consensus == null) return fallback("no_precanonical");
   if (finalSub == null) return fallback("no_signals"); // 0 geometric signals → consensus null
 

@@ -197,7 +197,8 @@ export type PhaseRuleDebug = {
   impact_delta?: number | null;       // round(impact_consensus_final) − impact_arcbottom (cross-check)
   impact_cross_check_mismatch?: boolean; // |delta| > crossCheckThresholdFrames (FLAG, not a rejection)
   // Why arc-bottom was used instead of the consensus (set only when impact_source === "arc_bottom"):
-  // "lh_ungated" = LH sign path unvalidated (still persisted for future LH ground truth);
+  // "lh_ungated" = DEPRECATED — no longer produced (LH gate removed; LH now runs the consensus).
+  //   Retained for historical persisted rows captured before the flip.
   // "override" = test seam; "no_precanonical" = no raw frames to run the consensus on;
   // "no_signals" = 0 geometric signals available (consensus null). All carry reliability.impact=low.
   impact_fallback_reason?:

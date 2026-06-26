@@ -322,14 +322,15 @@ console.log('\n── Case D: per-reason arc-bottom fallback (reliability low) �
     isOverride: false,
   };
 
-  // (a) LH → arc-bottom, lh_ungated, low. Consensus final still recorded (future LH ground truth).
+  // (a) LH → CONSENSUS (gate removed) — LH runs the validated xCross consensus exactly like RH.
+  //     consensus 150 vs arc-bottom 130 → cross-check mismatch (Δ20 > 6) downgrades high→medium.
   {
     const s = selectFaceOnImpact({ ...base, isLeftHanded: true });
-    assert(s.impactSource === 'arc_bottom' && s.impactFallbackReason === 'lh_ungated',
-      `Case D(a): LH → arc_bottom/lh_ungated (got ${s.impactSource}/${s.impactFallbackReason})`);
-    assert(s.impactIdx === 130, `Case D(a): impactIdx = arc-bottom 130 (got ${s.impactIdx})`);
-    assert(s.impactReliability === 'low', `Case D(a): reliability low (got ${s.impactReliability})`);
-    assert(s.impactConsensusFinal === 150, 'Case D(a): consensus final still recorded (not selected)');
+    assert(s.impactSource === 'consensus' && s.impactFallbackReason === undefined,
+      `Case D(a): LH → consensus (got ${s.impactSource}/${s.impactFallbackReason})`);
+    assert(s.impactIdx === 150, `Case D(a): impactIdx = consensus 150 (got ${s.impactIdx})`);
+    assert(s.impactReliability === 'medium', `Case D(a): reliability medium on mismatch (got ${s.impactReliability})`);
+    assert(s.impactConsensusFinal === 150, 'Case D(a): consensus final recorded');
   }
 
   // (b) no pre-canonical (consensus null) → arc-bottom, no_precanonical, low.
