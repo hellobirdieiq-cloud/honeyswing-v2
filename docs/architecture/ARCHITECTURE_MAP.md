@@ -58,7 +58,7 @@ honeyswing-v2/
 │   │   ├── PoseProvider.ts · PoseTypes.ts   (PoseFrame, PoseSequence)
 │   │   └── rtmw/               ← 133-keypoint RTMW adapter
 │   └── domain/swing/           ← 🧠 PURE analysis (no UI / no native)
-│       ├── analysisPipeline.ts ← master orchestrator (16 stages)
+│       ├── analysisPipeline.ts ← master orchestrator (15 stages, 0–14)
 │       ├── phaseDetection.ts · angles.ts · tempoAnalysis.ts
 │       ├── scoring.ts · cameraAngle.ts · lowerBodyIdentity.ts
 │       └── … (keypointVeto, canonicalTransform, confidenceScore, …)
@@ -67,6 +67,10 @@ honeyswing-v2/
 ├── modules/vision-camera-pose/                          ← native bridge
 └── supabase/migrations/        ← DB schema history (swings table)
 ```
+
+> **Abbreviated** — shows the main runtime areas only. For the complete
+> inventory (incl. `scripts/`, `components/`, `packages/domain/clinic/`,
+> `targets/watch/`, `ios/honeyswing/`), see **Code size** below.
 
 ## Code size (snapshot — 2026-06-27)
 
@@ -160,9 +164,11 @@ Reconciliation (proves the old 203 / 46,023 was a 7-area subset):
 = 67,365   whole repo   (files: 203 + 61 + 14 + 14 = 292)
 ```
 
-Note: `scripts/` is dev/diagnostic tooling, not shipped app code, and
-`targets/watch/` is the parked, unshipped Watch IMU feature — neither inflates
-shipped app size. `ios/honeyswing/` is generated/duplicated native glue
+Note: `scripts/` is a maintained, read-only validation/diagnostic toolkit —
+harnesses that run production functions over ground-truth swings via `npx tsx`
+(e.g. `validateImpactXCross`, `replayThumbImpact`, `scoreSwings`), not shipped
+app code. `targets/watch/` is the parked, unshipped Watch IMU feature — neither
+inflates shipped app size. `ios/honeyswing/` is generated/duplicated native glue
 (`AppDelegate.swift` generated; `Honey*` plugins are build-time copies of
 `native-assets/ios/`), so the `62,433` figure overstates hand-authored code;
 excluding `ios/honeyswing/` lands at **≈ 59,187**.
@@ -293,7 +299,7 @@ Notes that matter when reading the code:
 - **Canonical space (stage 2):** RH swings are mirrored, LH swings pass through,
   so downstream sign conventions hold for both. In canonical space the `left*`
   joints are the **TRAIL** arm — see the long comment at
-  `analysisPipeline.ts:554` and `[[project_faceon_impact_trail_wrist]]`.
+  `analysisPipeline.ts:554`.
 - **Two angle paths (stage 6):** the phase-windowed path is preferred; the
   mid-frame fallback runs only when phases are unreliable (`shouldFallback`),
   and it skips visibility weighting, wrist-hinge, and face-to-path entirely.
@@ -307,6 +313,14 @@ Notes that matter when reading the code:
 The headline `score` is **tempo-only** — a 9-band traffic light over
 `tempoRatio` (`scoring.ts:scoreTempoTrafficLight`). Angles are computed and
 persisted but **do not** feed the headline number.
+
+Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:76`)
+picks the worst-scoring metric to drive the Visual Coach focus cue on the result
+and record screens (`app/analysis/result.tsx:566`), and persisted `angles` are
+re-read for history display (`result.tsx:117`). The persisted `category_scores`
+column, by contrast, has **no in-app reader** — written from `analysis.aggregate`
+(`persistSwing.ts:134`) and selected in `swingStore.ts` but consumed nowhere in
+this repo (likely the external web inspector / future use).
 
 | Tempo ratio (backswing/downswing) | Score | Band |
 |---|---|---|
@@ -355,7 +369,8 @@ The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:100`):
   swingConfidence: SwingConfidence;// overall 0–1, tier, components
   cameraAngleResult: CameraAngleResult;
   metricConfidences?: …;           // per-metric visibility × camera confidence
-  aggregate?: AggregateResult;     // category buckets (in-memory; not persisted)
+  aggregate?: AggregateResult;     // category buckets (in-memory); a derived
+                                   // category_scores column IS persisted (no in-repo reader)
   swing_debug?: FrameSelectionDebug;// full diagnostic tree (persisted)
 }
 ```
@@ -383,7 +398,6 @@ Columns, grouped (`lib/database.types.ts:215`):
 `motion_frames` is stored **RAW** (un-mirrored, pre-identity-correction);
 identity correction is re-applied at read time in
 `lib/swingStore.ts` (`getSwingMotionFrames`), so it must stay idempotent.
-See `[[project_motion_frames_coordinate_space]]`.
 
 ## The `swing_debug` diagnostic tree
 
@@ -433,9 +447,10 @@ downstream never branch on camera angle:
   recalibration step is a single edit, not a hunt through the detectors.
 - **Frame-rate independence.** Rules express windows in milliseconds;
   `msToFrames(ms, msPerFrame)` converts using the capture's real ms/frame
-  (`msPerFrameFromTrail`). ⚠️ A few consensus constants are raw *frame* counts
-  validated only at 60 fps — flagged in-source for conversion before non-60fps
-  capture ships.
+  (`msPerFrameFromTrail`). ⚠️ The face-on impact search window
+  `EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus.downswingBudget` (= 50,
+  `phaseDetectionShared.ts:128`) is a raw **frame** count validated only at
+  60 fps; convert via `msToFrames` before any non-60fps capture ships.
 - **Shared takeaway gate.** `findSetupEndIndex` finds the end of address with a
   sign-aware directional test: slide an 8-frame window over canonical
   wrist-midpoint Δx, drop the min+max, require the middle 6 all `> 0` (a
