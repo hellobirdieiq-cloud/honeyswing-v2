@@ -288,3 +288,121 @@ scoring breakdown, confidence components, foreshortening + tilt correction,
 keypoint veto + identity maps, phase rules, lead-wrist hinge / synthetic clubhead
 path / face-to-path, and `watch_imu_present`. Nothing here feeds the score — it
 exists purely so a swing's outcome can be reconstructed and debugged after the fact.
+
+## Phase detection (deep dive)
+
+Phase detection turns the canonical wrist trail + pose frames into 5 ordered
+swing phases. It is a **dispatcher**: `detectSwingPhasesWithDebug`
+(`phaseDetection.ts:128`) picks a detector by the pre-detected camera angle, so
+each viewpoint gets rules tuned for what it can actually see.
+
+```
+ detectSwingPhasesWithDebug(input)
+   │  input = { canonical, trail, angle, preCanonical?, isLeftHanded? }
+   │          (or a bare SwingTrailPoint[] → legacy, for back-compat callers)
+   ▼
+   angle === "dtl"     → detectDTLPhases       phaseDetectionDTL.ts
+   angle === "face_on" → detectFaceOnPhases    phaseDetectionFaceOn.ts
+   angle === "unknown" → detectLegacyPhases    phaseDetectionLegacy.ts
+   ▼
+   { phases: DetectedPhase[5], fallbackGate, ruleDebug }
+```
+
+All three return the **same 5-slot shape**, so tempo / scoring / angle-windowing
+downstream never branch on camera angle:
+
+| Phase | Meaning | Each `DetectedPhase` carries |
+|---|---|---|
+| `takeaway` | first committed move off the ball | `phase`, `label`, `index`, |
+| `top` | top of backswing | `timestamp`, `point` (trail xy), |
+| `downswing` | transition toward the ball | and `source`: |
+| `impact` | club meets ball | `"heuristic"` (rules fired) |
+| `follow_through` | finish / club decelerates | or `"fallback"` (fixed %) |
+
+### Shared mechanics (`phaseDetectionShared.ts`)
+
+- **One threshold table.** `EXTERNAL_ASSUMPTIONS` holds every numeric constant
+  for both `dtl` and `faceOn` (search windows in **ms**, travel/velocity floors,
+  consensus radii). Putting them in one object means the Dave-clinic
+  recalibration step is a single edit, not a hunt through the detectors.
+- **Frame-rate independence.** Rules express windows in milliseconds;
+  `msToFrames(ms, msPerFrame)` converts using the capture's real ms/frame
+  (`msPerFrameFromTrail`). ⚠️ A few consensus constants are raw *frame* counts
+  validated only at 60 fps — flagged in-source for conversion before non-60fps
+  capture ships.
+- **Shared takeaway gate.** `findSetupEndIndex` finds the end of address with a
+  sign-aware directional test: slide an 8-frame window over canonical
+  wrist-midpoint Δx, drop the min+max, require the middle 6 all `> 0` (a
+  committed move in the takeaway direction, not a waggle/glove-tug). Falls back
+  to a magnitude-only stillness gate (`findSetupEndIndexStillness`) when no
+  directional onset is found or it arrives implausibly late (> 60% in).
+- **Canonical-space trick.** Lefties are mirrored upstream, so "Δx > 0 = takeaway
+  direction" and "trail wrist = `leftWrist`" hold for both handedness.
+
+### Legacy detector — the `unknown` fallback (`phaseDetectionLegacy.ts`)
+
+The pre-rules single path, kept 1:1 so `unknown`-angle swings behave exactly as
+before the angle-aware split. Needs ≥ 6 trail points.
+
+```
+address  = findSetupEndIndex (shared takeaway gate)
+top      = trail-wrist X minimum in [address+200ms, address+2000ms],
+           guarded by lookahead + MIN_TRAVEL 0.04 (rejects shallow dips)
+impact   = hand-low frame (max trail y) in [top+100ms, top+1500ms], + 67 ms
+downswing= top + 35% of (impact − top)
+finish   = first 3-frame velocity plateau below 0.008, else search-end
+```
+
+Then two sanity gates: indices must be **strictly increasing** and **≥ 2 frames
+apart**. A final `backswing/downswing ≥ 0.8` ratio check guards against a
+collapsed top. Any failure replaces the result with `fallbackPhases` (fixed
+percentages `0.12 / 0.45 / 0.55 / 0.65 / 0.9`, every phase `source: "fallback"`)
+and records why via `FallbackGate`:
+
+| `FallbackGate` | Cause |
+|---|---|
+| `points_too_short` | < 6 trail points |
+| `top_search_bounds` | no valid top window / no qualifying minimum |
+| `impact_search_bounds` | no valid impact window |
+| `impact_distance_out_of_range` | top→impact too far (> 40% of swing) or < 2 frames |
+| `temporal_inversion` | phases not strictly increasing |
+| `phases_too_bunched` | adjacent phases < 2 frames apart |
+| `backswing_ratio_check_failed` | backswing/downswing < 0.8 |
+
+`fallbackGate` is what the pipeline reads to decide the mid-frame angle fallback
+and to **withhold tempo** when phases are untrustworthy.
+
+### DTL detector (`phaseDetectionDTL.ts`)
+
+Down-the-line sees rotation better than lateral wrist travel, so it anchors on
+the body. Phase 0 swing-start is **hip `dSpreadX`** — the frame the hips first
+commit to rotation (works in canonical space because the lefty joint-swap +
+x-mirror cancel for a magnitude). It then scans a true-address stillness window
+(spine/head/knee variance bounded), finds top by trail travel + lookahead, impact
+by hand-low + 67 ms, and finish by a velocity plateau — all windows from the
+`dtl` block of `EXTERNAL_ASSUMPTIONS`.
+
+### Face-on detector (`phaseDetectionFaceOn.ts`)
+
+Face-on sees the down-the-target-line geometry, so impact is detected
+geometrically rather than by velocity:
+
+- **Takeaway** uses the body-scaled `findTakeawayOnsetFaceOn`: the lead wrist
+  must climb ≥ `0.5` body-heights (ruler = trimmed-mean nose↔ankle), rejecting
+  waggles/feints via a sustained-reversal counter; falls back to the shared gate.
+- **Top** is the lead-X extreme (median across nose / lead-shoulder / lead-ear,
+  robust to one drifting landmark), re-anchored on the takeaway.
+- **Impact** is an **xCross consensus** (`faceOnImpactConsensus.ts`): three
+  geometric signals — S1 wrist-crosses-feet-midpoint, S2 arm-vertical, S3
+  wrist-lowest — combined and refined by a sub-frame lead-thumb crossing, run on
+  the **pre-canonical** (un-mirrored) frames over `[top, top+downswingBudget]`.
+  Arc-bottom is the fallback.
+
+### Telemetry — `swing_debug.phase_rules`
+
+Every detector writes a `PhaseRuleDebug` record: which detector ran, swing-start /
+true-address frames, per-rule reliability (`high/medium/low`), the
+`external_assumptions_used`, and (face-on) full impact provenance —
+`impact_source` (`consensus` vs `arc_bottom`), the consensus breakdown, the
+shadow X-extreme top, and the takeaway path taken. This is the audit trail the
+web inspector reads; none of it feeds the score directly.
