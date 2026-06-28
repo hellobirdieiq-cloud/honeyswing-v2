@@ -39,6 +39,7 @@ import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
+import { computeNavigationBlockReason, deriveClassification } from './captureFlow';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -156,12 +157,12 @@ export function useSwingCapture({
   }
 
   async function tryNavigate() {
-    const blockReason =
-      capturePhaseRef.current !== 'complete' ? 'phase' :
-      !analysisReadyRef.current ? 'analysis' :
-      videoUriRef.current === 'pending' ? 'video' :
-      navigatedRef.current ? 'navigated' :
-      null;
+    const blockReason = computeNavigationBlockReason({
+      phase: capturePhaseRef.current,
+      analysisReady: analysisReadyRef.current,
+      video: videoUriRef.current,
+      navigated: navigatedRef.current,
+    });
 
     console.log(
       `[tryNavigate] phase=${capturePhaseRef.current} analysis=${analysisReadyRef.current} video=${videoUriRef.current === 'pending' ? 'pending' : typeof videoUriRef.current === 'string' ? 'ready' : videoUriRef.current} navigated=${navigatedRef.current} → ${blockReason ? `BLOCKED(${blockReason})` : 'NAVIGATING'}`
@@ -469,13 +470,7 @@ export function useSwingCapture({
           updateCapturePhase('complete');
 
           const baseClassification = classifyCapture(poseFrames);
-          const classification = fallbackGateReason
-            ? {
-                ...baseClassification,
-                validity: 'partial' as const,
-                reason: 'no-swing',
-              }
-            : baseClassification;
+          const classification = deriveClassification(baseClassification, fallbackGateReason);
           const captureFrameStats = getCaptureFrameStats();
           swingIdPromiseRef.current = persistSwing(
             poseFrames, // RAW by design — persisted motion_frames are the debug source of truth
