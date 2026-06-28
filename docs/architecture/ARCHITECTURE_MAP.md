@@ -74,6 +74,9 @@ Counts source files only (`.ts`, `.tsx`, `.swift`); excludes `node_modules`,
 build output (`ios/Pods`, `ios/build`, `.expo`, `dist`, `.venv`), and the
 generated `lib/database.types.ts`. Regenerate with the same scan before trusting.
 
+The per-area table below covers **7 areas** (`.ts/.tsx/.swift` only); the
+whole-repo reconciliation follows it.
+
 | Area | Lines | Files |
 |---|--:|--:|
 | `lib/` | 16,902 | 89 |
@@ -114,6 +117,49 @@ generated `lib/database.types.ts`. Regenerate with the same scan before trusting
 
 `lib/` is now over half tests — the write-path extraction added
 `swingRowBuilders.test.ts` (+322) and `captureFlow.test.ts` (+109).
+
+### Whole-repo reconciliation
+
+The per-area table above is a **7-area subset** (`app/ lib/ packages/pose/
+packages/domain/swing/ native-assets/ modules/` + supabase `.ts`), `.ts/.tsx/.swift`
+only. The whole repo (adds `.sql`, plus the areas below) is:
+
+**292 files / 67,365 lines.** Subtracting the 4,932-line generated
+`supabase/migrations/20260417055038_remote_schema.sql` leaves **62,433** — but
+that is an **upper bound** on hand-authored code, not a pure figure: it still
+includes `ios/honeyswing/` generated/duplicated Swift (3,246; `AppDelegate.swift`
+is Expo-generated, the `Honey*` plugins are build-time copies of
+`native-assets/ios/`). Removing those too puts hand-authored at **≈ 59,187**.
+
+Areas missing from the 7-area view:
+
+| Area | Lines | Files |
+|---|--:|--:|
+| `scripts/` (dev/diagnostic tooling) | 8,849 | 27 |
+| `supabase/` `.sql` migrations | 5,209 | 14 |
+| `ios/honeyswing/` (generated/duplicated native) | 3,246 | 13 |
+| `components/` | 2,164 | 11 |
+| `packages/domain/clinic/` | 1,116 | 14 |
+| `targets/watch/` (parked, unshipped Watch IMU) | 756 | 9 |
+| root (`expo-env.d.ts`) | 2 | 1 |
+| **Added** | **21,342** | **89** |
+
+Reconciliation (proves the old 203 / 46,023 was a 7-area subset):
+
+```
+  46,023   7-area subset (.ts/.tsx/.swift)
++ 15,017   remainder (scripts + ios/honeyswing + components + targets/watch + root)
++  1,116   packages/domain/clinic (.ts, previously missed)
++  5,209   supabase .sql migrations (7-area supabase figure was .ts-only)
+= 67,365   whole repo   (files: 203 + 61 + 14 + 14 = 292)
+```
+
+Note: `scripts/` is dev/diagnostic tooling, not shipped app code, and
+`targets/watch/` is the parked, unshipped Watch IMU feature — neither inflates
+shipped app size. `ios/honeyswing/` is generated/duplicated native glue
+(`AppDelegate.swift` generated; `Honey*` plugins are build-time copies of
+`native-assets/ios/`), so the `62,433` figure overstates hand-authored code;
+excluding `ios/honeyswing/` lands at **≈ 59,187**.
 
 ## Runtime data flow
 
