@@ -141,6 +141,150 @@ How one swing moves through the system, end to end:
 
 ## One-line summary
 
-Capture 4s of video → extract 133-keypoint poses → run the 16-stage pure-TS
+Capture 4s of video → extract 133-keypoint poses → run the multi-stage pure-TS
 analysis pipeline → hand off via an in-memory store to the results screen →
 persist the full swing to Supabase for history and playback.
+
+---
+
+# Deep dive
+
+Everything below drills into the parts that carry the most logic: the analysis
+pipeline, the scoring model, the core data types, the persistence schema, and
+the diagnostic trail. File/line references point at the verified source.
+
+## Analysis pipeline — stage by stage
+
+`analyzePoseSequence` (`packages/domain/swing/analysisPipeline.ts:520`) is the
+single orchestrator. It runs these stages in order over the `PoseFrame[]`:
+
+```
+ PoseSequence (133-kp RTMW frames, raw + normalized)
+   │
+ 0 ┤ correctLowerBodyIdentity      lowerBodyIdentity.ts   fix RTMW left/right LEG swaps
+ 1 ┤ vetoAndInterpolateKeypoints   keypointVeto.ts        velocity veto + gap interpolation
+ 2 ┤ toCanonicalSequence           canonicalTransform.ts  mirror → canonical space
+   │                                                      (mirror RH, pass LH through)
+ 3 ┤ buildTrailPoints + detectCameraAngleEarly            wrist trail + provisional view
+ 4 ┤ detectSwingPhasesWithDebug    phaseDetection.ts      5 phases + fallbackGate
+ 5 ┤ detectSwingStart              swingStartDetection.ts refine address frame (HIGH/LOW)
+ 6 ┤ angles:                       angles.ts
+   │   • computePhaseWindowedAngles  (preferred — averages frames around phases)
+   │   • calculateGolfAngles         (mid-frame fallback when shouldFallback)
+ 7 ┤ applyVisibilityWeighting      visibilityWeighting.ts drop low-conf joints
+   │   + implausible-frame filter  implausibleFrameFilter.ts (heuristic path only)
+ 8 ┤ leadWristHinge / clubheadPath / faceToPath           swing_debug only (no UI yet)
+ 9 ┤ detectCameraAngle(addressFrame) cameraAngle.ts       final view + metric weights
+10 ┤ correctForeshortening → applyTiltCorrection          perspective + device-tilt fix
+11 ┤ calculateTempo                tempoAnalysis.ts        backswing/downswing ratio
+   │   + withhold guard: isTempoTrustworthy / address-unreliable → tempo = null
+12 ┤ computeAngleGating → scoreSwing  scoring.ts           headline score (tempo-only)
+13 ┤ computeSwingConfidence         confidenceScore.ts     overall + tier + components
+14 ┤ metricConfidences + aggregateSwing categoryAggregation.ts
+   ▼
+ AnalysisResult { score, honeyBoom, angles, tempo, phases, trail,
+                  swingConfidence, cameraAngleResult, swing_debug }
+```
+
+Notes that matter when reading the code:
+- **Canonical space (stage 2):** RH swings are mirrored, LH swings pass through,
+  so downstream sign conventions hold for both. In canonical space the `left*`
+  joints are the **TRAIL** arm — see the long comment at
+  `analysisPipeline.ts:554` and `[[project_faceon_impact_trail_wrist]]`.
+- **Two angle paths (stage 6):** the phase-windowed path is preferred; the
+  mid-frame fallback runs only when phases are unreliable (`shouldFallback`),
+  and it skips visibility weighting, wrist-hinge, and face-to-path entirely.
+- **Empty input** returns a fully-zeroed `AnalysisResult` early
+  (`analysisPipeline.ts:585`) rather than throwing.
+- **`watchImuReadings` / `gravityReadings`** are optional sensor seams that
+  no-op when empty — a swing with no paired sensor behaves exactly as before.
+
+## Scoring model
+
+The headline `score` is **tempo-only** — a 9-band traffic light over
+`tempoRatio` (`scoring.ts:scoreTempoTrafficLight`). Angles are computed and
+persisted but **do not** feed the headline number.
+
+| Tempo ratio (backswing/downswing) | Score | Band |
+|---|---|---|
+| `< 0.5` | 25 | red |
+| `[0.5, 1.0)` | 60 | yellow |
+| `[1.0, 1.5)` | 70 | yellow |
+| `[1.5, 2.0)` | 80 | yellow |
+| **`[2.0, 4.3]`** | **100** | **green → `honeyBoom`** |
+| `(4.3, 5.0]` | 90 | yellow |
+| `(5.0, 6.0]` | 75 | yellow |
+| `(6.0, 7.0]` | 60 | yellow |
+| `> 7.0` | 25 | red |
+
+- `honeyBoom = (score === 100)`.
+- When tempo is withheld (unreliable phases / unreliable address frame), the
+  pipeline passes `tempo: null` and `scoreSwing` returns `score: null` — a
+  neutral "no score", **not** 0.
+- A separate `TempoRating` label drives the UI text (`tempoAnalysis.ts:rateTempo`),
+  on different thresholds: `rushed < 1.5`, `fast < 2.5`, `good < 3.5`,
+  `slow < 4.5`, else `very_slow`. This label is independent of the numeric score.
+
+## Core data types
+
+From `packages/pose/PoseTypes.ts`:
+
+- **`JointName`** — 35 named landmarks: face, upper body, hands, **thumb tips**
+  (`leftThumbTip`/`rightThumbTip`, used by the face-on impact detector via
+  `dx = thumbTip.x − thumb.x`), lower body, feet.
+- **`NormalizedJoint`** — `{ name, x, y, z?, confidence?, vx?, vy?, vz? }`;
+  coordinates normalized 0–1, optional depth, confidence, and per-axis velocity.
+- **`PoseFrame`** — `{ timestampMs, joints: Record<JointName, NormalizedJoint?>,
+  frameWidth, frameHeight }`.
+- **`PoseSequence`** — `{ frames, source, metadata: { fps?, durationMs? } }`.
+
+The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:100`):
+
+```ts
+{
+  score: number | null;            // tempo-only headline (null when withheld)
+  honeyBoom: boolean;              // green band
+  cameraAngleValid: boolean;
+  angles?: GolfAngles;             // spine, elbows, knees, hip, shoulder tilt, drift
+  tempo?: SwingTempo | null;       // backswing/downswing ms + ratio + rating
+  phases?: DetectedPhase[];        // takeaway, top, downswing, impact, follow_through
+  trail?: SwingTrailPoint[];       // wrist path for the overlay
+  swingConfidence: SwingConfidence;// overall 0–1, tier, components
+  cameraAngleResult: CameraAngleResult;
+  metricConfidences?: …;           // per-metric visibility × camera confidence
+  aggregate?: AggregateResult;     // category buckets (in-memory; not persisted)
+  swing_debug?: FrameSelectionDebug;// full diagnostic tree (persisted)
+}
+```
+
+## Persistence — the `swings` table
+
+`persistSwing` (`lib/persistSwing.ts`) flattens `AnalysisResult` into one row.
+Columns, grouped (`lib/database.types.ts:215`):
+
+| Group | Columns |
+|---|---|
+| Identity | `id`, `user_id`, `player_profile_id`, `created_at` |
+| Headline | `score`, `honey_boom`, `capture_validity`, `pose_success_rate`, `frame_count`, `duration_ms`, `fps_actual` |
+| Analysis (JSON) | `angles`, `tempo`, `phases`, `trail_points`, `metric_confidences`, `category_scores` |
+| Raw pose (JSON) | `motion_frames` (velocity-enriched), `pose_full` |
+| Timing | `backswing_ms`, `downswing_ms`, `tempo_ratio`, `impact_frame_index`, `phase_source` |
+| Media | `video_storage_path`, `video_url`, `video_uploaded_at` |
+| Sensors (JSON) | `gravity_vector`, `watch_imu` |
+| Diagnostics | `swing_debug` (JSON) |
+| Metadata | `app_version`, `coach_name`, `analysis_version`, `analysis_tier`, `is_favorite`, `failure_reason` |
+
+`motion_frames` is stored **RAW** (un-mirrored, pre-identity-correction);
+identity correction is re-applied at read time in
+`lib/swingStore.ts` (`getSwingMotionFrames`), so it must stay idempotent.
+See `[[project_motion_frames_coordinate_space]]`.
+
+## The `swing_debug` diagnostic tree
+
+Every stage writes telemetry into `swing_debug` (`FrameSelectionDebug`,
+`analysisPipeline.ts:53`). It is the audit trail used by the web swing inspector:
+frame-selection method + fallback gate, camera-angle spreads (shoulder/hip/avg),
+scoring breakdown, confidence components, foreshortening + tilt correction,
+keypoint veto + identity maps, phase rules, lead-wrist hinge / synthetic clubhead
+path / face-to-path, and `watch_imu_present`. Nothing here feeds the score — it
+exists purely so a swing's outcome can be reconstructed and debugged after the fact.
