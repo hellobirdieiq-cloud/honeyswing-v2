@@ -131,6 +131,12 @@ includes `ios/honeyswing/` generated/duplicated Swift (3,246; `AppDelegate.swift
 is Expo-generated, the `Honey*` plugins are build-time copies of
 `native-assets/ios/`). Removing those too puts hand-authored at **≈ 59,187**.
 
+**Working-tree vs tracked:** the 292 files / 67,365 lines is a **working-tree**
+count (files on disk). The git-**tracked** repo is **274 files / 63,389 lines** —
+~18 files are gitignored (chiefly the generated `ios/honeyswing/` Swift, 3,246)
+or untracked. Tracked minus the generated schema = 63,389 − 4,932 = **58,457**,
+consistent with the ≈ 59,187 hand-authored figure above.
+
 Areas missing from the 7-area view:
 
 | Area | Lines | Files |
