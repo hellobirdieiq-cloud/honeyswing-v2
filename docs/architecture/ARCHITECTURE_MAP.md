@@ -45,9 +45,11 @@ honeyswing-v2/
 │
 ├── lib/                        ← glue: hooks, stores, persistence
 │   ├── useSwingCapture.ts      ← orchestrates capture → analyze → persist
+│   ├── captureFlow.ts          ← pure capture-flow decisions (+ .test.ts)
 │   ├── extractPoseFromVideo.ts ← runs RTMW pose detector on the MP4
 │   ├── swingMotionStore.ts     ← in-memory handoff: record → result
-│   ├── persistSwing.ts         ← writes the row to Supabase
+│   ├── persistSwing.ts         ← writes the row to Supabase (orchestration)
+│   ├── swingRowBuilders.ts     ← pure swings-row builders (+ .test.ts)
 │   ├── swingStore.ts           ← reads swings back (history / playback)
 │   └── supabase.ts · database.types.ts · …
 │
@@ -65,6 +67,53 @@ honeyswing-v2/
 ├── modules/vision-camera-pose/                          ← native bridge
 └── supabase/migrations/        ← DB schema history (swings table)
 ```
+
+## Code size (snapshot — 2026-06-27)
+
+Counts source files only (`.ts`, `.tsx`, `.swift`); excludes `node_modules`,
+build output (`ios/Pods`, `ios/build`, `.expo`, `dist`, `.venv`), and the
+generated `lib/database.types.ts`. Regenerate with the same scan before trusting.
+
+| Area | Lines | Files |
+|---|--:|--:|
+| `lib/` | 16,902 | 89 |
+| `packages/domain/swing/` | 12,698 | 48 |
+| `app/` | 12,479 | 44 |
+| `native-assets/` | 2,654 | 11 |
+| `supabase/` | 682 | 2 |
+| `packages/pose/` | 531 | 7 |
+| `modules/` | 77 | 2 |
+| **Total** | **46,023** | **203** |
+
+**10 biggest single files**
+
+| Lines | File |
+|--:|---|
+| 1,218 | `packages/domain/swing/phaseDetectionFaceOn.ts` |
+| 998 | `lib/outbox.ts` |
+| 983 | `lib/visibilityWeighting.test.ts` |
+| 904 | `app/clinic/coach-mode/Tab1LiveView.tsx` |
+| 850 | `app/analysis/result.tsx` |
+| 797 | `app/(tabs)/settings.tsx` |
+| 780 | `lib/tiltCorrection.test.ts` |
+| 776 | `packages/domain/swing/analysisPipeline.ts` |
+| 729 | `lib/foreshorteningCorrection.test.ts` |
+| 725 | `lib/positiveReinforcement.test.ts` |
+
+**Test vs non-test (by area)**
+
+| Area | Test LOC | Non-test LOC | % tests |
+|---|--:|--:|--:|
+| `lib/` | 8,928 | 7,974 | 53% |
+| `packages/domain/swing/` | 4,277 | 8,421 | 34% |
+| `app/` | 0 | 12,479 | 0% |
+| `packages/pose/` | 110 | 421 | 21% |
+| `native-assets/` | 0 | 2,654 | 0% |
+| `supabase/` | 0 | 682 | 0% |
+| `modules/` | 0 | 77 | 0% |
+
+`lib/` is now over half tests — the write-path extraction added
+`swingRowBuilders.test.ts` (+322) and `captureFlow.test.ts` (+109).
 
 ## Runtime data flow
 
@@ -136,7 +185,9 @@ How one swing moves through the system, end to end:
 | Tempo | `packages/domain/swing/tempoAnalysis.ts` | `calculateTempo`, `SwingTempo` |
 | Scoring | `packages/domain/swing/scoring.ts` | `scoreSwing` |
 | In-memory handoff | `lib/swingMotionStore.ts` | `setCurrentSwing*` / `getCurrentSwing*` |
-| Persistence | `lib/persistSwing.ts` | `persistSwing` → `swings` table |
+| Persistence (orchestration) | `lib/persistSwing.ts` | `persistSwing` → `swings` table (now ~394 lines; delegates row-building) |
+| Row builders (pure, tested) | `lib/swingRowBuilders.ts` | `buildWatchImuDebug`, `enrichFramesWithVelocity`, `calcPoseSuccessRate`, … |
+| Capture-flow decisions (pure, tested) | `lib/captureFlow.ts` | `computeNavigationBlockReason`, `deriveClassification` |
 | Playback read | `lib/swingStore.ts` | `getSwingById`, `getSwingMotionFrames` |
 
 ## One-line summary
@@ -260,6 +311,9 @@ The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:100`):
 ## Persistence — the `swings` table
 
 `persistSwing` (`lib/persistSwing.ts`) flattens `AnalysisResult` into one row.
+The pure row-building helpers were extracted to `lib/swingRowBuilders.ts`
+(unit-tested), so `persistSwing.ts` is now ~394 lines (was ~560) and focuses on
+orchestration: auth, the insert, the FK-23503 heal-and-retry, and side-effects.
 Columns, grouped (`lib/database.types.ts:215`):
 
 | Group | Columns |
