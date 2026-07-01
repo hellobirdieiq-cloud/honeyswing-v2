@@ -1,7 +1,7 @@
 /**
- * tiltCorrection.test.ts — Test suite for Task 10 (Phone Gyroscope Tilt Correction)
+ * tiltCorrection.suite.test.ts — Test suite for Task 10 (Phone Gyroscope Tilt Correction)
  *
- * Run: npx tsx lib/tiltCorrection.test.ts
+ * Run: npx tsx packages/domain/swing/tiltCorrection.suite.test.ts
  * (NOT Jest — this repo's Jest/Babel doesn't support TypeScript syntax)
  *
  * Uses custom assert/assertEq/assertApprox harness, same as Tasks 5, 7, 8.
@@ -22,7 +22,7 @@ import {
   type GravityReading,
   type PhoneTilt,
   type TiltCorrectionInput,
-} from '../packages/domain/swing/tiltCorrection';
+} from './tiltCorrection';
 
 // ─── Test Harness ────────────────────────────────────────────────────────────
 

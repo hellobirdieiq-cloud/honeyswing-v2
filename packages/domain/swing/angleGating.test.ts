@@ -1,7 +1,7 @@
 /**
  * angleGating.test.ts — Test suite for Task 9 (Angle-Aware Tip Gating)
  *
- * Run: npx tsx lib/angleGating.test.ts
+ * Run: npx tsx packages/domain/swing/angleGating.test.ts
  * Runner: custom assert harness (NOT Jest), same as Tasks 5, 7, 8, 10.
  *
  * v2: Added interpolation tests, table sync, immutability, type guard,
@@ -27,7 +27,7 @@ import {
   TABLE_VERSION,
   type AngleBucket,
   type GatedMetric,
-} from '../packages/domain/swing/angleGating';
+} from './angleGating';
 
 // ---------------------------------------------------------------------------
 // Test Harness
