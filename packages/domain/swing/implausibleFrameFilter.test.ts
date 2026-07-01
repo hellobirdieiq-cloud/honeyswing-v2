@@ -1,7 +1,7 @@
 /**
  * implausibleFrameFilter.test.ts — Task 12 Test Suite
  *
- * Run: npx tsx lib/implausibleFrameFilter.test.ts
+ * Run: npx tsx packages/domain/swing/implausibleFrameFilter.test.ts
  * NOT Jest. Custom assert harness matching Tasks 5, 7, 8, 9, 10, 11.
  *
  * Coverage:
@@ -26,13 +26,13 @@ import {
   scoreFramePlausibility,
   type LimbSegmentCheck,
   type FramePlausibility,
-} from '../packages/domain/swing/implausibleFrameFilter';
+} from './implausibleFrameFilter';
 
 import {
   computeFrameWeight,
-} from '../packages/domain/swing/visibilityWeighting';
+} from './visibilityWeighting';
 
-import type { JointName, PoseFrame } from '../packages/pose/PoseTypes';
+import type { JointName, PoseFrame } from '../../pose/PoseTypes';
 
 // ---------------------------------------------------------------------------
 // Test harness (matches existing suites)

@@ -297,9 +297,68 @@ else:
 
 ## Face-On Phase 4 — Impact
 
+**Primary signal:** Lead-thumb-line **last** negative→positive zero crossing of `dx = thumbTip.x − thumbCMC.x` within `[top, follow_through]` — `detectFaceOnThumbCrossing` (`packages/domain/swing/phaseDetectionFaceOn.ts`).
+**Fallback signal:** Speed-banded lead-wrist (`leftWrist`) Y-arc-bottom — `detectFaceOnImpact` (`phaseDetectionFaceOn.ts:152-194`).
+**Status:** SHIPPED. Primary read in **pre-canonical (unmirrored, normalized)** space — the same x-sign space the rule was validated in; the canonical mirror would negate `dx` for RH.
+
+```
+// Constants — EXTERNAL ASSUMPTION (EXTERNAL_ASSUMPTIONS.faceOn.impact, phaseDetectionShared.ts)
+thumbConfMin              = 0.4   // skip a frame if either thumb joint conf < this
+thumbHoldFrames           = 2     // crossing must hold +ve this many consecutive VALID frames
+thumbMinValidCoverage     = 0.5   // fraction of window frames passing conf, else fall back
+crossCheckThresholdFrames = 6     // |thumb − arcBottom| above this sets the mismatch flag
+
+// Lead hand by handedness (RH calibrated; LH flips the sign):
+//   RH → leftThumb (CMC, COCO idx 92) & leftThumbTip (idx 95)
+//   LH → rightThumb (idx 113) & rightThumbTip (idx 116), dx negated
+dx[f] = signFlip × (thumbTip.x[f] − thumbCMC.x[f])     // signFlip = -1 for LH, else +1
+
+// Build VALID samples over [top, follow_through]; skip frames where either joint
+// conf < thumbConfMin (conf-skipped frames are NOT samples — the hold/crossing run on
+// consecutive valid samples and span gaps; interpolation uses true frame indices).
+// Collect every neg→pos crossing that holds +ve for thumbHoldFrames consecutive valid
+// samples (tail-of-window: accept if no further sample). Take the LAST crossing —
+// an early transition-wobble crossing right after 'top' confounds the first (81f0b197
+// first = 112.5 wrong; last = 137.5 vs ground truth 137.6).
+impact = sub-frame linear interpolation at the LAST qualifying crossing
+```
+
+**Selection precedence (`detectFaceOnPhases`):**
+1. **Test override** (`impactOverride`, testLeadWristImpact seam) → arc-bottom, bypass thumb.
+2. **Left-handed → arc-bottom** + `impact_fallback_reason: "lh_ungated"`. The LH thumb mapping is built but **gated OFF** — it is UNVALIDATED (no LH ground truth).
+3. **RH thumb crossing** when a qualifying crossing exists and window coverage ≥ `thumbMinValidCoverage` → PRIMARY (`reliability.impact = "high"`).
+4. Otherwise **arc-bottom fallback** with `impact_fallback_reason` ∈ `no_precanonical | invalid_window | no_crossing | low_coverage`.
+
+The window `[top, follow_through]` uses the **provisional arc-bottom** impact to bound `detectFaceOnTop`/`detectFaceOnFinish`; the thumb crossing then becomes the final impact. A swing with no detectable `top` exits earlier via the `top_search_bounds` gate (→ mid-frame fallback), so the thumb window is always valid when reached.
+
+**Cross-check (never silently trusts either):** `swing_debug.phase_rules` records `impact_source`, `impact_thumb`, `impact_arcbottom`, `impact_delta`, and `impact_cross_check_mismatch` (= `|delta| > crossCheckThresholdFrames`) on every swing. A thumb-primary read with a mismatch is **kept** but downgraded to `reliability.impact = "medium"`.
+
+### Fallback detector — speed-banded lead-wrist arc-bottom
+
+```
+// Constants (phaseDetectionFaceOn.ts:148-150)
+IMPACT_SPEED_LOOKBACK  = 3      // frames; 2D leftWrist displacement window
+IMPACT_PEAK_PERCENTILE = 0.95   // robust max (ignores a single noisy spike)
+IMPACT_BAND_THRESHOLD  = 0.9    // band = speed >= threshold * peak
+
+speed[f] = hypot(leftWrist.x[f] - leftWrist.x[f-3], leftWrist.y[f] - leftWrist.y[f-3])
+peak     = sorted_speed[ floor(IMPACT_PEAK_PERCENTILE * n) ]
+floor    = IMPACT_BAND_THRESHOLD * peak
+impact   = argmax_f { leftWrist.y[f] : speed[f] >= floor }   // arc bottom in high-speed band
+```
+
+**KNOWN BIAS (why it is now the fallback, not primary):** fires at the lead-wrist **arc-bottom**, which precedes true contact — measured **3.6 frames early (~60 ms at 60 fps)** on swing 81f0b197 (ground truth 137.6 vs detected 134). A fixed lag constant was **considered and REJECTED**: lag varies with swing speed. The thumb crossing supersedes it as primary (81f0b197: 137.5 vs 137.6).
+
+### Rejected alternatives
+
+**Two-wrist x crossing** — **TESTED AND REJECTED** on 81f0b197: the wrists are ~55 px apart through contact (`wristDx = rightWrist.x − leftWrist.x` runs −53→−36 across frames 134–141), with **no zero-cross in the impact band**. Nearest crossings are early-downswing rotation (~127) and follow-through noise (~143, 5.4 frames late). Label-swap invariant (a L/R wrist swap only flips `wristDx`'s sign — crossing frames are identical). Data: `scripts/output/wrist_crossing_81f0b197.json`.
+
+### SUPERSEDED (replaced — see in-code comment `phaseDetectionFaceOn.ts:144-145`)
+
+> The trail-hand X-rise-vs-foot-reference rule below shipped previously and was replaced because it "keyed off the wrong hand/axis for face-on" (`phaseDetectionFaceOn.ts:145`). Preserved for its N=2 historical validation.
+
 **Signal:** Hand/foot x crossing (hand crosses lead foot reference line)
-**Validated:** N=2, strongest rule in face-on set
-**Status:** PROVISIONAL
+**Validated:** N=2, strongest rule in (old) face-on set
 
 ```
 // Lock foot reference at address — NEVER update during swing
@@ -325,7 +384,7 @@ impact = crossing_frame - lag_frames
 - Lock foot at address — live foot position drifts ±0.005 with weight shift
 - Flag swings where lead foot x moves >0.01 from address (dramatic lunge)
 - Coaching use: hand crosses foot early = ball too far forward; late = too far back
-- `EXTERNAL ASSUMPTION` — 27ms lag correction, 0.03 rise rate, 110ms sustain
+- `EXTERNAL ASSUMPTION` (SUPERSEDED with detector) — 27ms lag correction, 0.03 rise rate, 110ms sustain
 
 ---
 
@@ -365,7 +424,7 @@ finish = first frame where rolling average reaches plateau value
 | 1 — True address | Spine+head+knee window | Not validated | No |
 | 2 — Takeaway | Wrist midX directional gate | Same | Yes ✓ |
 | 3 — Top | Lead wrist X minimum | Wrist vel min + Z max + shoulder | No |
-| 4 — Impact | Combined wrist Y max + 67ms | Hand/foot x crossing | No |
+| 4 — Impact | Combined wrist Y max + 67ms | Lead-thumb-line last zero-crossing (RH); arc-bottom fallback; cross-check flag | No |
 | 5 — Finish | velXY < 0.008 × 3 frames | Trail shoulder x plateau | No |
 
 ---
@@ -386,9 +445,12 @@ finish = first frame where rolling average reaches plateau value
 | Face-on sustain multiplier | 10x | Face-on 0 | Face-on |
 | Face-on sustain window | 330ms | Face-on 0 | Face-on |
 | Face-on top 5-frame window | ±5 frames | Face-on 3 | Face-on |
-| Impact lag correction | 27ms | Face-on 4 | Face-on |
-| Rise rate threshold | 0.03 | Face-on 4 | Face-on |
-| Rise sustain | 110ms | Face-on 4 | Face-on |
+| Impact lag correction | 27ms | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Rise rate threshold | 0.03 | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Rise sustain | 110ms | Face-on 4 — SUPERSEDED with detector | Face-on |
+| Impact speed lookback | 3 frames | Face-on 4 (shipped) | Face-on |
+| Impact peak percentile | 0.95 | Face-on 4 (shipped) | Face-on |
+| Impact band threshold | 0.9 × peak | Face-on 4 (shipped) | Face-on |
 | Shoulder plateau filter | >10% exclusion | Face-on 5 | Face-on |
 | Shoulder plateau confirm | 550ms rising | Face-on 5 | Face-on |
 

@@ -1,7 +1,7 @@
 /**
  * tipFrequency.test.ts — Task 7 Comprehensive Validation
  *
- * Run with: npx tsx lib/tipFrequency.test.ts
+ * Run with: npx tsx packages/domain/swing/tipFrequency.test.ts
  *
  * Covers:
  *   - Core tier transitions (full → shortened → suppressed)
@@ -68,11 +68,24 @@ const MOCK_CONFIDENCE: SwingConfidence = {
   components: { jointVisibility: 0.8, phaseDetection: 1.0, frameCoverage: 1.0, cameraAngle: 0.3 },
 };
 
+// Neutral "unknown" camera result (mirrors cameraAngle.ts unknownResult()).
+// Inert in this suite: only threaded to the injected shouldShowMetricFn.
 const MOCK_CAMERA: CameraAngleResult = {
-  estimatedAngle: null,
-  category: 'unknown',
-  confidence: 0,
-  perMetricWeights: {},
+  angle: 'unknown',
+  shoulderSpread: 0,
+  hipSpread: 0,
+  avgSpread: 0,
+  footIndexNorm: null,
+  weights: {
+    spineAngle: 0,
+    leftElbowAngle: 0,
+    rightElbowAngle: 0,
+    leftKneeAngle: 0,
+    rightKneeAngle: 0,
+    hipSpreadDelta: 0,
+    shoulderTilt: 0,
+    tempo: 0,
+  },
 };
 
 const alwaysShow: ShouldShowMetricFn = () => true;
@@ -389,7 +402,11 @@ tipFrequencyLimiter.reset();
   const stats = tipFrequencyLimiter.getSessionStats();
   assertEq(stats.swingsProcessed, 3, '3 swings processed');
   assertEq(stats.tipsShown, 2, '2 tips shown (grip x2)');
-  assertEq(stats.tipsSuppressed, 2, '2 suppressed (spineAngle x2)');
+  // Since 0732840, Gate 1.75 (isMetricEligible) drops limit-0 metrics like
+  // spineAngle@youth with a bare continue BEFORE Gate 2's recordSuppressed():
+  // tipsSuppressed counts frequency-limit suppressions only; eligibility
+  // skips are uncounted (semantics accepted in Batch 3, Option 1).
+  assertEq(stats.tipsSuppressed, 0, '0 suppressed (spineAngle x2 dropped at eligibility gate, uncounted)');
   assertEq(stats.tipsBlockedByConfidence, 2, '2 blocked by confidence (swing 3)');
 }
 
@@ -430,8 +447,13 @@ tipFrequencyLimiter.setAgeTier('youth');
     }
   }
 
-  // Every metric must be at or under its limit
-  for (const metric of allMetricKeys) {
+  // tempo carries a positive limit but is hard-gated by isMetricEligible
+  // ("no System B representation (no cue()), must be suppressed" — 0732840),
+  // so it can never be shown: pin that, and exclude it from full-utilization.
+  assertEq(shownCounts['tempo'] ?? 0, 0, 'tempo: shown 0x (hard-gated by isMetricEligible)');
+
+  // Every eligible metric must exactly use up its limit
+  for (const metric of allMetricKeys.filter((k) => k !== 'tempo')) {
     const limit = METRIC_LIMITS['youth'][metric];
     const shown = shownCounts[metric] ?? 0;
     assert(shown <= limit, `${metric}: shown ${shown} ≤ limit ${limit}`);

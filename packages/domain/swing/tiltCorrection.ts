@@ -395,14 +395,14 @@ export function correctForPhoneTilt(
     corrections.spineAngle = { before: round(before), after: corrected.spineAngle };
   }
 
-  // shoulderTilt: ASSUMED to be measured via angleToVertical of the shoulder
-  // line at top-of-backswing. Same reference-frame shift as spine.
-  // ⚠ If shoulderTilt is actually angle-from-HORIZONTAL in angles.ts,
-  // change the sign: corrected = before + tilt.pitchDeg instead.
-  // Verify: grep -n shoulderTilt packages/domain/swing/angles.ts
+  // shoulderTilt: measured angle-from-HORIZONTAL in angles.ts:128
+  // (atan2(dy, absDx)). A forward phone pitch shifts a from-horizontal angle in
+  // the POSITIVE direction, so the correction ADDS pitchDeg (opposite sign to
+  // spineAngle, which is from-vertical). Verified: grep -n shoulderTilt
+  // packages/domain/swing/angles.ts.
   if (isFiniteNumber(metrics.shoulderTilt)) {
     const before = metrics.shoulderTilt!;
-    corrected.shoulderTilt = round(before - tilt.pitchDeg);
+    corrected.shoulderTilt = round(before + tilt.pitchDeg);
     corrections.shoulderTilt = { before: round(before), after: corrected.shoulderTilt };
   }
 

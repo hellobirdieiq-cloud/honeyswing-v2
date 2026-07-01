@@ -3,10 +3,10 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
 import type { Landmark } from './SkeletonOverlay';
 import type { GolfAngles } from '../packages/domain/swing/angles';
-import { JOINT_CONFIDENCE_THRESHOLD } from '@/lib/captureValidity';
+import { JOINT_CONFIDENCE_THRESHOLD } from '@/packages/domain/swing/captureValidity';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
-import { isMetricEligible } from '../lib/tipFrequency';
+import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
 import { GOLD } from '../lib/colors';
 

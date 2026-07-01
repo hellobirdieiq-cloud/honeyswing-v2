@@ -1,7 +1,7 @@
 /**
  * positiveReinforcement.test.ts — Task 8 Comprehensive Validation
  *
- * Run with: npx tsx lib/positiveReinforcement.test.ts
+ * Run with: npx tsx packages/domain/swing/positiveReinforcement.test.ts
  *
  * Covers:
  *   - General positive cards (confidence + no corrections gating)

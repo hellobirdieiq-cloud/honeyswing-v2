@@ -32,6 +32,17 @@ for (const [a, b] of BILATERAL_PAIRS) {
   SWAP_MAP.set(b, a);
 }
 
+/**
+ * Canonical lead/trail arm joint keys — the SINGLE source of truth for "which
+ * anatomical pose key is the LEAD vs TRAIL arm AFTER toCanonicalSequence". In
+ * canonical space the LEAD arm is right*, the TRAIL arm is left* (see the M
+ * docstring below: canonical = mirror of a faithful RH capture, so label left*
+ * is the TRAIL arm for both handedness). Everything that needs lead/trail derives
+ * from these — no file hardcodes "lead = rightWrist" on its own.
+ */
+export const CANONICAL_LEAD = { wrist: "rightWrist", elbow: "rightElbow", index: "rightIndex" } as const;
+export const CANONICAL_TRAIL = { wrist: "leftWrist", elbow: "leftElbow", index: "leftIndex" } as const;
+
 function mirrorJoint(
   joint: NormalizedJoint,
   newName: JointName,

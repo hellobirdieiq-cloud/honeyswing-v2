@@ -16,4 +16,5 @@ export const STORAGE_KEYS = {
   ageTier: 'honeyswing:ageTier',
   eventQueue: 'honeyswing:eventQueue',
   playerProfiles: 'honeyswing:playerProfiles',
+  appleWatchCapture: 'honeyswing:appleWatchCapture',
 } as const;

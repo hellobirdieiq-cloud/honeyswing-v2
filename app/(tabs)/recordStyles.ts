@@ -91,6 +91,18 @@ export const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 3,
   },
+  // Watch-primary pre-arm chip — same dark pill + left alignment as modeSegmentControl,
+  // but pushed fully below the mode toggle (top:60 + ~34px pill height + 8px gap) so the
+  // two never overlap in either the collapsed or expanded label state.
+  preArmChip: {
+    position: 'absolute',
+    top: 102,
+    left: 16,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    padding: 3,
+  },
   modeSegment: {
     flexDirection: 'row',
     alignItems: 'center',

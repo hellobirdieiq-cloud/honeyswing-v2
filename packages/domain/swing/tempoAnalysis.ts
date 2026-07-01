@@ -133,13 +133,3 @@ export function isTempoTrustworthy(
 
   return true;
 }
-
-function serializePhaseTimestamps(timestamps: PhaseTimestamps): Record<string, number> {
-  return {
-    takeaway: Math.round(timestamps.takeaway),
-    top: Math.round(timestamps.top),
-    downswing: Math.round(timestamps.downswing),
-    impact: Math.round(timestamps.impact),
-    follow_through: Math.round(timestamps.follow_through),
-  };
-}

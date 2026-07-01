@@ -1,7 +1,7 @@
 /**
- * tiltCorrection.test.ts — Test suite for Task 10 (Phone Gyroscope Tilt Correction)
+ * tiltCorrection.suite.test.ts — Test suite for Task 10 (Phone Gyroscope Tilt Correction)
  *
- * Run: npx tsx lib/tiltCorrection.test.ts
+ * Run: npx tsx packages/domain/swing/tiltCorrection.suite.test.ts
  * (NOT Jest — this repo's Jest/Babel doesn't support TypeScript syntax)
  *
  * Uses custom assert/assertEq/assertApprox harness, same as Tasks 5, 7, 8.
@@ -22,7 +22,7 @@ import {
   type GravityReading,
   type PhoneTilt,
   type TiltCorrectionInput,
-} from '../packages/domain/swing/tiltCorrection';
+} from './tiltCorrection';
 
 // ─── Test Harness ────────────────────────────────────────────────────────────
 
@@ -548,12 +548,12 @@ group('correctForPhoneTilt — negative tilt (backward)');
 
 group('correctForPhoneTilt — shoulder correction');
 {
-  // Can go negative
+  // shoulderTilt is from-horizontal (angles.ts:128) → correction ADDS pitch.
   const r1 = correctForPhoneTilt({ shoulderTilt: 12 }, tilt(15));
-  assertApprox(r1.corrected.shoulderTilt!, -3, 0.01, '12 - 15 = -3 (negative OK)');
+  assertApprox(r1.corrected.shoulderTilt!, 27, 0.01, '12 + 15 = 27');
 
   const r2 = correctForPhoneTilt({ shoulderTilt: 20 }, tilt(10));
-  assertApprox(r2.corrected.shoulderTilt!, 10, 0.01, '20 - 10 = 10');
+  assertApprox(r2.corrected.shoulderTilt!, 30, 0.01, '20 + 10 = 30');
 }
 
 group('correctForPhoneTilt — both metrics');
@@ -563,7 +563,7 @@ group('correctForPhoneTilt — both metrics');
     tilt(12, { rollDeg: 3, rejectedCount: 2 })
   );
   assertApprox(result.corrected.spineAngle!, 8, 0.01, 'spine: 20 - 12');
-  assertApprox(result.corrected.shoulderTilt!, -4, 0.01, 'shoulder: 8 - 12');
+  assertApprox(result.corrected.shoulderTilt!, 20, 0.01, 'shoulder: 8 + 12 (from-horizontal)');
   assertEq(result.debug.correctionApplied, true, 'applied');
   assertEq(Object.keys(result.debug.corrections).length, 2, '2 corrections');
   assertEq(result.debug.rejectedCount, 2, 'rejectedCount passed through');
@@ -713,7 +713,7 @@ group('applyTiltCorrection — end-to-end');
   assertEq(result.debug.correctionApplied, true, 'applied');
   assertApprox(result.debug.phonePitchDeg, 15, 0.5, 'detected 15°');
   assertApprox(result.corrected.spineAngle!, 10, 0.5, 'spine: 25 - 15');
-  assertApprox(result.corrected.shoulderTilt!, -5, 0.5, 'shoulder: 10 - 15');
+  assertApprox(result.corrected.shoulderTilt!, 25, 0.5, 'shoulder: 10 + 15 (from-horizontal)');
 }
 
 {
@@ -735,8 +735,10 @@ group('Roundtrip — 15° tilt');
 
 group('Roundtrip — shoulder at 20° tilt');
 {
+  // from-horizontal: forward pitch lowers the reading, so measured = real - pitch
+  // and the correction ADDS pitch back to recover real.
   const real = 5, phoneTilt = 20;
-  const result = correctForPhoneTilt({ shoulderTilt: real + phoneTilt }, tilt(phoneTilt));
+  const result = correctForPhoneTilt({ shoulderTilt: real - phoneTilt }, tilt(phoneTilt));
   assertApprox(result.corrected.shoulderTilt!, real, 3, `shoulder within 3° of ${real}°`);
 }
 

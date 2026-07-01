@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { styles } from './resultStyles';
 import {
@@ -28,17 +29,17 @@ import {
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
 import VisualCoachCard from '../../components/VisualCoachCard';
-import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
+import { classifyCapture, type CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from '../../lib/handedness';
 import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
 import { resolveHeaderProfile } from '../../lib/headerIdentity';
 import { getCoachCode } from '../../lib/coachCode';
-import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
+import { processSwingTips, type ProcessedCoachingTip } from '@/packages/domain/swing/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import SwingArtCard from '../../components/SwingArtCard';
 import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';
-import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
-import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
+import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
+import type { ProcessSwingResult } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
 import {
@@ -147,6 +148,10 @@ export default function ResultScreen() {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
   const [speed, setSpeed] = useState(0.25);
+  // Stage view mode. Default 'overlay' (skeleton on the video frame). Only
+  // meaningful when a video exists; the no-video path renders skeleton-only and
+  // never shows the segmented control.
+  const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
   const swingAddedRef = useRef(false);
   const [gripCloud, setGripCloud] = useState<GripClassification | null>(null);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
@@ -187,10 +192,14 @@ export default function ResultScreen() {
       : 33;
   }, [effectiveMotion]);
 
-  useEffect(() => {
-    getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
-    getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
+  // Re-read on focus (not just mount) so a profile switched while this screen was
+  // backgrounded is reflected when the viewer regains focus.
+  useFocusEffect(
+    useCallback(() => {
+      getPrimaryProfile().then(setActiveProfile).catch((err) => console.error('[HoneySwing]', err));
+      getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
+    }, []),
+  );
 
   // Local capture file wins (live swing, byte-identical to the previous
   // behavior); remote signed URL is the historical-view fallback. useVideoPlayer
@@ -315,19 +324,23 @@ export default function ResultScreen() {
     return () => clearTimeout(t);
   }, [videoSectionY]);
 
-  useEffect(() => {
-    getActiveProfileHandedness().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
-    getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
+  // Re-read on focus so the skeleton orientation reflects the ACTIVE profile's
+  // handedness after a profile switch (was once-only on mount → stale skeleton).
+  useFocusEffect(
+    useCallback(() => {
+      getActiveProfileHandedness().then(setIsLeftHanded).catch((err) => console.error('[HoneySwing]', err));
+      getCoachCode().then(setCoachName).catch((err) => console.error('[HoneySwing]', err));
 
-    // Check swing limit after this swing was persisted
-    checkSwingLimit().then((status) => {
-      if (!status.allowed) {
-        getUser().then((user) => {
-          if (!user) setLimitHit(true);
-        }).catch((err) => console.error('[HoneySwing]', err));
-      }
-    }).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
+      // Check swing limit after this swing was persisted
+      checkSwingLimit().then((status) => {
+        if (!status.allowed) {
+          getUser().then((user) => {
+            if (!user) setLimitHit(true);
+          }).catch((err) => console.error('[HoneySwing]', err));
+        }
+      }).catch((err) => console.error('[HoneySwing]', err));
+    }, []),
+  );
 
   useEffect(() => {
     if (!swingId) return;
@@ -654,59 +667,107 @@ export default function ResultScreen() {
               )}
             </View>
 
+            {/* 2. Stage: Video / Overlay / Skeleton */}
             {effectiveMotion?.frames?.length ? (
-              <SwingSkeletonCanvas
-                frames={effectiveMotion.frames}
-                phases={analysis?.phases ?? null}
-                width={skeletonCanvasW}
-                height={skeletonCanvasH}
-                // Driven by the video playhead when a video exists; null →
-                // uncontrolled self-clocked replay (video-less swings).
-                playheadIdx={hasVideo ? (videoIdx ?? 0) : null}
-                // Driven-mode chip taps seek the video — the same shared seek
-                // the video-section chips use, so the two rows cannot diverge.
-                onPhaseSeek={(_phase, index) => seekToFrame(index)}
-              />
-            ) : null}
+              hasVideo ? (
+                <>
+                  {/* Control bar — segmented control (left) + speed chips
+                      (right). Video-backed swings only; the speed chips are the
+                      transport for the shared video clock that also drives the
+                      skeleton in Overlay/Skeleton modes. */}
+                  <View style={styles.controlBar}>
+                    <View style={styles.segmentedControl}>
+                      {([
+                        { mode: 'video', label: 'Video' },
+                        { mode: 'overlay', label: 'Overlay' },
+                        { mode: 'skeleton', label: 'Skeleton' },
+                      ] as const).map(({ mode, label }) => (
+                        <TouchableOpacity
+                          key={mode}
+                          style={[styles.segment, viewMode === mode && styles.segmentActive]}
+                          onPress={() => setViewMode(mode)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.segmentText, viewMode === mode && styles.segmentTextActive]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={[styles.segmentedControl, { alignSelf: 'stretch' }]}>
+                      {([0.25, 0.5, 1] as const).map((s) => (
+                        <TouchableOpacity
+                          key={s}
+                          style={[styles.segment, { flex: 1, alignItems: 'center' }, speed === s && styles.segmentActive]}
+                          onPress={() => setSpeed(s)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.segmentText, speed === s && styles.segmentTextActive]}>
+                            {s}x
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
 
-            {/* 2. Video */}
-            {effectiveVideoUri && player && (
-              <View
-                style={styles.videoSection}
-                onLayout={(e) => setVideoSectionY(e.nativeEvent.layout.y)}
-              >
-                <View style={styles.videoWrapper}>
-                  <VideoView
-                    player={player}
-                    style={styles.videoPlayer}
-                    nativeControls={false}
-                  />
-                  {!isPlaying && (
-                    <TouchableOpacity
-                      style={styles.videoPlayButton}
-                      onPress={() => player.play()}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.videoPlayButtonIcon}>▶</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.speedRow}>
-                  {([0.25, 0.5, 1] as const).map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={[styles.speedButton, speed === s && styles.speedButtonActive]}
-                      onPress={() => setSpeed(s)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.speedButtonText, speed === s && styles.speedButtonTextActive]}>
-                        {s}x
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
+                  <View
+                    style={styles.videoSection}
+                    onLayout={(e) => setVideoSectionY(e.nativeEvent.layout.y)}
+                  >
+                    {/* Video stays mounted in ALL modes — unmounting would
+                        pause the player / stop timeUpdate and freeze the driven
+                        skeleton. Skeleton mode just hides it behind a dark
+                        backdrop (opacity 0 + opaque cover). */}
+                    <View style={[styles.stage, { width: skeletonCanvasW, height: skeletonCanvasH }]}>
+                      <VideoView
+                        player={player}
+                        style={[styles.videoPlayer, viewMode === 'skeleton' && { opacity: 0 }]}
+                        nativeControls={false}
+                      />
+                      {viewMode === 'skeleton' && (
+                        <View style={[StyleSheet.absoluteFill, styles.skeletonBackdrop]} />
+                      )}
+                      {viewMode !== 'video' && (
+                        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                          <SwingSkeletonCanvas
+                            frames={effectiveMotion.frames}
+                            phases={analysis?.phases ?? null}
+                            width={skeletonCanvasW}
+                            height={skeletonCanvasH}
+                            // Driven by the video clock; videoIdx ?? 0 until the
+                            // first timeUpdate. No onPhaseSeek → canvas hides its
+                            // own chip row; the phase chips below are the single
+                            // chip surface.
+                            playheadIdx={videoIdx ?? 0}
+                            overlay
+                          />
+                        </View>
+                      )}
+                      {!isPlaying && (
+                        <TouchableOpacity
+                          style={styles.videoPlayButton}
+                          onPress={() => player.play()}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.videoPlayButtonIcon}>▶</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                </>
+              ) : (
+                // No video → skeleton-only, self-clocked replay (existing
+                // behavior). No segmented control.
+                <SwingSkeletonCanvas
+                  frames={effectiveMotion.frames}
+                  phases={analysis?.phases ?? null}
+                  width={skeletonCanvasW}
+                  height={skeletonCanvasH}
+                  playheadIdx={null}
+                  onPhaseSeek={(_phase, index) => seekToFrame(index)}
+                />
+              )
+            ) : null}
 
             {/* 3. Phase chips */}
             <View style={styles.phaseChipsRow}>
@@ -725,7 +786,10 @@ export default function ResultScreen() {
                       }
                       activeOpacity={0.7}
                     >
-                      <Text style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}>
+                      <Text
+                        style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
+                        numberOfLines={1}
+                      >
                         {entry.label}
                       </Text>
                     </TouchableOpacity>
@@ -748,7 +812,10 @@ export default function ResultScreen() {
                     }
                     activeOpacity={0.7}
                   >
-                    <Text style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}>
+                    <Text
+                      style={enabled ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
+                      numberOfLines={1}
+                    >
                       {entry.label}
                     </Text>
                   </TouchableOpacity>

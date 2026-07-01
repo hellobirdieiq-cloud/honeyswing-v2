@@ -6,7 +6,7 @@
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import type { Landmark } from '../components/SkeletonOverlay';
 import type { ScoringBreakdownEntry } from '../packages/domain/swing/scoring';
-import type { RawCoachingTip } from './tipFrequency';
+import type { RawCoachingTip } from '@/packages/domain/swing/tipFrequency';
 
 /** Convert a PoseFrame's joints into the Landmark[] format SkeletonOverlay expects. */
 export function frameToLandmarks(frame: PoseFrame): Landmark[] {

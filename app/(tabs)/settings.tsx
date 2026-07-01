@@ -19,10 +19,11 @@ import { deleteAccount, supabase } from '../../lib/supabase';
 import { getCoachCode } from '../../lib/coachCode';
 import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
+import { getWatchCaptureEnabled, setWatchCaptureEnabled } from '../../lib/watchCaptureSetting';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
 import { getProfiles, addProfile, deleteProfile, saveProfiles, setPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
-import { tipFrequencyLimiter } from '../../lib/tipFrequency';
+import { tipFrequencyLimiter } from '@/packages/domain/swing/tipFrequency';
 import { GOLD } from '../../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {
@@ -44,6 +45,7 @@ export default function SettingsScreen() {
   const [coachName, setCoachName] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [isLeftHanded, setIsLeftHandedState] = useState(false);
+  const [watchCapture, setWatchCaptureState] = useState(false);
   const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
   const [isCoach, setIsCoach] = useState(false);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
@@ -54,6 +56,7 @@ export default function SettingsScreen() {
     useCallback(() => {
       getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
       getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
+      getWatchCaptureEnabled().then(setWatchCaptureState).catch((err) => console.error('[HoneySwing]', err));
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
       getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
 
@@ -484,6 +487,36 @@ export default function SettingsScreen() {
           </View>
         </View>
       )}
+
+      <View style={styles.handednessSection}>
+        <Text style={styles.coachLabel}>Apple Watch capture (beta)</Text>
+        <View style={styles.toggleRow}>
+          <TouchableOpacity
+            style={[styles.toggleOption, !watchCapture && styles.optionSelected]}
+            onPress={() => {
+              setWatchCaptureState(false);
+              setWatchCaptureEnabled(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.optionText, !watchCapture && styles.optionTextSelected]}>
+              Off
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleOption, watchCapture && styles.optionSelected]}
+            onPress={() => {
+              setWatchCaptureState(true);
+              setWatchCaptureEnabled(true);
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.optionText, watchCapture && styles.optionTextSelected]}>
+              On
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <View style={styles.restoreSection}>
         <TouchableOpacity

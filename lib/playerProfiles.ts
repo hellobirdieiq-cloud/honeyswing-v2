@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
+import { clearCurrentSwingMotion } from './swingMotionStore';
 
 export type PlayerProfile = {
   id: string;
@@ -48,6 +49,31 @@ export async function addProfile(name: string, isLeftHanded: boolean): Promise<P
   return profile;
 }
 
+/**
+ * Seed a local primary profile if none exists yet, so the Record tab always has a
+ * kid to attribute a swing to — useSwingCapture hard-blocks recording without one
+ * (ce8fd1f). No-op when a profile already exists. `resolveName` supplies a display
+ * name (e.g. the onboarding name from Supabase) and is only invoked when a seed is
+ * actually needed; falls back to "Me" when it yields nothing. Handedness comes from
+ * the onboarding-stored flag. Idempotent.
+ */
+export async function ensureLocalPrimaryProfile(
+  resolveName: () => Promise<string | null | undefined>,
+): Promise<PlayerProfile | null> {
+  const existing = await getProfiles();
+  if (existing.length > 0) return null;
+  let name = '';
+  try {
+    name = (await resolveName())?.trim() ?? '';
+  } catch {
+    name = '';
+  }
+  if (name === '') name = 'Me';
+  const isLeftHanded =
+    (await AsyncStorage.getItem(STORAGE_KEYS.isLeftHanded)) === 'true';
+  return addProfile(name, isLeftHanded);
+}
+
 export async function deleteProfile(id: string): Promise<void> {
   const existing = await getProfiles();
   const remaining = existing.filter((p) => p.id !== id);
@@ -64,6 +90,13 @@ export async function setPrimaryProfile(id: string): Promise<void> {
   const existing = await getProfiles();
   const updated = existing.map((p) => ({ ...p, isPrimary: p.id === id }));
   await saveProfiles(updated);
+  // Invalidate the in-memory "current swing" singleton on every profile switch.
+  // It survives navigation (module-level, not zustand/context) and the viewer
+  // (app/analysis/result.tsx) renders it whenever isLiveSwing is true — so a
+  // switch without clearing leaves the previous kid's video + wrong-handedness
+  // skeleton on screen until an app reload. Clearing forces the viewer back to
+  // the authoritative per-swing DB load.
+  clearCurrentSwingMotion();
 }
 
 export async function getPrimaryProfile(): Promise<PlayerProfile | null> {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "honeyswing",
     "slug": "honeyswing-v2",
-    "version": "1.10.0",
+    "version": "1.10.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "honeyswingv2",
@@ -36,7 +36,8 @@
       "expo-video",
       "./plugins/withHoneyNative",
       "@clerk/expo",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,

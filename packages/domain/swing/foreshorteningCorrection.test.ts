@@ -1,7 +1,7 @@
 /**
  * foreshorteningCorrection.test.ts — Task 5 Comprehensive Validation
  *
- * Run with: npx tsx lib/foreshorteningCorrection.test.ts
+ * Run with: npx tsx packages/domain/swing/foreshorteningCorrection.test.ts
  *   (from honeyswing-v2 root — same runner as Tasks 7 & 8)
  *
  * Covers:
@@ -25,10 +25,10 @@ import {
   _testExports,
   type CorrectionResult,
   type ForeshorteningDebug,
-} from '../packages/domain/swing/foreshorteningCorrection';
+} from './foreshorteningCorrection';
 
-import type { GolfAngles } from '../packages/domain/swing/angles';
-import type { CameraAngleResult } from '../packages/domain/swing/cameraAngle';
+import type { GolfAngles } from './angles';
+import type { CameraAngleResult } from './cameraAngle';
 
 const {
   MIN_CORRECTION_ANGLE,
@@ -102,6 +102,7 @@ function makeAngles(overrides?: Partial<GolfAngles>): GolfAngles {
     rightKneeAngle: 155,
     hipSpreadDelta: 25,
     shoulderTilt: 8,
+    spineDrift: null,
     ...overrides,
   };
 }
@@ -112,6 +113,7 @@ function makeCameraResult(avgSpread: number, angle?: 'face_on' | 'dtl' | 'unknow
     shoulderSpread: avgSpread * 1.1,
     hipSpread: avgSpread * 0.9,
     avgSpread,
+    footIndexNorm: null,
     weights: {
       spineAngle: 1, leftElbowAngle: 1, rightElbowAngle: 1,
       leftKneeAngle: 1, rightKneeAngle: 1, hipSpreadDelta: 1,
@@ -483,6 +485,7 @@ group('Null metric handling');
   const angles: GolfAngles = {
     spineAngle: null, leftElbowAngle: null, rightElbowAngle: null,
     leftKneeAngle: null, rightKneeAngle: null, hipSpreadDelta: null, shoulderTilt: null,
+    spineDrift: null,
   };
   const camera = makeCameraResult(spreadForAngle(45));
   const result = correctForeshortening(angles, camera);

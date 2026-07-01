@@ -38,6 +38,50 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
 
+  // Control row: segmented control (left) + speed chips (right)
+  controlBar: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 12,
+  },
+  // View-mode segmented control (Video / Overlay / Skeleton)
+  segmentedControl: {
+    flexDirection: 'row',
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  segmentActive: {
+    backgroundColor: GOLD,
+  },
+  segmentText: {
+    color: '#999',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#111',
+  },
+
+  // Single stage that hosts the video + (optional) skeleton overlay
+  stage: {
+    position: 'relative',
+    alignSelf: 'center',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  // Opaque cover that hides the (still-mounted) video in Skeleton mode.
+  skeletonBackdrop: {
+    backgroundColor: '#08080A',
+  },
+
   // Video replay
   videoSection: {
     marginBottom: 20,
@@ -49,29 +93,6 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
-  speedRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
-  speedButton: {
-    backgroundColor: '#1A1A1C',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  speedButtonActive: {
-    backgroundColor: GOLD,
-  },
-  speedButtonText: {
-    color: '#999',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  speedButtonTextActive: {
-    color: '#111',
-  },
-
   // Score
   scoreCard: {
     alignItems: 'center',
@@ -168,29 +189,35 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Phase chips (2×3 grid below video)
+  // Phase chips — single row of content-sized chips at a fixed 13px label (see
+  // phaseChipLabel). Chips hug their label width via paddingHorizontal (no
+  // flex:1, no auto-shrink), gap 6 between them; all 5 fit on one line down to
+  // the narrowest supported iPhone (375pt). minHeight 44 preserves the 44pt
+  // touch target.
   phaseChipsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 4,
     marginBottom: 16,
   },
   phaseChip: {
+    minWidth: 64,
+    minHeight: 44,
     backgroundColor: '#1A1A1C',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexBasis: '31%',
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   phaseChipDisabled: {
+    minWidth: 64,
+    minHeight: 44,
     backgroundColor: '#0E0E10',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexBasis: '31%',
+    paddingHorizontal: 6,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   phaseChipLabel: {
     color: '#fff',

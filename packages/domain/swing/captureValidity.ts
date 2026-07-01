@@ -1,4 +1,4 @@
-import type { PoseFrame, JointName } from '../packages/pose/PoseTypes';
+import type { PoseFrame, JointName } from '../../pose/PoseTypes';
 
 // ── Tunable thresholds (single source of truth) ──────────────────────
 export const VALID_MIN_FRAMES = 30;

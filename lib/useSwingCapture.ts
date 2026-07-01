@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
 import type { PoseSequence } from '../packages/pose/PoseTypes';
+import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';
 import {
   clearCurrentSwingAnalysis,
   clearCurrentSwingMotion,
@@ -25,8 +26,11 @@ import {
   abandonPending,
   outboxEnabled,
 } from './outbox';
-import { classifyCapture } from './captureValidity';
+import { classifyCapture } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from './handedness';
+import { resolveAttribution, type ActiveProfileSnapshot } from './swingAttribution';
+import { useWatchImuCapture } from './useWatchImuCapture';
+import { STARTED_FRESHNESS_MS } from './watchImuConstants';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
@@ -35,14 +39,13 @@ import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
+import { computeNavigationBlockReason, deriveClassification, type CapturePhase } from '@/packages/domain/swing/captureFlow';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const CAPTURE_WINDOW_MS = 4000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
 interface UseSwingCaptureOptions {
   cameraRef: React.RefObject<Camera | null>;
@@ -60,6 +63,11 @@ interface UseSwingCaptureOptions {
   targetFps?: number;
   onSwingPersisted?: (swingId: string | null) => void;
   skipResultNavigation?: boolean;
+  // Synchronous read of the active profile shown in the kid chip, sampled at
+  // button-press. Returns null when no profile is selected → recording is blocked.
+  // Optional: legacy callers (clinic) omit it and keep the persist-time fallback.
+  getActiveProfile?: () => ActiveProfileSnapshot | null;
+  onMissingProfile?: () => void;
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -80,9 +88,20 @@ export function useSwingCapture({
   targetFps,
   onSwingPersisted,
   skipResultNavigation = false,
+  getActiveProfile,
+  onMissingProfile,
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
+  // Pre-armed "ready" state: the only state in which a fresh watch `started` may auto-start
+  // video. Entering it runs the clock-sync handshake (watch reachable-only).
+  const [preArmed, setPreArmed] = useState(false);
+  const preArmedRef = useRef(false);
+
+  // Apple Watch IMU capture, composed beside tilt capture (tilt is prop-injected;
+  // watch is internal so record.tsx needs no change). No-ops entirely when the
+  // "Apple Watch capture (beta)" toggle is OFF.
+  const watch = useWatchImuCapture();
 
   const capturePhaseRef = useRef<CapturePhase>('idle');
   const captureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,8 +113,18 @@ export function useSwingCapture({
   const isFinalizingRef = useRef(false);
   const gravityReadingsRef = useRef<GravityReading[]>([]);
   const isLeftHandedRef = useRef<boolean>(false);
+  // Active-profile snapshot taken at beginRecording (button-press), threaded
+  // through analysis + persist so a mid-extraction kid-switch can't re-attribute
+  // the swing. getActiveProfileRef is kept fresh each render so the watch-started
+  // effect (mounted once) never reads a stale closure.
+  const getActiveProfileRef = useRef(getActiveProfile);
+  getActiveProfileRef.current = getActiveProfile;
+  const activeProfileSnapshotRef = useRef<ActiveProfileSnapshot | null>(null);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+  // Watch-IMU alignment inputs threaded from beginRecording → persist.
+  const recordIntentAtRef = useRef<number | null>(null);
+  const captureOriginRef = useRef<'watch' | 'phone'>('phone');
   // Durable-outbox video entry id for THIS capture. Minted at recording-finish
   // (decoupled from swingId + network); reconciled via attachSwingId on persist
   // success, or abandoned on any terminal capture failure. iOS only.
@@ -126,12 +155,12 @@ export function useSwingCapture({
   }
 
   async function tryNavigate() {
-    const blockReason =
-      capturePhaseRef.current !== 'complete' ? 'phase' :
-      !analysisReadyRef.current ? 'analysis' :
-      videoUriRef.current === 'pending' ? 'video' :
-      navigatedRef.current ? 'navigated' :
-      null;
+    const blockReason = computeNavigationBlockReason({
+      phase: capturePhaseRef.current,
+      analysisReady: analysisReadyRef.current,
+      video: videoUriRef.current,
+      navigated: navigatedRef.current,
+    });
 
     console.log(
       `[tryNavigate] phase=${capturePhaseRef.current} analysis=${analysisReadyRef.current} video=${videoUriRef.current === 'pending' ? 'pending' : typeof videoUriRef.current === 'string' ? 'ready' : videoUriRef.current} navigated=${navigatedRef.current} → ${blockReason ? `BLOCKED(${blockReason})` : 'NAVIGATING'}`
@@ -157,7 +186,11 @@ export function useSwingCapture({
     router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
 
-  function handleCaptureFailure(reason: string) {
+  // rtmw: raw frames retained for debugging when extraction DID produce a stream
+  // but the swing was still rejected (no-person, or analysis/phase-detection
+  // threw). Attached to the stub row's pose_full so #4 can replay the rejection.
+  // Omitted for the genuinely-empty failures (zero-frames, recording-error).
+  function handleCaptureFailure(reason: string, rtmw?: Rtmw133Frame[] | null) {
     // A failed capture never uploads its video — abandon the durable entry so it
     // isn't stranded pending until the orphan sweep.
     const strandedVideoEntry = videoOutboxEntryIdRef.current;
@@ -190,6 +223,9 @@ export function useSwingCapture({
         camera_guidance_color: guidanceSnapshotRef.current.color,
       },
       gravityReadings: gravityReadingsRef.current,
+      playerProfileId: activeProfileSnapshotRef.current?.id,
+      isLeftHanded: activeProfileSnapshotRef.current?.isLeftHanded,
+      rtmw: rtmw ?? null,
     }).catch((err) => {
       console.error('[persistFailedSwing] FAILED', err);
       return null;
@@ -219,18 +255,51 @@ export function useSwingCapture({
 
     clearTimers();
     stopTiltCapture();
+    watch.stopCapture();
     gravityReadingsRef.current = getTiltReadings();
-    isLeftHandedRef.current = await getActiveProfileHandedness();
+    // Record flow captured handedness from the button-press snapshot
+    // (isLeftHandedRef, set in beginRecording). Legacy callers without a profile
+    // provider still read it here at finalize, as before.
+    if (!activeProfileSnapshotRef.current) {
+      isLeftHandedRef.current = await getActiveProfileHandedness();
+    }
     cameraRef.current?.stopRecording()?.catch(() => {});
 
     // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
     // 1500ms gives ~3x headroom. Not measured.
     recordingStopFallbackTimerRef.current = setTimeout(() => {
+      console.log('[KPI] stop-fallback-fired', Date.now());
       handleCaptureFailure('recording-stop-fallback');
     }, 1500);
   }
 
-  function beginRecording() {
+  function beginRecording(opts?: { origin?: 'watch' | 'phone' }) {
+    // Sample the active profile at button-press and hard-block if none is set —
+    // a swing must never be recorded (and later persisted) without a kid to
+    // attribute it to. Handedness comes from the same snapshot, so analysis and
+    // persistence agree with the kid shown in the chip at this instant. Legacy
+    // callers without a provider (clinic) skip this and keep the persist-time
+    // fallback (snapshot left null → finalizeCapture reads handedness, persist
+    // resolves the primary profile).
+    const provider = getActiveProfileRef.current;
+    if (provider) {
+      const attribution = resolveAttribution(provider());
+      if (!attribution) {
+        console.warn('[useSwingCapture] beginRecording blocked — no active profile');
+        onMissingProfile?.();
+        return;
+      }
+      activeProfileSnapshotRef.current = {
+        id: attribution.playerProfileId,
+        isLeftHanded: attribution.isLeftHanded,
+      };
+      isLeftHandedRef.current = attribution.isLeftHanded;
+    } else {
+      activeProfileSnapshotRef.current = null;
+    }
+
+    const origin = opts?.origin ?? 'phone';
+    captureOriginRef.current = origin;
     NativeModules.HoneyGripBridge?.resetPoseState?.();
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
@@ -248,6 +317,16 @@ export function useSwingCapture({
     };
 
     startTiltCapture();
+    // Watch-primary: a watch-initiated capture is ALREADY recording — do not re-arm it.
+    // The phone warm/legacy path opportunistically arms a reachable watch (IMU absent if not).
+    if (origin === 'phone') {
+      watch.startCapture().catch(() => {});
+    }
+    const recordIntentAt = Date.now();
+    recordIntentAtRef.current = recordIntentAt;
+    console.log('[KPI] record-intent', recordIntentAt);
+    // Stamp the monotonic video-start anchor (same clock domain as the sync offset).
+    void watch.stampVideoAnchor();
     cameraRef.current?.startRecording({
       videoCodec: 'h265',
       onRecordingFinished: async (video) => {
@@ -274,6 +353,10 @@ export function useSwingCapture({
 
         let extractionMs = 0;
         let analysisMs = 0;
+        // Hoisted so the catch can retain the raw stream on a post-extraction
+        // throw (e.g. face-on phase-detection breach) — null until extraction
+        // succeeds, so a pre-extraction throw correctly persists no frames.
+        let rtmwForFailure: Rtmw133Frame[] | null = null;
 
         try {
           // EXTERNAL ASSUMPTION — 45s pipeline timeout. Covers observed worst-case extraction (~30s on a 5s clip) plus margin; revisit if clip length grows. Not a measured ceiling.
@@ -295,7 +378,7 @@ export function useSwingCapture({
           extractionMs = result.rtmw.reduce((acc, f) => acc + (f.extractionMs ?? 0), 0);
 
           if (result.failure === 'no-person') {
-            handleCaptureFailure('no-person');
+            handleCaptureFailure('no-person', result.rtmw);
             return;
           }
           if (result.rtmw.length === 0) {
@@ -304,6 +387,7 @@ export function useSwingCapture({
           }
 
           const { poseFrames, rtmw } = result;
+          rtmwForFailure = rtmw; // retain for a post-extraction throw (see catch)
           // Layer 0 routing — corrected stream feeds ONE consumer: the live
           // replay store (setCurrentSwingMotion), i.e. the kid-visible
           // skeleton. Everything else deliberately reads RAW poseFrames:
@@ -312,7 +396,7 @@ export function useSwingCapture({
           //     preserves the true swap set in swing_debug.keypoint_identity.
           //   - grip block: wrist joints only; identity never touches wrists.
           //   - classifyCapture: confidence-count over symmetric L/R pairs —
-          //     provably swap-invariant (lib/captureValidity.ts:11-26).
+          //     provably swap-invariant (packages/domain/swing/captureValidity.ts).
           //   - persistSwing: persisted motion_frames are the debug source of
           //     truth; historical reads re-apply this pure pass at fetch time
           //     (lib/swingStore.ts getSwingMotionFrames/Batch).
@@ -322,11 +406,28 @@ export function useSwingCapture({
             source: 'rtmw-l-2d-v1',
             metadata: { fps: CAPTURE_FPS, durationMs: video.duration * 1000 },
           };
+          // Pull the paired-watch IMU blob now (post-extraction = maximal time for
+          // the transfer to land). Empty [] when toggle OFF / no watch / stale.
+          const watchReadings = await watch.getReadings();
+          const watchSummary = watch.getSummary();
+          const watchSeq = watch.getCurrentSeq();
+          const watchAlignment =
+            watchReadings.length > 0
+              ? await watch.getAlignment(watchReadings, {
+                  videoDurationMs: video.duration * 1000,
+                  recordIntentAtMs: recordIntentAtRef.current,
+                  captureOrigin: captureOriginRef.current,
+                })
+              : null;
+
           const t0 = Date.now();
           const analysis = analyzePoseSequence(
             sequence,
             isLeftHandedRef.current,
             gravityReadingsRef.current,
+            undefined,
+            undefined,
+            watchReadings,
           );
           analysisMs = Date.now() - t0;
 
@@ -367,13 +468,7 @@ export function useSwingCapture({
           updateCapturePhase('complete');
 
           const baseClassification = classifyCapture(poseFrames);
-          const classification = fallbackGateReason
-            ? {
-                ...baseClassification,
-                validity: 'partial' as const,
-                reason: 'no-swing',
-              }
-            : baseClassification;
+          const classification = deriveClassification(baseClassification, fallbackGateReason);
           const captureFrameStats = getCaptureFrameStats();
           swingIdPromiseRef.current = persistSwing(
             poseFrames, // RAW by design — persisted motion_frames are the debug source of truth
@@ -387,11 +482,20 @@ export function useSwingCapture({
             captureFrameStats,
             targetFps ?? null,
             gravityReadingsRef.current,
-            undefined,
+            activeProfileSnapshotRef.current?.id,
             result.captureFps ?? null,
             result.videoDurationMs ?? null,
             result.videoFrameCount ?? null,
             result.extractionTotalMs ?? null,
+            watchSummary && watchReadings.length > 0
+              ? {
+                  readings: watchReadings,
+                  summary: watchSummary,
+                  alignment: watchAlignment,
+                  captureSeq: watchSeq,
+                }
+              : null,
+            activeProfileSnapshotRef.current?.isLeftHanded,
           ).then((swingId) => {
             if (swingId) {
               setCurrentSwingId(swingId);
@@ -399,6 +503,8 @@ export function useSwingCapture({
             } else {
               console.warn('[persistSwing] skipped (no user)', { frames: poseFrames.length });
             }
+            // Record seq→swingId for the watch-IMU late-join map (and clear in-flight).
+            watch.registerSwingId(watchSeq, swingId);
             return swingId;
           }).catch((err) => {
             console.error('[persistSwing] FAILED', {
@@ -406,6 +512,9 @@ export function useSwingCapture({
               frames: poseFrames.length,
               classification: classification?.validity ?? 'unknown',
             });
+            // Clear the in-flight seq even on failure so a late batch for this seq can still
+            // drain (→ IMU-only, since no swing row exists) rather than being suppressed.
+            watch.registerSwingId(watchSeq, null);
             return null;
           });
 
@@ -473,7 +582,7 @@ export function useSwingCapture({
           } else {
             console.warn('[HoneySwing] extract-or-analyze threw:', msg);
           }
-          handleCaptureFailure('extract-or-analyze-threw');
+          handleCaptureFailure('extract-or-analyze-threw', rtmwForFailure);
         }
       },
       onRecordingError: (e) => {
@@ -519,9 +628,52 @@ export function useSwingCapture({
     beginRecording();
   }
 
+  // Enter the pre-armed "ready" state: the watch-primary path. Runs the clock-sync handshake
+  // (watch reachable-only) so a subsequent watch-initiated `started` can auto-start video.
+  function enterReady() {
+    preArmedRef.current = true;
+    setPreArmed(true);
+    void watch.prearm();
+  }
+
+  function exitReady() {
+    preArmedRef.current = false;
+    setPreArmed(false);
+  }
+
+  // Auto-start video when the watch initiates a capture AND the screen is pre-armed + the
+  // signal is fresh. A stale / not-pre-armed start only adopts the seq (for alignment /
+  // late-join) — it never starts a recording.
+  useEffect(() => {
+    const unsub = watch.registerStartedHandler((started) => {
+      const fresh = started.startedAgeMs <= STARTED_FRESHNESS_MS;
+      if (preArmedRef.current && fresh && capturePhaseRef.current === 'idle') {
+        console.log('[useSwingCapture] watch started → auto-start video', {
+          seq: started.seq,
+          ageMs: Math.round(started.startedAgeMs),
+        });
+        preArmedRef.current = false;
+        setPreArmed(false);
+        beginRecording({ origin: 'watch' });
+      } else {
+        console.log('[useSwingCapture] watch started (no auto-start)', {
+          preArmed: preArmedRef.current,
+          fresh,
+          phase: capturePhaseRef.current,
+          seq: started.seq,
+        });
+      }
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
     capturePhase,
     countdown,
+    preArmed,
+    enterReady,
+    exitReady,
     startCountdownCapture,
     startInstantCapture,
     finalizeCapture,

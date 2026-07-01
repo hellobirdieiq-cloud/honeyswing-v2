@@ -10,7 +10,7 @@ import { calculateGolfAngles, GolfAngles, Z_RANGE_THRESHOLD } from "./angles";
 import { CameraAngle, CameraAngleResult, detectCameraAngle, detectCameraAngleEarly } from "./cameraAngle";
 import { correctForeshortening, type ForeshorteningDebug } from './foreshorteningCorrection';
 import { applyTiltCorrection, type GravityReading, type TiltCorrectionDebug } from './tiltCorrection';
-import { toCanonicalSequence } from "./canonicalTransform";
+import { toCanonicalSequence, CANONICAL_LEAD, CANONICAL_TRAIL } from "./canonicalTransform";
 import {
   detectSwingPhasesWithDebug,
   DetectedPhase,
@@ -48,6 +48,7 @@ import { aggregateSwing, type AggregateResult } from './categoryAggregation';
 import { computeLeadWristHinge, type LeadWristHinge } from './wristHinge';
 import { computeSyntheticClubheadPath, type SyntheticClubheadPath } from './syntheticClubheadPath';
 import { computeFaceToPath, type FaceToPath } from './faceToPath';
+import type { WatchImuReading } from './watchImu';
 
 export type FrameSelectionDebug = {
   frame_selection_method: 'phase_windowed' | 'mid_frame_fallback';
@@ -76,6 +77,9 @@ export type FrameSelectionDebug = {
   lead_wrist_hinge?: LeadWristHinge | null;
   synthetic_clubhead_path?: SyntheticClubheadPath | null;
   face_to_path?: FaceToPath | null;
+  // Phase 5 telemetry seam: did this analysis receive a paired watch IMU stream?
+  // No scoring consumer yet — impact-anchored use lands in Phase 6.
+  watch_imu_present?: boolean;
 };
 
 /** Per-swing z-distribution summary for Z_RANGE_THRESHOLD calibration. */
@@ -133,19 +137,21 @@ function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   const points: SwingTrailPoint[] = [];
 
   for (const frame of sequence.frames) {
-    const lw = frame.joints.leftWrist;
-    const rw = frame.joints.rightWrist;
+    // Honest lead/trail: in canonical space the LEAD arm is right*, the TRAIL arm
+    // is left* (CANONICAL_LEAD/TRAIL — single source of truth in canonicalTransform).
+    const lead = frame.joints[CANONICAL_LEAD.wrist];
+    const trail = frame.joints[CANONICAL_TRAIL.wrist];
 
-    if (!lw || !rw) continue;
+    if (!lead || !trail) continue;
 
     points.push({
-      x: (lw.x + rw.x) / 2,
-      y: (lw.y + rw.y) / 2,
+      x: (lead.x + trail.x) / 2,
+      y: (lead.y + trail.y) / 2,
       timestamp: frame.timestampMs,
-      leadX: lw.x,   // NAMING IS HISTORICAL: canonical label left* = TRAIL arm
-      leadY: lw.y,   // (both RH and LH) — corpus convention; see mirrorToCanonical
-      trailX: rw.x,  // canonical label right* = LEAD arm (both RH and LH)
-      trailY: rw.y,
+      leadX: lead.x,
+      leadY: lead.y,
+      trailX: trail.x,
+      trailY: trail.y,
     });
   }
 
@@ -170,7 +176,11 @@ const MIN_AVG_CONFIDENCE = 0.5;
 function averageFrames(frames: PoseFrame[], start: number, end: number): PoseFrame {
   const s = Math.max(0, start);
   const e = Math.min(frames.length - 1, end);
-  const window = frames.slice(s, e + 1);
+  // Guard parity with computeZTrace (:474): an out-of-range request (s > e) slices to an
+  // empty window → undefined midFrame → crash. Fall back to the nearest valid single frame.
+  const window = s > e
+    ? [frames[Math.min(frames.length - 1, Math.max(0, start))]]
+    : frames.slice(s, e + 1);
   const midFrame = window[Math.floor(window.length / 2)];
 
   const joints = {} as Record<JointName, import("../../pose/PoseTypes").NormalizedJoint | undefined>;
@@ -513,6 +523,10 @@ export function analyzePoseSequence(
   gravityReadings: GravityReading[] = [],
   addressFrameIdx?: number,
   opts?: { skipVeto?: boolean },
+  // Phase 5 seam — mirrors gravityReadings (optional, no-ops when empty). No scoring
+  // consumer this phase; only surfaced as swing_debug.watch_imu_present telemetry.
+  // Impact-spike anchoring against this stream is Phase 6.
+  watchImuReadings: WatchImuReading[] = [],
 ): AnalysisResult {
   // Layer 1 — velocity-veto + interpolation pre-clean. Operates on the raw
   // normalized frames (matches /tmp/veto_analysis.md threshold derivation, which
@@ -550,15 +564,21 @@ export function analyzePoseSequence(
 
   let canonical: PoseSequence;
   let untrustedMap: UntrustedMap | null;
+  // Pre-canonical (unmirrored, normalized, post-veto) sequence — the same x-sign
+  // space the face-on lead-thumb crossing rule was validated in. The canonical
+  // mirror would negate thumb dx for RH; the face-on impact detector reads thumb
+  // from this instead. Frame indices are 1:1 with canonical (veto interpolates,
+  // never drops; mirror only flips x), so phase windows line up.
+  let preCanonical: PoseSequence;
   if (opts?.skipVeto) {
     canonical = toCanonicalSequence(identitySequence, mirrorToCanonical);
+    preCanonical = identitySequence;
     untrustedMap = null;
   } else {
     const veto = vetoAndInterpolateKeypoints(identitySequence.frames);
-    canonical = toCanonicalSequence(
-      { ...identitySequence, frames: veto.cleanedFrames },
-      mirrorToCanonical,
-    );
+    const cleanedSequence = { ...identitySequence, frames: veto.cleanedFrames };
+    canonical = toCanonicalSequence(cleanedSequence, mirrorToCanonical);
+    preCanonical = cleanedSequence;
     untrustedMap = veto.untrustedMap;
   }
 
@@ -589,6 +609,8 @@ export function analyzePoseSequence(
     canonical,
     trail,
     angle: earlyAngle.angle,
+    preCanonical,
+    isLeftHanded,
   });
 
   const phaseAddressIdx = phases.find(p => p.phase === 'takeaway')?.index ?? 0;
@@ -748,6 +770,7 @@ export function analyzePoseSequence(
       lead_wrist_hinge: leadWristHinge,
       synthetic_clubhead_path: syntheticClubheadPath,
       face_to_path: faceToPath,
+      watch_imu_present: watchImuReadings.length > 0,
     },
   };
 }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable, Alert } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ import {
   type FocusData,
 } from '../../lib/swingMotionStore';
 import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
+import FaceOnSetupOverlay from '../../components/FaceOnSetupOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
@@ -27,8 +28,10 @@ import {
   getPrimaryProfile,
   setPrimaryProfile,
   getDisplayName,
+  ensureLocalPrimaryProfile,
   type PlayerProfile,
 } from '../../lib/playerProfiles';
+import { supabase, getUserId } from '../../lib/supabase';
 import {
   registerShutter,
   clearShutter,
@@ -58,8 +61,27 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
 });
 
+// Recover the onboarding display name from Supabase to seed a local profile for
+// users who onboarded before local profiles were seeded (self-heal on Record mount).
+// Returns null offline / when missing → the seeder falls back to a default name.
+async function fetchOnboardingName(): Promise<string | null> {
+  try {
+    const uid = await getUserId();
+    if (!uid) return null;
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', uid)
+      .single();
+    return data?.display_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function RecordTab() {
   const router = useRouter();
+  const isFocused = useIsFocused();
   const goPlayer = useAudioPlayer(require('../../assets/go.wav'));
 
   const { width: screenW } = useWindowDimensions();
@@ -75,6 +97,14 @@ export default function RecordTab() {
   const [frameAspectState, setFrameAspectState] = useState(0);
 
   const cameraRef = useRef<Camera>(null);
+  // Live mirror of cameraReady for the once-per-focus shutter closure to read
+  // (the closure must not capture the cameraReady state — stale value). Set in
+  // onInitialized alongside setCameraReady(true); never reset (cameraReady is
+  // never torn down in this file).
+  const cameraReadyRef = useRef(false);
+  // [KPI] P7 instrumentation — stamped at the top of the setup effect; consumed
+  // once in onInitialized to log camera-screen-opened → first-preview-frame.
+  const screenOpenedAt = useRef<number | null>(null);
   const { startCapture, stopCapture, getReadings } = useTiltCapture();
 
   // Min-display guard for the tab-bar processing spinner — keeps it visible
@@ -90,6 +120,9 @@ export default function RecordTab() {
 
   const [captureMode, setCaptureMode] = useState<'instant' | 'countdown'>('instant');
 
+  // #11 face-on setup guide — per-session show/hide (resets ON each mount; not persisted).
+  const [showGuide, setShowGuide] = useState(true);
+
   // Active-kid chip — second UI entry point to the SAME primary-profile switch
   // (setPrimaryProfile / getPrimaryProfile) that Settings + swing attribution use.
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
@@ -97,6 +130,10 @@ export default function RecordTab() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const refreshProfiles = useCallback(async () => {
+    // Self-heal: ensure a local primary profile exists so recording isn't blocked
+    // (covers users who onboarded before local profiles were seeded). No-op if one
+    // already exists.
+    await ensureLocalPrimaryProfile(fetchOnboardingName);
     const all = await getProfiles();
     const primary = await getPrimaryProfile();
     setProfiles(all);
@@ -111,6 +148,15 @@ export default function RecordTab() {
     },
     [refreshProfiles]
   );
+
+  // Synchronous snapshot of the kid shown in the chip, read at button-press by
+  // useSwingCapture.beginRecording (kept fresh each render). This is the exact
+  // profile + handedness the swing is attributed to — never re-read at persist.
+  const activeProfileRef = useRef<{ id: string; isLeftHanded: boolean } | null>(null);
+  const activeProfile = profiles.find((p) => p.id === primaryId);
+  activeProfileRef.current = activeProfile
+    ? { id: activeProfile.id, isLeftHanded: activeProfile.isLeftHanded }
+    : null;
 
   // Camera device/format selection
   const device = useCameraDevice('back');
@@ -148,6 +194,9 @@ export default function RecordTab() {
   const {
     capturePhase,
     countdown,
+    preArmed,
+    enterReady,
+    exitReady,
     startCountdownCapture,
     startInstantCapture,
     finalizeCapture,
@@ -168,6 +217,12 @@ export default function RecordTab() {
     cameraReady,
     onBeginRecording: () => {},
     targetFps,
+    getActiveProfile: () => activeProfileRef.current,
+    onMissingProfile: () =>
+      Alert.alert(
+        'Select a player',
+        'Choose a player profile before recording so the swing is saved to the right kid.',
+      ),
   });
 
   // Live refs so the tab-bar-registered shutter/stop closures always re-read the
@@ -278,6 +333,10 @@ export default function RecordTab() {
     useCallback(() => {
       registerShutter(() => {
         if (capturePhaseRef.current !== 'idle') return;
+        if (!cameraReadyRef.current) {
+          console.log('[P3] early-tap-blocked', Date.now());
+          return;
+        }
         if (captureModeRef.current === 'countdown') startCountdownRef.current();
         else startInstantRef.current();
       });
@@ -299,6 +358,7 @@ export default function RecordTab() {
 
   useEffect(() => {
     let mounted = true;
+    screenOpenedAt.current = Date.now();
 
     if (!clinicSessionActive()) {
       clearCurrentSwingMotion();
@@ -393,8 +453,21 @@ export default function RecordTab() {
             photo={false}
             video={true}
             audio={false}
-            onInitialized={() => setCameraReady(true)}
+            onInitialized={() => {
+              setCameraReady(true);
+              cameraReadyRef.current = true;
+              if (screenOpenedAt.current != null) {
+                console.log('[KPI] first-preview-frame ms', Date.now() - screenOpenedAt.current);
+                screenOpenedAt.current = null;
+              }
+            }}
           />
+          {capturePhase === 'idle' && cameraReady && showGuide && (
+            <FaceOnSetupOverlay
+              height={containerH}
+              mirrored={!!activeProfile?.isLeftHanded}
+            />
+          )}
           <LiveSkeleton
             updateRef={skeletonUpdateRef}
             width={screenW}
@@ -490,6 +563,27 @@ export default function RecordTab() {
         </View>
       )}
 
+      {/* Watch-primary pre-arm: tap Ready, then tap Start on the watch. A fresh watch
+          `started` auto-starts video; otherwise the chip just reminds you to start there. */}
+      {capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={styles.preArmChip}
+          onPress={() => (preArmed ? exitReady() : enterReady())}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.modeSegment, preArmed && styles.modeSegmentActive]}>
+            <Ionicons
+              name="watch-outline"
+              size={14}
+              color={preArmed ? '#1a1a1a' : 'rgba(255,255,255,0.5)'}
+            />
+            <Text style={[styles.modeSegmentText, preArmed && styles.modeSegmentTextActive]}>
+              {preArmed ? 'Ready — start from your watch' : 'Ready (watch)'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )}
+
       {/* Active-kid chip (top-right) — shows who the next swing is attributed to;
           tap to switch the primary profile. Mirrors the top-left mode toggle's style. */}
       {capturePhase === 'idle' && cameraReady && profiles.length > 0 && (
@@ -503,6 +597,21 @@ export default function RecordTab() {
             {getDisplayName(profiles.find((p) => p.id === primaryId) ?? profiles[0])}
           </Text>
           <Ionicons name="chevron-down" size={12} color="rgba(255,255,255,0.6)" />
+        </TouchableOpacity>
+      )}
+
+      {/* #11 guide show/hide — eye chip on the right rail, directly below the kid chip. */}
+      {capturePhase === 'idle' && cameraReady && (
+        <TouchableOpacity
+          style={localStyles.guideToggle}
+          onPress={() => setShowGuide((v) => !v)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={showGuide ? 'eye' : 'eye-off'}
+            size={16}
+            color={showGuide ? GOLD : 'rgba(255,255,255,0.5)'}
+          />
         </TouchableOpacity>
       )}
 
@@ -533,20 +642,14 @@ export default function RecordTab() {
         </Pressable>
       </Modal>
 
-      {/* Branded post-capture overlay — full-screen Modal so it renders ABOVE the floating
-          tab bar (which mounts outside the screen tree). This hides the live-feed flash AND
-          the tab bar's own processing spinner + "Analyzing swing…" caption for the full
-          pre-navigation wait, leaving exactly one "Analyzing your swing…" line on screen.
-          Visible strictly on the existing processing|complete gate; fully unmounted on
-          weak/error so the live camera + Try Again stay interactive. setProcessing() is
-          left untouched, so the center-button double-fire disable still works underneath. */}
-      <Modal
-        visible={showBrandOverlay}
-        transparent
-        statusBarTranslucent
-        animationType="none"
-        onRequestClose={() => {}}
-      >
+      {/* Branded post-capture overlay — opaque full-screen view covering the live feed +
+          controls for the processing|complete wait, leaving one "Analyzing your swing…" line.
+          INVARIANT: must stay IN-TREE and the FINAL sibling of GestureHandlerRootView (sibling
+          order is the z-order, so it must render after the Camera + every control above). Do NOT
+          convert back to a <Modal>: a stranded native Modal window froze the Record controls
+          after empty/failed captures. As an in-tree View it no longer covers the floating tab
+          bar (separate tree), so the tab bar's own processing UI may briefly show. */}
+      {showBrandOverlay && isFocused && (
         <View style={localStyles.brandOverlay}>
           <Image
             source={require('../../assets/images/icon.png')}
@@ -558,13 +661,21 @@ export default function RecordTab() {
             <Text style={localStyles.brandLabel}>Analyzing your swing…</Text>
           </View>
         </View>
-      </Modal>
+      )}
 
     </GestureHandlerRootView>
   );
 }
 
 const localStyles = StyleSheet.create({
+  guideToggle: {
+    position: 'absolute',
+    top: 102, // below kidChip (top:60 right:16, ~34px tall); mirrors preArmChip's offset on the right rail
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 20,
+    padding: 9,
+  },
   brandOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#111111',

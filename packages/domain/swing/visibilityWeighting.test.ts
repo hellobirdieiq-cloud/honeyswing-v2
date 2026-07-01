@@ -1,7 +1,7 @@
 /**
  * visibilityWeighting.test.ts — Task 11 Test Suite
  *
- * Run: npx tsx lib/visibilityWeighting.test.ts
+ * Run: npx tsx packages/domain/swing/visibilityWeighting.test.ts
  * NOT Jest. Custom assert harness matching Tasks 5, 7, 8, 9, 10.
  *
  * Coverage:
@@ -35,7 +35,7 @@ import {
   type FrameAngleData,
   type MetricWeightingResult,
   type GatedMetricKey,
-} from '../packages/domain/swing/visibilityWeighting';
+} from './visibilityWeighting';
 
 // ---------------------------------------------------------------------------
 // Test harness (matches existing suites)
@@ -774,8 +774,13 @@ group('immutability');
 
 // METRIC_LANDMARKS is frozen
 {
-  (METRIC_LANDMARKS as any).newKey = [1, 2];
-  assert(!('newKey' in METRIC_LANDMARKS), 'METRIC_LANDMARKS is frozen (assignment ignored)');
+  let threw = false;
+  try {
+    (METRIC_LANDMARKS as any).newKey = [1, 2];
+  } catch {
+    threw = true; // strict mode throws on assignment to a frozen object
+  }
+  assert(threw || !('newKey' in METRIC_LANDMARKS), 'METRIC_LANDMARKS is frozen (assignment rejected)');
 }
 
 // ---------------------------------------------------------------------------
