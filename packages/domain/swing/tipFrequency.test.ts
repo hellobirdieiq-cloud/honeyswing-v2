@@ -68,15 +68,25 @@ const MOCK_CONFIDENCE: SwingConfidence = {
   components: { jointVisibility: 0.8, phaseDetection: 1.0, frameCoverage: 1.0, cameraAngle: 0.3 },
 };
 
-// Stale pre-reshape CameraAngleResult fixture — never read at runtime (only threaded
-// to the injected shouldShowMetricFn, which every test here stubs). Cast so tsc passes
-// now that this file is in typecheck scope; modernizing the fixture is Batch-3 triage.
-const MOCK_CAMERA = {
-  estimatedAngle: null,
-  category: 'unknown',
-  confidence: 0,
-  perMetricWeights: {},
-} as unknown as CameraAngleResult;
+// Neutral "unknown" camera result (mirrors cameraAngle.ts unknownResult()).
+// Inert in this suite: only threaded to the injected shouldShowMetricFn.
+const MOCK_CAMERA: CameraAngleResult = {
+  angle: 'unknown',
+  shoulderSpread: 0,
+  hipSpread: 0,
+  avgSpread: 0,
+  footIndexNorm: null,
+  weights: {
+    spineAngle: 0,
+    leftElbowAngle: 0,
+    rightElbowAngle: 0,
+    leftKneeAngle: 0,
+    rightKneeAngle: 0,
+    hipSpreadDelta: 0,
+    shoulderTilt: 0,
+    tempo: 0,
+  },
+};
 
 const alwaysShow: ShouldShowMetricFn = () => true;
 const neverShow: ShouldShowMetricFn = () => false;
