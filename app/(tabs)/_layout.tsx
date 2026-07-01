@@ -25,10 +25,7 @@ export default function TabLayout() {
         title: 'Art',
         tabBarIcon: ({ color, size }) => <Ionicons name="images-outline" size={size} color={color} />,
       }} />
-      <Tabs.Screen name="grip" options={{
-        title: 'Grip',
-        tabBarIcon: ({ color, size }) => <Ionicons name="hand-right-outline" size={size} color={color} />,
-      }} />
+      <Tabs.Screen name="grip" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{
         title: 'Settings',
         tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
