@@ -52,8 +52,7 @@ const RESOURCE_DIRS = ["rtmw_l_256x192.mlpackage"];
 // Explicit link required — Swift auto-linking for Vision proved unreliable
 // in this build config; was repeatedly lost on prebuild --clean before this
 // plugin existed. ARKit is needed by HoneyLiDARDemoViewController.
-// HealthKit linked on the host for HKHealthStore.startWatchApp (phone-driven watch launch).
-const FRAMEWORKS = ["Vision.framework", "ARKit.framework", "CoreML.framework", "WatchConnectivity.framework", "HealthKit.framework"];
+const FRAMEWORKS = ["Vision.framework", "ARKit.framework", "CoreML.framework", "WatchConnectivity.framework"];
 
 const withHoneyNative = (config) => {
   return withXcodeProject(config, (config) => {

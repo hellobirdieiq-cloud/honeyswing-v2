@@ -1,5 +1,4 @@
 import Foundation
-import HealthKit
 import React
 import WatchConnectivity
 
@@ -29,10 +28,6 @@ class HoneyWatchImuModule: RCTEventEmitter, WCSessionDelegate {
 
   // RCTEventEmitter listener gate — avoids "sending event with no listeners" warnings.
   private var hasListeners = false
-
-  // HealthKit store used only for the OPTIONAL warm-path launch (launchWatchApp). The watch
-  // arms IMU locally on its own tap, NOT on this launch.
-  private let healthStore = HKHealthStore()
 
   override static func requiresMainQueueSetup() -> Bool {
     return false
@@ -149,38 +144,6 @@ class HoneyWatchImuModule: RCTEventEmitter, WCSessionDelegate {
       print("[HoneyWatchImu] stopWatch send error: \(error.localizedDescription)")
       resolve(false)
     })
-  }
-
-  // Optional warm-path launch: wakes the watch app into a golf workout. Kept available for a
-  // "wake watch" affordance; the watch-primary flow does not require it.
-  @objc(launchWatchApp:rejecter:)
-  func launchWatchApp(_ resolve: @escaping RCTPromiseResolveBlock,
-                      rejecter reject: @escaping RCTPromiseRejectBlock) {
-    guard WCSession.isSupported() else {
-      reject("watch_unsupported", "WCSession not supported on this device", nil)
-      return
-    }
-    guard HKHealthStore.isHealthDataAvailable() else {
-      reject("health_unavailable", "HealthKit not available on this device", nil)
-      return
-    }
-    _ = activatedSession()
-    let config = HKWorkoutConfiguration()
-    config.activityType = .golf
-    config.locationType = .outdoor
-    healthStore.startWatchApp(with: config) { success, error in
-      if let error = error {
-        print("[HoneyWatchImu] launchWatchApp error: \(error.localizedDescription)")
-        reject("start_watch_app_failed", error.localizedDescription, error)
-        return
-      }
-      guard success else {
-        reject("start_watch_app_failed", "startWatchApp returned false", nil)
-        return
-      }
-      print("[HoneyWatchImu] launchWatchApp ok")
-      resolve(true)
-    }
   }
 
   // MARK: Clock sync
