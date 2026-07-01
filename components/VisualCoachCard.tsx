@@ -6,7 +6,7 @@ import type { GolfAngles } from '../packages/domain/swing/angles';
 import { JOINT_CONFIDENCE_THRESHOLD } from '@/packages/domain/swing/captureValidity';
 import { scoreAngle } from '../packages/domain/swing/scoring';
 import { getCachedAgeTier } from '../lib/ageTier';
-import { isMetricEligible } from '../lib/tipFrequency';
+import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
 import { GOLD } from '../lib/colors';
 

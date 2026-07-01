@@ -34,7 +34,7 @@ import { getActiveProfileHandedness } from '../../lib/handedness';
 import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
 import { resolveHeaderProfile } from '../../lib/headerIdentity';
 import { getCoachCode } from '../../lib/coachCode';
-import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFrequency';
+import { processSwingTips, type ProcessedCoachingTip } from '@/packages/domain/swing/tipFrequency';
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import SwingArtCard from '../../components/SwingArtCard';
 import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';

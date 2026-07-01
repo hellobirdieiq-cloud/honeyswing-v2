@@ -23,7 +23,7 @@ import { getWatchCaptureEnabled, setWatchCaptureEnabled } from '../../lib/watchC
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
 import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
 import { getProfiles, addProfile, deleteProfile, saveProfiles, setPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
-import { tipFrequencyLimiter } from '../../lib/tipFrequency';
+import { tipFrequencyLimiter } from '@/packages/domain/swing/tipFrequency';
 import { GOLD } from '../../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {

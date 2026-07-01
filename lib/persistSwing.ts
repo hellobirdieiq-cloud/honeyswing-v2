@@ -17,7 +17,7 @@ import type { CaptureClassification } from '@/packages/domain/swing/captureValid
 import { getCoachCode } from './coachCode';
 import { getActiveProfileHandedness } from './handedness';
 import { getPrimaryProfile } from './playerProfiles';
-import { getFrequencyDebugInfo } from './tipFrequency';
+import { getFrequencyDebugInfo } from '@/packages/domain/swing/tipFrequency';
 import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';

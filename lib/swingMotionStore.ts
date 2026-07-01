@@ -70,7 +70,7 @@ export type FocusData = {
 import { STORAGE_KEYS } from './storageKeys';
 import { getCachedAgeTier } from './ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
-import { isMetricEligible } from './tipFrequency';
+import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
 
 
 export function computeFocus(angles: GolfAngles): FocusData | null {

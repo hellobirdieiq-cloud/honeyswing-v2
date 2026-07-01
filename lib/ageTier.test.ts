@@ -8,8 +8,8 @@
  * and tip text variant selection.
  */
 
-import type { AgeTier } from './tipFrequency';
-import { METRIC_LIMITS } from './tipFrequency';
+import type { AgeTier } from '@/packages/domain/swing/tipFrequency';
+import { METRIC_LIMITS } from '@/packages/domain/swing/tipFrequency';
 
 // ---------------------------------------------------------------------------
 // Test harness

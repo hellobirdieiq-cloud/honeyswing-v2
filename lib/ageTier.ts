@@ -13,9 +13,9 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
-import type { AgeTier } from './tipFrequency';
+import type { AgeTier } from '@/packages/domain/swing/tipFrequency';
 
-export type { AgeTier } from './tipFrequency';
+export type { AgeTier } from '@/packages/domain/swing/tipFrequency';
 
 const DEFAULT_TIER: AgeTier = 'youth';
 

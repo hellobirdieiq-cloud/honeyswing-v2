@@ -13,7 +13,7 @@ import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
 import type { GolfAngles } from '../packages/domain/swing/angles';
 import { generateFocusInsight, generateImprovementInsight, generateConsistencyInsight } from './sessionInsights';
 import { getCachedAgeTier, type AgeTier } from './ageTier';
-import { isMetricEligible } from './tipFrequency';
+import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
 
 // ---------------------------------------------------------------------------
 // Constants

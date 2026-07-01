@@ -1,7 +1,7 @@
 /**
  * tipFrequency.test.ts — Task 7 Comprehensive Validation
  *
- * Run with: npx tsx lib/tipFrequency.test.ts
+ * Run with: npx tsx packages/domain/swing/tipFrequency.test.ts
  *
  * Covers:
  *   - Core tier transitions (full → shortened → suppressed)
@@ -68,12 +68,15 @@ const MOCK_CONFIDENCE: SwingConfidence = {
   components: { jointVisibility: 0.8, phaseDetection: 1.0, frameCoverage: 1.0, cameraAngle: 0.3 },
 };
 
-const MOCK_CAMERA: CameraAngleResult = {
+// Stale pre-reshape CameraAngleResult fixture — never read at runtime (only threaded
+// to the injected shouldShowMetricFn, which every test here stubs). Cast so tsc passes
+// now that this file is in typecheck scope; modernizing the fixture is Batch-3 triage.
+const MOCK_CAMERA = {
   estimatedAngle: null,
   category: 'unknown',
   confidence: 0,
   perMetricWeights: {},
-};
+} as unknown as CameraAngleResult;
 
 const alwaysShow: ShouldShowMetricFn = () => true;
 const neverShow: ShouldShowMetricFn = () => false;

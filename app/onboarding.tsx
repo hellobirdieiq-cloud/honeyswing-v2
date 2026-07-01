@@ -16,7 +16,7 @@ import { supabase, getUserId } from '../lib/supabase';
 import type { Database } from '../lib/database.types';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
-import { tipFrequencyLimiter } from '../lib/tipFrequency';
+import { tipFrequencyLimiter } from '@/packages/domain/swing/tipFrequency';
 import { GOLD } from '../lib/colors';
 import { getProfiles, addProfile } from '../lib/playerProfiles';
 

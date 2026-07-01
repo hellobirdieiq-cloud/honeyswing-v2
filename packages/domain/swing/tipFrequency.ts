@@ -25,12 +25,12 @@
  *   - Call getFrequencyDebugInfo() → additive JSONB field 'tipFrequency'
  */
 
-import { shouldShowMetric as angleGatingShouldShow } from '../packages/domain/swing/angleGating';
-export type { SwingConfidence } from '../packages/domain/swing/confidenceScore';
-export type { CameraAngleResult } from '../packages/domain/swing/cameraAngle';
+import { shouldShowMetric as angleGatingShouldShow } from './angleGating';
+export type { SwingConfidence } from './confidenceScore';
+export type { CameraAngleResult } from './cameraAngle';
 
-import type { SwingConfidence } from '../packages/domain/swing/confidenceScore';
-import type { CameraAngleResult } from '../packages/domain/swing/cameraAngle';
+import type { SwingConfidence } from './confidenceScore';
+import type { CameraAngleResult } from './cameraAngle';
 
 /**
  * Task 6 gate function signature.
@@ -403,8 +403,8 @@ export const tipFrequencyLimiter = new TipFrequencyLimiter();
  *
  * Primary integration point — call from result.tsx:
  *
- *   import { processSwingTips } from '../lib/tipFrequency';
- *   import { shouldShowMetric } from '../lib/swingConfidence';
+ *   import { processSwingTips } from '@/packages/domain/swing/tipFrequency';
+ *   import { shouldShowMetric } from '@/packages/domain/swing/confidenceScore';
  *
  *   const tips = processSwingTips(
  *     analysis.coachingTips,
