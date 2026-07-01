@@ -107,7 +107,7 @@ whole-repo reconciliation follows it.
 | 780 | `packages/domain/swing/tiltCorrection.suite.test.ts` |
 | 776 | `packages/domain/swing/analysisPipeline.ts` |
 | 732 | `packages/domain/swing/foreshorteningCorrection.test.ts` |
-| 725 | `lib/positiveReinforcement.test.ts` |
+| 725 | `packages/domain/swing/positiveReinforcement.test.ts` |
 
 **Test vs non-test (by area)**
 
@@ -254,8 +254,8 @@ How one swing moves through the system, end to end:
 | Scoring | `packages/domain/swing/scoring.ts` | `scoreSwing` |
 | In-memory handoff | `lib/swingMotionStore.ts` | `setCurrentSwing*` / `getCurrentSwing*` |
 | Persistence (orchestration) | `lib/persistSwing.ts` | `persistSwing` → `swings` table (now ~394 lines; delegates row-building) |
-| Row builders (pure, tested) | `lib/swingRowBuilders.ts` | `buildWatchImuDebug`, `enrichFramesWithVelocity`, `calcPoseSuccessRate`, … |
-| Capture-flow decisions (pure, tested) | `lib/captureFlow.ts` | `computeNavigationBlockReason`, `deriveClassification` |
+| Row builders (pure, tested) | `packages/domain/swing/swingRowBuilders.ts` | `buildWatchImuDebug`, `enrichFramesWithVelocity`, `calcPoseSuccessRate`, … |
+| Capture-flow decisions (pure, tested) | `packages/domain/swing/captureFlow.ts` | `computeNavigationBlockReason`, `deriveClassification` |
 | Playback read | `lib/swingStore.ts` | `getSwingById`, `getSwingMotionFrames` |
 
 ## One-line summary
@@ -388,7 +388,7 @@ The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:100`):
 ## Persistence — the `swings` table
 
 `persistSwing` (`lib/persistSwing.ts`) flattens `AnalysisResult` into one row.
-The pure row-building helpers were extracted to `lib/swingRowBuilders.ts`
+The pure row-building helpers were extracted to `packages/domain/swing/swingRowBuilders.ts`
 (unit-tested), so `persistSwing.ts` is now ~394 lines (was ~560) and focuses on
 orchestration: auth, the insert, the FK-23503 heal-and-retry, and side-effects.
 Columns, grouped (`lib/database.types.ts:215`):
