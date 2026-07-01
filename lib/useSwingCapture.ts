@@ -39,15 +39,13 @@ import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
-import { computeNavigationBlockReason, deriveClassification } from './captureFlow';
+import { computeNavigationBlockReason, deriveClassification, type CapturePhase } from './captureFlow';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const CAPTURE_WINDOW_MS = 4000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
 interface UseSwingCaptureOptions {
   cameraRef: React.RefObject<Camera | null>;

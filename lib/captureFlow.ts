@@ -4,8 +4,9 @@
  * (erased at runtime) keep this module graph-free for the tsx test harness.
  * No logic changes; useSwingCapture.ts calls these.
  */
-import type { CapturePhase } from './useSwingCapture';
 import type { CaptureClassification } from './captureValidity';
+
+export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
 export type NavigationBlockReason = 'phase' | 'analysis' | 'video' | 'navigated' | null;
 
