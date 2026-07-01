@@ -18,6 +18,7 @@ import { STORAGE_KEYS } from '../lib/storageKeys';
 import { setAgeTier as persistAgeTier, type AgeTier } from '../lib/ageTier';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
 import { GOLD } from '../lib/colors';
+import { getProfiles, addProfile } from '../lib/playerProfiles';
 
 const ONBOARDING_KEY = STORAGE_KEYS.onboardingComplete;
 
@@ -75,6 +76,12 @@ export default function OnboardingScreen() {
       tipFrequencyLimiter.setAgeTier(ageTier);
       if (data?.id) {
         await AsyncStorage.setItem(STORAGE_KEYS.profileId, data.id);
+      }
+      // Seed the local primary profile so the Record tab has a kid to attribute
+      // to — useSwingCapture hard-blocks recording without one. Uses the name +
+      // handedness just collected. Idempotent (guarded on empty).
+      if ((await getProfiles()).length === 0) {
+        await addProfile(trimmedName, isLeftHanded);
       }
       router.replace('/(tabs)/record');
     } catch (err: unknown) {

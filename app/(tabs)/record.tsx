@@ -28,8 +28,10 @@ import {
   getPrimaryProfile,
   setPrimaryProfile,
   getDisplayName,
+  ensureLocalPrimaryProfile,
   type PlayerProfile,
 } from '../../lib/playerProfiles';
+import { supabase, getUserId } from '../../lib/supabase';
 import {
   registerShutter,
   clearShutter,
@@ -58,6 +60,24 @@ const LiveSkeleton = React.memo(function LiveSkeleton({
   updateRef.current = setLandmarks;
   return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
 });
+
+// Recover the onboarding display name from Supabase to seed a local profile for
+// users who onboarded before local profiles were seeded (self-heal on Record mount).
+// Returns null offline / when missing → the seeder falls back to a default name.
+async function fetchOnboardingName(): Promise<string | null> {
+  try {
+    const uid = await getUserId();
+    if (!uid) return null;
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', uid)
+      .single();
+    return data?.display_name ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export default function RecordTab() {
   const router = useRouter();
@@ -110,6 +130,10 @@ export default function RecordTab() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const refreshProfiles = useCallback(async () => {
+    // Self-heal: ensure a local primary profile exists so recording isn't blocked
+    // (covers users who onboarded before local profiles were seeded). No-op if one
+    // already exists.
+    await ensureLocalPrimaryProfile(fetchOnboardingName);
     const all = await getProfiles();
     const primary = await getPrimaryProfile();
     setProfiles(all);
