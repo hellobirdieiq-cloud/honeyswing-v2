@@ -85,7 +85,8 @@ group('A3. Ideal and tolerance values match repo code (SCR-0b-1: asymmetric)');
   assertEq(METRIC_DEFINITIONS.rightKneeAngle.ideal, 155, 'rightKneeAngle ideal = 155');
   assertEq(METRIC_DEFINITIONS.rightKneeAngle.underTolerance, 35, 'rightKneeAngle underTolerance = 35');
   assertEq(METRIC_DEFINITIONS.rightKneeAngle.overTolerance, 23.33, 'rightKneeAngle overTolerance = 23.33');
-  assertEq(METRIC_DEFINITIONS.shoulderTilt.ideal, 0, 'shoulderTilt ideal = 0');
+  // 48 per Meister 2011 peak-backswing anchor (2d01e27; was 0 pre-fix)
+  assertEq(METRIC_DEFINITIONS.shoulderTilt.ideal, 48, 'shoulderTilt ideal = 48');
   assertEq(METRIC_DEFINITIONS.shoulderTilt.underTolerance, 25, 'shoulderTilt underTolerance = 25');
   assertEq(METRIC_DEFINITIONS.shoulderTilt.overTolerance, 16.67, 'shoulderTilt overTolerance = 16.67');
 }
@@ -189,11 +190,11 @@ group('B6. shoulderTilt cues (branches on v > 0, not v vs ideal)');
   // v > 0 → junior
   assertEq(cue(10, ideal, 'junior'), 'Try to keep your shoulders even', 'v>0, junior');
   // v > 0 → adult
-  assertEq(cue(10, ideal, 'adult'), 'Your lead shoulder is too high at address \u2014 try to level them', 'v>0, adult');
+  assertEq(cue(10, ideal, 'adult'), 'Your lead shoulder is too high at the top \u2014 try to level them', 'v>0, adult');
   // v <= 0 → junior
   assertEq(cue(-10, ideal, 'junior'), 'Try to keep your shoulders even', 'v<=0, junior');
   // v <= 0 → adult
-  assertEq(cue(-10, ideal, 'adult'), 'Your trail shoulder is too high at address \u2014 try to level them', 'v<=0, adult');
+  assertEq(cue(-10, ideal, 'adult'), 'Your trail shoulder is too high at the top \u2014 try to level them', 'v<=0, adult');
   // v === 0 → falls to else (v <= 0)
   assertEq(cue(0, ideal, 'junior'), 'Try to keep your shoulders even', 'v=0, junior (else branch)');
   // junior text is same for both branches
@@ -237,7 +238,7 @@ group('C2. Ideals accessible for scoring match definitions');
     rightElbowAngle: 165,
     leftKneeAngle: 155,
     rightKneeAngle: 155,
-    shoulderTilt: 0,
+    shoulderTilt: 48, // Meister 2011 anchor (2d01e27)
   };
   for (const [key, ideal] of Object.entries(expectedIdeals)) {
     assertEq(
