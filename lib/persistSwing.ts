@@ -13,7 +13,7 @@ import { getCurrentClinicSession } from './clinic/clinicSessionStore';
 import { upsertSwingRecord } from './clinic/swingRecordStore';
 import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
 import type { SwingRecord } from '../packages/domain/clinic/SwingRecord';
-import type { CaptureClassification } from './captureValidity';
+import type { CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getCoachCode } from './coachCode';
 import { getActiveProfileHandedness } from './handedness';
 import { getPrimaryProfile } from './playerProfiles';
@@ -36,7 +36,7 @@ import {
   calcFpsEstimate,
   enrichFramesWithVelocity,
   type WatchImuPersist,
-} from './swingRowBuilders';
+} from '@/packages/domain/swing/swingRowBuilders';
 
 export type { WatchImuPersist };
 

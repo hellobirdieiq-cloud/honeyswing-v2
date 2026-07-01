@@ -1,7 +1,7 @@
 import { persistSwing, type CameraGuidanceSnapshot } from './persistSwing';
 import { persistPoseFull } from './persistPoseFull';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
-import type { CaptureClassification } from './captureValidity';
+import type { CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import type { CaptureFrameStats } from './usePoseFrameHandler';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';

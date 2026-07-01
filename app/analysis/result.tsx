@@ -29,7 +29,7 @@ import {
   type TempoRating,
 } from '../../packages/domain/swing/tempoAnalysis';
 import VisualCoachCard from '../../components/VisualCoachCard';
-import { classifyCapture, type CaptureClassification } from '../../lib/captureValidity';
+import { classifyCapture, type CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from '../../lib/handedness';
 import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
 import { resolveHeaderProfile } from '../../lib/headerIdentity';

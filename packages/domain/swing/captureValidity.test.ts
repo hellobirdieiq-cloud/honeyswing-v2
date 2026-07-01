@@ -13,8 +13,8 @@ import {
   PARTIAL_MIN_POSE_RATE,
   JOINT_CONFIDENCE_THRESHOLD,
 } from './captureValidity';
-import type { PoseFrame, JointName } from '../packages/pose/PoseTypes';
-import { createEmptyJoints } from '../packages/pose/PoseTypes';
+import type { PoseFrame, JointName } from '../../pose/PoseTypes';
+import { createEmptyJoints } from '../../pose/PoseTypes';
 
 // ---------------------------------------------------------------------------
 // Test harness

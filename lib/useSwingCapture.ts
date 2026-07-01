@@ -26,7 +26,7 @@ import {
   abandonPending,
   outboxEnabled,
 } from './outbox';
-import { classifyCapture } from './captureValidity';
+import { classifyCapture } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from './handedness';
 import { resolveAttribution, type ActiveProfileSnapshot } from './swingAttribution';
 import { useWatchImuCapture } from './useWatchImuCapture';
@@ -39,7 +39,7 @@ import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
-import { computeNavigationBlockReason, deriveClassification, type CapturePhase } from './captureFlow';
+import { computeNavigationBlockReason, deriveClassification, type CapturePhase } from '@/packages/domain/swing/captureFlow';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -396,7 +396,7 @@ export function useSwingCapture({
           //     preserves the true swap set in swing_debug.keypoint_identity.
           //   - grip block: wrist joints only; identity never touches wrists.
           //   - classifyCapture: confidence-count over symmetric L/R pairs —
-          //     provably swap-invariant (lib/captureValidity.ts:11-26).
+          //     provably swap-invariant (packages/domain/swing/captureValidity.ts).
           //   - persistSwing: persisted motion_frames are the debug source of
           //     truth; historical reads re-apply this pure pass at fetch time
           //     (lib/swingStore.ts getSwingMotionFrames/Batch).

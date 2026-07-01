@@ -22,13 +22,13 @@ import {
   enrichFramesWithVelocity,
   type WatchImuPersist,
 } from './swingRowBuilders';
-import { createEmptyJoints, type PoseFrame, type JointName } from '../packages/pose/PoseTypes';
-import { calculateGolfAngles, type GolfAngles } from '../packages/domain/swing/angles';
-import type { DetectedPhase, SwingTrailPoint } from '../packages/domain/swing/phaseDetection';
-import type { SwingTempo } from '../packages/domain/swing/tempoAnalysis';
-import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
-import type { WatchImuMeasured, WatchImuReading } from '../packages/domain/swing/watchImu';
-import { WORN_WRIST, WATCH_IMU_CLOCK_NOTE } from '../packages/domain/swing/watchImu';
+import { createEmptyJoints, type PoseFrame, type JointName } from '../../pose/PoseTypes';
+import { calculateGolfAngles, type GolfAngles } from './angles';
+import type { DetectedPhase, SwingTrailPoint } from './phaseDetection';
+import type { SwingTempo } from './tempoAnalysis';
+import type { AnalysisResult } from './analysisPipeline';
+import type { WatchImuMeasured, WatchImuReading } from './watchImu';
+import { WORN_WRIST, WATCH_IMU_CLOCK_NOTE } from './watchImu';
 
 // ---------------------------------------------------------------------------
 // Test harness

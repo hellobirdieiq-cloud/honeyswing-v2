@@ -6,23 +6,23 @@
  * imports these back.
  */
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { Json } from './database.types';
-import type { PoseFrame, NormalizedJoint, JointName } from '../packages/pose/PoseTypes';
-import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
-import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
-import { calculateGolfAngles } from '../packages/domain/swing/angles';
+import type { Json } from '@/lib/database.types';
+import type { PoseFrame, NormalizedJoint, JointName } from '../../pose/PoseTypes';
+import type { AnalysisResult } from './analysisPipeline';
+import type { DetectedPhase } from './phaseDetection';
+import { calculateGolfAngles } from './angles';
 import {
   WORN_WRIST,
   WATCH_IMU_CLOCK_NOTE,
   type WatchImuReading,
   type WatchImuMeasured,
   type WatchImuAlignment,
-} from '../packages/domain/swing/watchImu';
+} from './watchImu';
 import type {
   MetricSnapshot,
   PhaseTagRange,
-} from '../packages/domain/clinic/SwingRecord';
-import type { PhaseTag } from '../packages/domain/clinic/enums';
+} from '../clinic/SwingRecord';
+import type { PhaseTag } from '../clinic/enums';
 import { isGoodFrame } from './captureValidity';
 
 export type InsertFailClass =
