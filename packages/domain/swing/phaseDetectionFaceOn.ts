@@ -272,8 +272,8 @@ export function detectFaceOnImpact(
 //
 // Handedness: RH lead hand = LEFT thumb (CMC=leftThumb idx 92, tip=leftThumbTip idx 95),
 // neg→pos crossing. LH lead hand = RIGHT thumb (113/116) with the sign FLIPPED (the rule
-// was calibrated on RH). The LH thumb path is UNVALIDATED (no LH ground truth) and is
-// gated OFF as primary by the caller this ticket; the mapping is built here for later.
+// was calibrated on RH). The LH thumb path is VALIDATED on real left-handed swings and
+// runs as primary (enabled in 555adff), same as RH.
 // ---------------------------------------------------------------------------
 
 type ThumbCrossingResult = {
