@@ -22,11 +22,13 @@ app/  (UI screens)
               └─► native Swift / modules  (camera frame processing, RTMW, MediaPipe)
 ```
 
-The key property: **`packages/domain/swing` has zero UI and zero native
-dependencies.** All the biomechanics (phase detection, angles, tempo, scoring)
-is plain functions over `PoseFrame[]`, which is why it is fully unit-tested
-(`*.test.ts` files live next to each module). The UI and native layers feed it
-data and render its output, but never live inside it.
+The key property: **`packages/domain/swing` has no import-level UI or native
+dependencies** — runtime purity (global reads, RN/Expo singletons, types that
+transitively pull native) is not separately verified. All the biomechanics (phase
+detection, angles, tempo, scoring) is plain functions over `PoseFrame[]`, and each
+module has a `*.test.ts` beside it, run by `npm test` (`scripts/run-tests.mjs`,
+all 46 `lib/` + `packages/` suites). The UI and native layers feed it data and
+render its output, but never live inside it.
 
 ## Directory tree
 
@@ -121,6 +123,13 @@ whole-repo reconciliation follows it.
 
 `lib/` is now over half tests — the write-path extraction added
 `swingRowBuilders.test.ts` (+322) and `captureFlow.test.ts` (+109).
+
+⚠️ **Coverage note:** these are line counts, not pass/fail coverage. `npm test`
+(`scripts/run-tests.mjs`) executes all 46 `lib/` + `packages/` suites and exits
+non-zero on any failure (an earlier `find lib …` runner silently skipped every
+`packages/` suite; fixed in `773cabd`). As of 2026-06-30, 43 of 46 pass — three
+pre-existing domain suites are red pending triage: `tipFrequency`,
+`metricDefinitions`, `phaseDetectionDTL`.
 
 ### Whole-repo reconciliation
 
