@@ -1,7 +1,7 @@
 /**
  * captureFlow.test.ts — unit tests for the pure capture-flow decision helpers.
  *
- * Run with: npx tsx lib/captureFlow.test.ts
+ * Run with: npx tsx packages/domain/swing/captureFlow.test.ts
  *
  * No jest — project-standard hand-rolled runner. Expected values derived from
  * the original tryNavigate gate and classification override in useSwingCapture.ts.

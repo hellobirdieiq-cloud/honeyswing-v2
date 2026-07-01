@@ -1,7 +1,7 @@
 /**
  * swingRowBuilders.test.ts — unit tests for the pure swings-row builders.
  *
- * Run with: npx tsx lib/swingRowBuilders.test.ts
+ * Run with: npx tsx packages/domain/swing/swingRowBuilders.test.ts
  *
  * No jest — project-standard hand-rolled runner (mirrors lib/swingStore.test.ts).
  * Every expected value is derived from the real implementation in

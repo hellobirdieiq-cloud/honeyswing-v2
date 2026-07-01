@@ -12,7 +12,7 @@ import { tryNavigate, resetNavigationLock } from '../lib/navigationLock';
 import { configurePurchases, syncAuthState } from '../lib/purchases';
 import { invalidateSwingLimitCache } from '../lib/swingLimit';
 import { tipFrequencyLimiter } from '../lib/tipFrequency';
-import { positiveReinforcementEngine } from '../lib/positiveReinforcement';
+import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator } from '../lib/sessionAccumulator';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { getAgeTier } from '../lib/ageTier';

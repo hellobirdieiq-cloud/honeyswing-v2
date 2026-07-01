@@ -38,8 +38,8 @@ import { processSwingTips, type ProcessedCoachingTip } from '../../lib/tipFreque
 import { shouldShowMetric } from '../../packages/domain/swing/confidenceScore';
 import SwingArtCard from '../../components/SwingArtCard';
 import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';
-import { positiveReinforcementEngine } from '../../lib/positiveReinforcement';
-import type { ProcessSwingResult } from '../../lib/positiveReinforcement';
+import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
+import type { ProcessSwingResult } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
 import {

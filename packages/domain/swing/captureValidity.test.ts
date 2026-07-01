@@ -1,7 +1,7 @@
 /**
  * captureValidity.test.ts — Comprehensive tests for isGoodFrame and classifyCapture
  *
- * Run with: npx tsx lib/captureValidity.test.ts
+ * Run with: npx tsx packages/domain/swing/captureValidity.test.ts
  */
 
 import {

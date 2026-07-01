@@ -18,7 +18,7 @@ import { getCoachCode } from './coachCode';
 import { getActiveProfileHandedness } from './handedness';
 import { getPrimaryProfile } from './playerProfiles';
 import { getFrequencyDebugInfo } from './tipFrequency';
-import { positiveReinforcementEngine } from './positiveReinforcement';
+import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';

@@ -123,11 +123,11 @@ export interface ProcessedCoachingTip {
 // 2 keys overlap MetricDefinitions (spineAngle, shoulderTilt — not placeholders).
 // 9 placeholders, retained per Session 25 audit decision. Audited 2026-04-22:
 //   LIVE (keep):    posture, tempo, balance, armExtension, kneeFlex
-//                   consumers in lib/positiveReinforcement.ts, lib/coachingTips.ts,
+//                   consumers in packages/domain/swing/positiveReinforcement.ts, lib/coachingTips.ts,
 //                   packages/domain/swing/confidenceScore.ts, analysisPipeline
 //   MIXED (keep):   grip, hipSpreadDelta, elbow
 //                   live consumers + unrelated repo noise; Session 25 audit found
-//                   a keyed match at lib/positiveReinforcement.ts:114 plus unrelated
+//                   a keyed match in packages/domain/swing/positiveReinforcement.ts (METRIC_FRIENDLY_NAMES) plus unrelated
 //                   matches in grip-photo / edge-function surfaces
 //   TEST-only:      clubfaceAngle (delete-eligible)
 // Deletion gates:
