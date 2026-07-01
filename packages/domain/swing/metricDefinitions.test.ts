@@ -5,7 +5,7 @@
  */
 
 import { METRIC_DEFINITIONS, type MetricKey } from './metricDefinitions';
-import type { AgeTier } from '../../../lib/ageTier';
+import type { AgeTier } from './tipFrequency';
 
 // ---------------------------------------------------------------------------
 // Test harness
