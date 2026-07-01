@@ -15,7 +15,7 @@ const INACTIVE = '#8A8A8E';
 
 // Visual order of the outer pills (the center ● is the `record` route, rendered separately).
 // Declared route order in _layout.tsx is record-first, so we resolve everything BY NAME.
-const LEFT_PILLS = ['history', 'grip'];
+const LEFT_PILLS = ['history'];
 const RIGHT_PILLS = ['gallery', 'settings'];
 
 export default function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
