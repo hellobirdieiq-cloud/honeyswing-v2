@@ -74,7 +74,7 @@ honeyswing-v2/
 > inventory (incl. `scripts/`, `components/`, `packages/domain/clinic/`,
 > `targets/watch/`, `ios/honeyswing/`), see **Code size** below.
 
-## Code size (snapshot — 2026-06-30)
+## Code size (snapshot — 2026-07-01)
 
 Counts source files only (`.ts`, `.tsx`, `.swift`); excludes `node_modules`,
 build output (`ios/Pods`, `ios/build`, `.expo`, `dist`, `.venv`), and the
@@ -86,15 +86,17 @@ whole-repo reconciliation follows it.
 | Area | Lines | Files |
 |---|--:|--:|
 | `packages/domain/swing/` | 16,300 | 53 |
-| `lib/` | 13,308 | 84 |
-| `app/` | 12,479 | 44 |
-| `native-assets/` | 2,654 | 11 |
+| `lib/` | 13,333 | 84 |
+| `app/` | 12,510 | 44 |
+| `native-assets/` | 2,617 | 11 |
 | `supabase/` | 682 | 2 |
 | `packages/pose/` | 531 | 7 |
 | `modules/` | 77 | 2 |
-| **Total** | **46,031** | **203** |
+| **Total** | **46,050** | **203** |
 
-**10 biggest single files**
+**10 biggest single files** (of the 7 areas above; `scripts/` tooling excluded —
+its largest, `scripts/export-faceon-phase-analysis.ts` at 1,512 lines, is bigger
+than everything here and would top the table)
 
 | Lines | File |
 |--:|---|
@@ -114,10 +116,10 @@ whole-repo reconciliation follows it.
 | Area | Test LOC | Non-test LOC | % tests |
 |---|--:|--:|--:|
 | `packages/domain/swing/` | 7,879 | 8,421 | 48% |
-| `lib/` | 5,334 | 7,974 | 40% |
-| `app/` | 0 | 12,479 | 0% |
+| `lib/` | 5,334 | 7,999 | 40% |
+| `app/` | 0 | 12,510 | 0% |
 | `packages/pose/` | 110 | 421 | 21% |
-| `native-assets/` | 0 | 2,654 | 0% |
+| `native-assets/` | 0 | 2,617 | 0% |
 | `supabase/` | 0 | 682 | 0% |
 | `modules/` | 0 | 77 | 0% |
 
@@ -128,9 +130,10 @@ After the 5 domain test suites moved back beside their implementations,
 ⚠️ **Coverage note:** these are line counts, not pass/fail coverage. `npm test`
 (`scripts/run-tests.mjs`) executes all 46 `lib/` + `packages/` suites and exits
 non-zero on any failure (an earlier `find lib …` runner silently skipped every
-`packages/` suite; fixed in `773cabd`). As of 2026-06-30, 43 of 46 pass — three
-pre-existing domain suites are red pending triage: `tipFrequency`,
-`metricDefinitions`, `phaseDetectionDTL`.
+`packages/` suite; fixed in `773cabd`). As of 2026-07-01, 43 of 46 pass — three
+pre-existing suites are red pending triage: two domain (`metricDefinitions`,
+`phaseDetectionDTL`) and one lib (`tipFrequency`, whose test lives at
+`lib/tipFrequency.test.ts`, not in `packages/domain`).
 
 ### Whole-repo reconciliation
 
@@ -138,18 +141,18 @@ The per-area table above is a **7-area subset** (`app/ lib/ packages/pose/
 packages/domain/swing/ native-assets/ modules/` + supabase `.ts`), `.ts/.tsx/.swift`
 only. The whole repo (adds `.sql`, plus the areas below) is:
 
-**292 files / 67,373 lines.** Subtracting the 4,932-line generated
-`supabase/migrations/20260417055038_remote_schema.sql` leaves **62,441** — but
+**292 files / 67,392 lines.** Subtracting the 4,932-line generated
+`supabase/migrations/20260417055038_remote_schema.sql` leaves **62,460** — but
 that is an **upper bound** on hand-authored code, not a pure figure: it still
 includes `ios/honeyswing/` generated/duplicated Swift (3,246; `AppDelegate.swift`
 is Expo-generated, the `Honey*` plugins are build-time copies of
-`native-assets/ios/`). Removing those too puts hand-authored at **≈ 59,195**.
+`native-assets/ios/`). Removing those too puts hand-authored at **≈ 59,214**.
 
-**Working-tree vs tracked:** the 292 files / 67,373 lines is a **working-tree**
-count (files on disk). The git-**tracked** repo is **274 files / 63,397 lines** —
+**Working-tree vs tracked:** the 292 files / 67,392 lines is a **working-tree**
+count (files on disk). The git-**tracked** repo is **274 files / 63,416 lines** —
 ~18 files are gitignored (chiefly the generated `ios/honeyswing/` Swift, 3,246)
-or untracked. Tracked minus the generated schema = 63,397 − 4,932 = **58,465**,
-consistent with the ≈ 59,195 hand-authored figure above.
+or untracked. Tracked minus the generated schema = 63,416 − 4,932 = **58,484**,
+consistent with the ≈ 59,214 hand-authored figure above.
 
 Areas missing from the 7-area view:
 
@@ -164,14 +167,14 @@ Areas missing from the 7-area view:
 | root (`expo-env.d.ts`) | 2 | 1 |
 | **Added** | **21,342** | **89** |
 
-Reconciliation (the 203-file / 46,031-line per-area total is a 7-area subset):
+Reconciliation (the 203-file / 46,050-line per-area total is a 7-area subset):
 
 ```
-  46,031   7-area subset (.ts/.tsx/.swift)
+  46,050   7-area subset (.ts/.tsx/.swift)
 + 15,017   remainder (scripts + ios/honeyswing + components + targets/watch + root)
 +  1,116   packages/domain/clinic (.ts, previously missed)
 +  5,209   supabase .sql migrations (7-area supabase figure was .ts-only)
-= 67,373   whole repo   (files: 203 + 61 + 14 + 14 = 292)
+= 67,392   whole repo   (files: 203 + 61 + 14 + 14 = 292)
 ```
 
 Note: `scripts/` is a maintained, read-only validation/diagnostic toolkit —
@@ -180,8 +183,8 @@ harnesses that run production functions over ground-truth swings via `npx tsx`
 app code. `targets/watch/` is the parked, unshipped Watch IMU feature — neither
 inflates shipped app size. `ios/honeyswing/` is generated/duplicated native glue
 (`AppDelegate.swift` generated; `Honey*` plugins are build-time copies of
-`native-assets/ios/`), so the `62,441` figure overstates hand-authored code;
-excluding `ios/honeyswing/` lands at **≈ 59,195**.
+`native-assets/ios/`), so the `62,460` figure overstates hand-authored code;
+excluding `ios/honeyswing/` lands at **≈ 59,214**.
 
 ## Runtime data flow
 
@@ -309,7 +312,7 @@ Notes that matter when reading the code:
 - **Canonical space (stage 2):** RH swings are mirrored, LH swings pass through,
   so downstream sign conventions hold for both. In canonical space the `left*`
   joints are the **TRAIL** arm — see the long comment at
-  `analysisPipeline.ts:554`.
+  `analysisPipeline.ts:562`.
 - **Two angle paths (stage 6):** the phase-windowed path is preferred; the
   mid-frame fallback runs only when phases are unreliable (`shouldFallback`),
   and it skips visibility weighting, wrist-hinge, and face-to-path entirely.
@@ -326,7 +329,11 @@ persisted but **do not** feed the headline number.
 
 Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:76`)
 picks the worst-scoring metric to drive the Visual Coach focus cue on the result
-and record screens (`app/analysis/result.tsx:566`), and persisted `angles` are
+and record screens (`app/analysis/result.tsx:566`). Note `computeFocus` is **not** a
+pure function of its `angles` argument: it also reads the cached age tier
+(`getCachedAgeTier` from `lib/ageTier.ts`, AsyncStorage-backed; called at
+`swingMotionStore.ts:77`) to filter which metrics are eligible, so identical angles
+can yield a different focus depending on stored age-tier state. Persisted `angles` are
 re-read for history display (`result.tsx:117`). The persisted `category_scores`
 column, by contrast, has **no in-app reader** — written from `analysis.aggregate`
 (`persistSwing.ts:134`) and selected in `swingStore.ts` but consumed nowhere in
