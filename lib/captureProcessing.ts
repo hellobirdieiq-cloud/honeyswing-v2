@@ -45,6 +45,7 @@ import {
   selectLeadWristForGrip,
   buildWatchImuPersistPayload,
   planDriftEvent,
+  planOutboxReconcile,
   type CapturePhase,
 } from '@/packages/domain/swing/captureFlow';
 
@@ -315,17 +316,17 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
 
     swingIdPromiseRef.current?.then(async (swingId) => {
       if (outboxEnabled()) {
+        // Ref read stays AFTER the await (mutual-exclusion window with the
+        // failure path's read-and-null); only the decision itself is lifted.
         const poseEntryId = poseEntryIdPromise ? await poseEntryIdPromise : null;
-        const ids = [poseEntryId, videoOutboxEntryIdRef.current].filter(
-          (x): x is string => typeof x === 'string',
-        );
+        const plan = planOutboxReconcile(poseEntryId, videoOutboxEntryIdRef.current, swingId);
         videoOutboxEntryIdRef.current = null;
-        if (swingId) {
-          attachSwingId(ids, swingId); // reconcile: fires one drain
-        } else if (ids.length > 0) {
+        if (plan.action === 'attach') {
+          attachSwingId(plan.ids, plan.swingId); // reconcile: fires one drain
+        } else if (plan.action === 'abandon') {
           // insert returned null (anonymous / failed) — these can never
           // reconcile; drop them (no dead-letter, no telemetry).
-          abandonPending(ids).catch((e) =>
+          abandonPending(plan.ids).catch((e) =>
             console.warn('[HoneySwing] abandonPending failed', e),
           );
         }

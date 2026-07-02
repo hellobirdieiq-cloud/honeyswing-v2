@@ -100,6 +100,32 @@ export function planDriftEvent(args: {
     : null;
 }
 
+export type OutboxReconcilePlan =
+  | { action: 'attach'; ids: string[]; swingId: string }
+  | { action: 'abandon'; ids: string[] }
+  | { action: 'none'; ids: string[] };
+
+/**
+ * Outbox reconcile decision once persistSwing resolves: attach every captured
+ * entry id to the swing row (attach fires even with zero ids — it also triggers
+ * the drain), or abandon them when the insert returned no id (anonymous /
+ * failed — those entries can never reconcile). The caller owns the
+ * videoOutboxEntryIdRef read-and-null (mutual exclusion with the failure path)
+ * and must read the ref AFTER awaiting the pose entry id, as before.
+ */
+export function planOutboxReconcile(
+  poseEntryId: string | null,
+  videoEntryId: string | null,
+  swingId: string | null,
+): OutboxReconcilePlan {
+  const ids = [poseEntryId, videoEntryId].filter(
+    (x): x is string => typeof x === 'string',
+  );
+  if (swingId) return { action: 'attach', ids, swingId };
+  if (ids.length > 0) return { action: 'abandon', ids };
+  return { action: 'none', ids };
+}
+
 export interface WatchAutoStartEvaluation {
   fresh: boolean;
   shouldStart: boolean;

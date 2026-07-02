@@ -14,6 +14,7 @@ import {
   selectLeadWristForGrip,
   buildWatchImuPersistPayload,
   planDriftEvent,
+  planOutboxReconcile,
   evaluateWatchAutoStart,
 } from './captureFlow';
 import type { CaptureClassification } from './captureValidity';
@@ -169,6 +170,26 @@ assertEq(planDriftEvent({ swingId: null, failure: null, frameCount: 240, duratio
 assertEq(planDriftEvent({ swingId: 's1', failure: 'no-person', frameCount: 240, durationMs: 4000 }), null, 'extraction failure → null');
 assertEq(planDriftEvent({ swingId: 's1', failure: null, frameCount: null, durationMs: 4000 }), null, 'frameCount null → null');
 assertEq(planDriftEvent({ swingId: 's1', failure: null, frameCount: 240, durationMs: undefined }), null, 'durationMs undefined → null');
+
+// ---------------------------------------------------------------------------
+// planOutboxReconcile — attach on swingId (even with zero ids: attach also
+// fires the drain); abandon orphaned ids; none when nothing to do
+// ---------------------------------------------------------------------------
+
+group('planOutboxReconcile');
+const both = planOutboxReconcile('pose-1', 'video-1', 'swing-1');
+assert(both.action === 'attach' && both.swingId === 'swing-1', 'swingId + both ids → attach with narrowed swingId');
+assertEq(both.ids.length, 2, 'both ids collected');
+assertEq(both.ids[0], 'pose-1', 'pose id first (original filter order)');
+assertEq(both.ids[1], 'video-1', 'video id second');
+const attachEmpty = planOutboxReconcile(null, null, 'swing-1');
+assert(attachEmpty.action === 'attach' && attachEmpty.ids.length === 0, 'swingId + zero ids → STILL attach (fires the drain, matches original)');
+const abandon = planOutboxReconcile('pose-1', null, null);
+assert(abandon.action === 'abandon' && abandon.ids.length === 1 && abandon.ids[0] === 'pose-1', 'no swingId + ids → abandon');
+const nothing = planOutboxReconcile(null, null, null);
+assert(nothing.action === 'none' && nothing.ids.length === 0, 'no swingId + no ids → none');
+const videoOnly = planOutboxReconcile(null, 'video-1', null);
+assert(videoOnly.action === 'abandon' && videoOnly.ids[0] === 'video-1', 'null pose id filtered, video id survives');
 
 // ---------------------------------------------------------------------------
 // evaluateWatchAutoStart — fresh (<= threshold) AND pre-armed AND idle
