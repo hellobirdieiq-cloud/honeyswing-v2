@@ -6,9 +6,10 @@
 //   (2) swallowed child exit codes — `find -exec` does not propagate them, so
 //       `npm test` exited 0 even when a test called process.exit(1).
 //
-// This runner discovers *.test.ts under lib/ and packages/, runs each in its
-// own child process (the tests call process.exit(1), so they can't share one
-// process), runs ALL of them even after a failure, and exits 1 if any failed.
+// This runner discovers *.test.ts and *.test.tsx under lib/, packages/,
+// components/, and app/, runs each in its own child process (the tests call
+// process.exit(1), so they can't share one process), runs ALL of them even
+// after a failure, and exits 1 if any failed.
 //
 // Usage:
 //   npm test              # run everything
@@ -18,7 +19,7 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROOTS = ['lib', 'packages'];
+const ROOTS = ['lib', 'packages', 'components', 'app'];
 const filter = process.argv[2]; // optional path substring filter
 
 function walk(dir, out = []) {
@@ -27,7 +28,7 @@ function walk(dir, out = []) {
     if (e.isDirectory()) {
       if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
       walk(p, out);
-    } else if (e.name.endsWith('.test.ts')) {
+    } else if (e.name.endsWith('.test.ts') || e.name.endsWith('.test.tsx')) {
       out.push(p);
     }
   }
