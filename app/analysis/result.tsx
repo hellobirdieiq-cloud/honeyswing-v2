@@ -14,6 +14,7 @@ import {
   saveFocus,
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
+import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, supabase } from '../../lib/supabase';
 import { getSwingById, getSwingMotionFrames, type SwingRecord } from '../../lib/swingStore';
 import { getSwingVideoSignedUrl } from '../../lib/getSwingVideoUrl';
@@ -563,7 +564,7 @@ export default function ResultScreen() {
   // Persist the weakest metric as "Today's Focus" for the home screen
   useEffect(() => {
     if (!angles) return;
-    const focus = computeFocus(angles);
+    const focus = computeFocus(angles, getCachedAgeTier(), Date.now());
     if (focus) saveFocus(focus).catch((err) => console.error('[HoneySwing]', err));
   }, [angles]);
 

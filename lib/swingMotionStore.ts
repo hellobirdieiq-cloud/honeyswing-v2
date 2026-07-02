@@ -68,13 +68,15 @@ export type FocusData = {
 };
 
 import { STORAGE_KEYS } from './storageKeys';
-import { getCachedAgeTier } from './ageTier';
 import { METRIC_DEFINITIONS, type MetricKey } from '../packages/domain/swing/metricDefinitions';
-import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
+import { isMetricEligible, type AgeTier } from '@/packages/domain/swing/tipFrequency';
 
 
-export function computeFocus(angles: GolfAngles): FocusData | null {
-  const ageTier = getCachedAgeTier();
+export function computeFocus(
+  angles: GolfAngles,
+  ageTier: AgeTier,
+  savedAtMs: number,
+): FocusData | null {
   const scored: { key: MetricKey; score: number | null; value: number | null }[] = [];
   for (const labelKey of Object.keys(METRIC_DEFINITIONS) as MetricKey[]) {
     if (!isMetricEligible(labelKey, ageTier)) continue;
@@ -102,7 +104,7 @@ export function computeFocus(angles: GolfAngles): FocusData | null {
     label: def.label,
     cue: def.cue(worst.value, def.ideal, ageTier),
     score: worst.score,
-    savedAt: Date.now(),
+    savedAt: savedAtMs,
   };
 }
 
