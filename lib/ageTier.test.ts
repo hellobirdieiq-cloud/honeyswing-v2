@@ -155,6 +155,33 @@ group('Synchronous cache (getCachedAgeTier)');
 }
 
 // ---------------------------------------------------------------------------
+// applyAgeTier (Batch 5.3) — synchronous limiter sync + cache, persist started
+// ---------------------------------------------------------------------------
+
+import { applyAgeTier } from './ageTier';
+import { tipFrequencyLimiter } from '@/packages/domain/swing/tipFrequency';
+
+group('applyAgeTier: limiter + cache sync SYNCHRONOUSLY, persist returned');
+{
+  _resetCacheForTesting('youth');
+  tipFrequencyLimiter.setAgeTier('youth');
+
+  const persist = applyAgeTier('adult');
+  // Both side effects must be visible BEFORE the persist promise settles —
+  // settings.tsx fire-and-forgets the persist, so the sync path is the contract.
+  assertEq(getCachedAgeTier(), 'adult', 'module cache synced synchronously');
+  assertEq(tipFrequencyLimiter.ageTier, 'adult', 'tip limiter synced synchronously');
+  assert(typeof persist.then === 'function', 'returns the persist promise (caller decides await vs fire-and-forget)');
+  // AsyncStorage has no native backing under tsx — attach a catch synchronously
+  // to swallow the expected rejection (no top-level await under the CJS runner).
+  persist.catch(() => {});
+
+  // Reset for any subsequent runs
+  _resetCacheForTesting('youth');
+  tipFrequencyLimiter.setAgeTier('youth');
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 

@@ -13,7 +13,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
-import type { AgeTier } from '@/packages/domain/swing/tipFrequency';
+import { tipFrequencyLimiter, type AgeTier } from '@/packages/domain/swing/tipFrequency';
 
 export type { AgeTier } from '@/packages/domain/swing/tipFrequency';
 
@@ -44,4 +44,17 @@ export async function getAgeTier(): Promise<AgeTier> {
 export async function setAgeTier(tier: AgeTier): Promise<void> {
   _cachedTier = tier;
   await AsyncStorage.setItem(STORAGE_KEYS.ageTier, tier);
+}
+
+/**
+ * The full tier switch: start the AsyncStorage persist and synchronously sync
+ * the tip-frequency limiter. Returns the persist promise — settings.tsx
+ * fire-and-forgets it (.catch); a caller that needs durability may await it.
+ * NOTE: onboarding.tsx still awaits the persist BEFORE syncing the limiter
+ * (different observable order) — deliberately NOT converged in Batch 5.3.
+ */
+export function applyAgeTier(tier: AgeTier): Promise<void> {
+  const persist = setAgeTier(tier);
+  tipFrequencyLimiter.setAgeTier(tier);
+  return persist;
 }

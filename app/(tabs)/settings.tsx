@@ -13,17 +13,14 @@ import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { useUser, useAuth } from '@clerk/expo';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../../lib/storageKeys';
-import { deleteAccount, supabase } from '../../lib/supabase';
 import { getCoachCode } from '../../lib/coachCode';
-import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
+import { linkCoach, unlinkCoach, checkIsCoach } from '../../lib/referralAttribution';
 import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
 import { getWatchCaptureEnabled, setWatchCaptureEnabled } from '../../lib/watchCaptureSetting';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
-import { getAgeTier, setAgeTier as persistAgeTier, type AgeTier } from '../../lib/ageTier';
+import { getAgeTier, applyAgeTier, type AgeTier } from '../../lib/ageTier';
 import { getProfiles, addProfile, deleteProfile, saveProfiles, setPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
-import { tipFrequencyLimiter } from '@/packages/domain/swing/tipFrequency';
+import { deleteAccountAndPurgeLocal } from '../../lib/accountLifecycle';
 import { GOLD } from '../../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {
@@ -60,15 +57,9 @@ export default function SettingsScreen() {
       getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
       getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
 
-      (async () => {
-        if (!isSignedIn || !user) { setIsCoach(false); return; }
-        const { data } = await supabase
-          .from('coaches')
-          .select('id')
-          .eq('auth_user_id', user.id)
-          .maybeSingle();
-        setIsCoach(!!data);
-      })().catch((err) => console.error('[HoneySwing]', err));
+      checkIsCoach(isSignedIn && user ? user.id : null)
+        .then(setIsCoach)
+        .catch((err) => console.error('[HoneySwing]', err));
     }, [isSignedIn, user]),
   );
   function handleAddCoach() {
@@ -200,16 +191,7 @@ export default function SettingsScreen() {
           onPress: async () => {
             setDeleting(true);
             try {
-              await deleteAccount();
-              await AsyncStorage.multiRemove([
-                STORAGE_KEYS.onboardingComplete,
-                STORAGE_KEYS.profileId,
-                STORAGE_KEYS.isLeftHanded,
-                STORAGE_KEYS.coachCode,
-                STORAGE_KEYS.pendingReferralCode,
-                STORAGE_KEYS.subscriptionStatus,
-                STORAGE_KEYS.ageTier,
-              ]);
+              await deleteAccountAndPurgeLocal();
               router.replace('/(tabs)/record' as Href);
             } catch (err: unknown) {
               const message =
@@ -321,8 +303,7 @@ export default function SettingsScreen() {
               style={[styles.ageTierOption, ageTier === tier && styles.optionSelected]}
               onPress={() => {
                 setAgeTierState(tier);
-                persistAgeTier(tier).catch((err) => console.error('[HoneySwing]', err));
-                tipFrequencyLimiter.setAgeTier(tier);
+                applyAgeTier(tier).catch((err) => console.error('[HoneySwing]', err));
               }}
               activeOpacity={0.7}
             >

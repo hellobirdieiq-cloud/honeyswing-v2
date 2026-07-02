@@ -7,6 +7,22 @@ export async function storePendingReferral(code: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.pendingReferralCode, code.toLowerCase().trim());
 }
 
+/**
+ * Whether the given Clerk auth user is a registered coach (drives the Coach
+ * Mode entry in settings). Extracted VERBATIM from settings.tsx (Batch 5.3).
+ * null/undefined authUserId (signed out) → false; query errors also resolve
+ * false (data null), matching the original inline behavior.
+ */
+export async function checkIsCoach(authUserId: string | null | undefined): Promise<boolean> {
+  if (!authUserId) return false;
+  const { data } = await supabase
+    .from('coaches')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .maybeSingle();
+  return !!data;
+}
+
 let commitPromise: Promise<void> | null = null;
 
 export function commitPendingReferral(): Promise<void> {
