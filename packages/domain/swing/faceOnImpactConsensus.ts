@@ -23,7 +23,7 @@
  */
 
 import type { JointName, PoseFrame } from "../../pose/PoseTypes";
-import { EXTERNAL_ASSUMPTIONS } from "./phaseDetectionShared";
+import { EXTERNAL_ASSUMPTIONS, msToFrames } from "./phaseDetectionShared";
 
 const C = EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus;
 
@@ -139,6 +139,8 @@ export function detectXCross(
   rows: ImpactXRow[],
   L: number = C.xcrossLeadOffset,
   confMin: number = C.xcrossConfMin,
+  // 1b: sustain rows, rate-derived by the caller; falls back to the 60fps literal.
+  sustain: number = C.xcrossSustainFrames,
 ): { cross: number | null; crossFrame: number | null; crossings: XCrossing[] } {
   const crossings: XCrossing[] = [];
   for (let j = 1; j < rows.length; j++) {
@@ -146,9 +148,9 @@ export function detectXCross(
     const b = rows[j];
     const gA = a.g;
     const gB = b.g;
-    // hold ≥ xcrossSustainFrames consecutive rows at/above the line (b plus the following ones).
+    // hold ≥ sustain consecutive rows at/above the line (b plus the following ones).
     let sustained = gB >= L;
-    for (let h = 1; h < C.xcrossSustainFrames && sustained; h++) {
+    for (let h = 1; h < sustain && sustained; h++) {
       const nxt = rows[j + h];
       sustained = nxt !== undefined && nxt.g >= L;
     }
@@ -245,7 +247,8 @@ export function computeFaceOnImpactConsensus(args: {
   hi: number;
   isLeftHanded: boolean;
   signFlipOverride?: number;
-  // 1a plumbing seam; consumed in 1b/1c (xcrossAnchorRadius / refineRadius / xcrossSustainFrames / rollingMedian5)
+  // Capture rate for xcrossSustain / xcrossAnchorRadius / refineRadius (60fps fallback when absent).
+  // (rollingMedian5's fixed ±2 window is a deferred 1c item.)
   msPerFrame?: number;
 }): FaceOnImpactConsensus {
   const { frames, isLeftHanded } = args;
@@ -257,6 +260,12 @@ export function computeFaceOnImpactConsensus(args: {
   const lo = clamp(args.lo, 0, last);
   const hi = clamp(args.hi, 0, last);
   if (lo >= hi) return emptyResult(signFlip, [lo, hi]);
+
+  // 1b: rate-derived frame counts (fall back to the 60fps literals when msPerFrame absent).
+  const mpf = args.msPerFrame;
+  const sustainN = mpf != null ? msToFrames(C.xcrossSustainMs, mpf) : C.xcrossSustainFrames;
+  const anchorRadiusN = mpf != null ? msToFrames(C.xcrossAnchorRadiusMs, mpf) : C.xcrossAnchorRadius;
+  const refineRadiusN = mpf != null ? msToFrames(C.refineRadiusMs, mpf) : C.refineRadius;
 
   const leadWrist = toSeries(frames, `${leadSide}Wrist` as JointName);
   const trailWrist = toSeries(frames, `${trailSide}Wrist` as JointName);
@@ -341,7 +350,7 @@ export function computeFaceOnImpactConsensus(args: {
     const g = Number.isFinite(sel.x) && Number.isFinite(mid) ? signFlip * (sel.x - mid) : NaN;
     rows.push({ frame: f, g, wristConf: sel.conf, selWrist: sel.which });
   }
-  const xc = detectXCross(rows);
+  const xc = detectXCross(rows, C.xcrossLeadOffset, C.xcrossConfMin, sustainN);
 
   // provisional anchor = geometric consensus of the anchor-free signals (footPick/S2/S3).
   const provPicks = [footPick, s2, s3]
@@ -358,7 +367,7 @@ export function computeFaceOnImpactConsensus(args: {
   const provAnchor = provConsensus === null ? null : Math.round(provConsensus);
 
   // S1 = the xCross crossing nearest the provisional anchor within ±radius.
-  const s1Cross = nearestAnchorCrossing(xc.crossings, provAnchor);
+  const s1Cross = nearestAnchorCrossing(xc.crossings, provAnchor, anchorRadiusN);
   const s1: ConsensusSignalPick = {
     name: "S1 xCross",
     frame: s1Cross ? Math.round(s1Cross.sub) : null,
@@ -393,7 +402,7 @@ export function computeFaceOnImpactConsensus(args: {
   let crossConf = NaN;
   if (anchor !== null) {
     for (let b = lo + 1; b <= hi; b++) {
-      if (b < anchor - C.refineRadius || b > anchor + C.refineRadius) continue;
+      if (b < anchor - refineRadiusN || b > anchor + refineRadiusN) continue;
       const a = b - 1;
       const dxA = dxAt(a);
       const dxB = dxAt(b);

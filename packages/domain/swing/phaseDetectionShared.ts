@@ -30,20 +30,32 @@ export const EXTERNAL_ASSUMPTIONS = {
       hardFloor: 0.002,
       watchFloor: 0.0015,
       baselineFrames: 10,
+      // 1b: ms-based sibling of baselineFrames (10 @ 60fps). Live readers use msToFrames(baselineMs, msPerFrame).
+      baselineMs: 167,
       spreadRiseDelta: 0.003,
       midXDriftDelta: 0.004,
+      // 1b: ms-based sibling of the hardcoded F-3 spreadRise/midXDrift lookback (3 @ 60fps).
+      riseLookbackMs: 50,
       watchTimeoutFrames: 5,
+      // 1b: ms-based sibling of watchTimeoutFrames (5 @ 60fps).
+      watchTimeoutMs: 83,
     },
     trueAddress: {
       windowFrames: 8,
+      // 1b: ms-based sibling of windowFrames (8 @ 60fps).
+      windowMs: 133,
       spineVarMax: 1.5,
       headDeltaMax: 0.006,
       kneeVarMax: 2.0,
       backScanCapBeforeTop: 20,
+      // 1b: ms-based sibling of backScanCapBeforeTop (20 @ 60fps).
+      backScanCapBeforeTopMs: 333,
     },
     top: {
       minTravel: 0.04,
       lookaheadFrames: 10,
+      // 1b: ms-based sibling of lookaheadFrames (10 @ 60fps).
+      lookaheadMs: 167,
       searchStartMs: 200,
       searchEndMs: 2000,
     },
@@ -64,10 +76,14 @@ export const EXTERNAL_ASSUMPTIONS = {
       sustainMultiplier: 10.0,
       sustainMs: 330,
       baselineWindowFrames: 30,
+      // 1b: ms-based sibling of baselineWindowFrames (30 @ 60fps).
+      baselineWindowMs: 500,
       baselineLowestN: 20,
     },
     top: {
       consensusWindowFrames: 5,
+      // 1b: ms-based sibling of consensusWindowFrames (5 @ 60fps).
+      consensusWindowMs: 83,
       searchStartFraction: 0.25,
       searchEndFraction: 0.20,
     },
@@ -128,15 +144,20 @@ export const EXTERNAL_ASSUMPTIONS = {
         downswingBudget: 50,       // raised 45→50 in the viewer after 3a814184's ~47-frame downswing
         xcrossLeadOffset: 0.06,    // L: shaft-lean offset — wrist leads the feet midpoint at impact
         xcrossAnchorRadius: 11,    // pick the xCross crossing nearest the provisional anchor within ±this
+        xcrossAnchorRadiusMs: 183, // 1b: ms sibling of xcrossAnchorRadius (11 @ 60fps)
         xcrossConfMin: 0.6,        // selected-wrist confidence floor at a crossing
         xcrossSustainFrames: 2,    // g must hold ≥ L for this many consecutive frames (hold ≥2)
+        xcrossSustainMs: 33,       // 1b: ms sibling of xcrossSustainFrames (2 @ 60fps)
         availConfMin: 0.6,         // a geometric signal is "available" iff its min joint conf ≥ this
         refineRadius: 6,           // thumb crossing must land within ±this of the consensus anchor
+        refineRadiusMs: 100,       // 1b: ms sibling of refineRadius (6 @ 60fps)
         thumbRefineConfMin: 0.5,   // min(tip,base) confidence for a thumb refine crossing to count
       },
     },
     finish: {
       rollingWindow: 5,
+      // 1b: ms-based sibling of rollingWindow (5 @ 60fps).
+      rollingWindowMs: 83,
       plateauJitterPct: 0.10,
       plateauConfirmMs: 550,
     },
@@ -287,11 +308,17 @@ export function msToFrames(ms: number, msPerFrame: number): number {
 // so DTL/face-on/legacy detectors all share one implementation.
 // ---------------------------------------------------------------------------
 
-const TAKEAWAY_DIRECTION_FRAMES = 20;   // ~167 ms at 120 fps
-const TAKEAWAY_DIRECTION_THRESHOLD = 0.002;
+// (1b: removed dead TAKEAWAY_DIRECTION_FRAMES/THRESHOLD — declared, never referenced;
+//  their comment also mis-asserted 120fps. See audit Section 2.)
 const TAKEAWAY_MAX_ADDRESS_FRACTION = 0.6;
-const MEDIAN_GATE_WINDOW = 8;     // frames per window
+const MEDIAN_GATE_WINDOW = 8;     // frames per window (60fps fallback when msPerFrame absent)
+const MEDIAN_GATE_WINDOW_MS = 133; // 1b: ms sibling of MEDIAN_GATE_WINDOW (8 @ 60fps)
 const MEDIAN_GATE_REQUIRED = 6;   // middle N that must all be positive (drops 1 outlier each end)
+
+/** Frames of the directional gate window at the given rate (falls back to the 60fps literal). */
+function medianGateWindow(msPerFrame?: number): number {
+  return msPerFrame != null ? msToFrames(MEDIAN_GATE_WINDOW_MS, msPerFrame) : MEDIAN_GATE_WINDOW;
+}
 
 /**
  * Magnitude-based stillness gate (legacy). Direction-blind — kept as a
@@ -301,18 +328,19 @@ const MEDIAN_GATE_REQUIRED = 6;   // middle N that must all be positive (drops 1
 export function findSetupEndIndexStillness(
   smoothed: number[],
   points: SwingTrailPoint[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (stillCount threshold). Optional: legacy/tests omit it.
+  // Rate for the stillness-run threshold (falls back to the 60fps literal when absent).
   msPerFrame?: number,
 ): number {
   const sorted = [...smoothed].filter((v) => v > 0).sort((a, b) => a - b);
   const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
   const threshold = Math.max(median * 0.2, 0.0001);
 
+  const stillRun = msPerFrame != null ? Math.max(1, msToFrames(STILLNESS_MIN_MS, msPerFrame)) : 2;
   let stillCount = 0;
   for (let i = 0; i < points.length; i++) {
     if (smoothed[i] <= threshold) {
       stillCount++;
-    } else if (stillCount >= 2) {
+    } else if (stillCount >= stillRun) {
       return Math.max(0, i - 1);
     } else {
       stillCount = 0;
@@ -332,28 +360,29 @@ export function findSetupEndIndexStillness(
 export function findSetupEndIndex(
   smoothed: number[],
   points: SwingTrailPoint[],
-  // 1a plumbing seam; consumed in 1b (MEDIAN_GATE_WINDOW). Optional: legacy/tests omit it.
+  // Rate for the directional-gate window (falls back to the 60fps literal when absent).
   msPerFrame?: number,
 ): number {
-  if (points.length < MEDIAN_GATE_WINDOW + 1) {
+  const gate = medianGateWindow(msPerFrame);
+  if (points.length < gate + 1) {
     return findSetupEndIndexStillness(smoothed, points, msPerFrame);
   }
 
   const lastIdx = points.length - 1;
 
-  for (let i = MEDIAN_GATE_WINDOW; i < points.length; i++) {
+  for (let i = gate; i < points.length; i++) {
     const window: number[] = [];
-    for (let j = i - (MEDIAN_GATE_WINDOW - 1); j <= i; j++) {
+    for (let j = i - (gate - 1); j <= i; j++) {
       window.push(points[j].x - points[j - 1].x);
     }
     window.sort((a, b) => a - b);
-    // Drop sorted[0] and sorted[7]; require sorted[1..6] all > 0.
+    // Drop sorted[0] and sorted[gate-1]; require sorted[1..MEDIAN_GATE_REQUIRED] all > 0.
     let allPositive = true;
     for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
       if (window[k] <= 0) { allPositive = false; break; }
     }
     if (allPositive) {
-      const candidate = i - MEDIAN_GATE_WINDOW;
+      const candidate = i - gate;
       if (candidate <= TAKEAWAY_MAX_ADDRESS_FRACTION * lastIdx) {
         return candidate;
       }
@@ -366,6 +395,13 @@ export function findSetupEndIndex(
 // ---------------------------------------------------------------------------
 // Velocity helpers reused by legacy + DTL/face-on detectors
 // ---------------------------------------------------------------------------
+
+const SMOOTH_WINDOW_MS = 83; // 1b: ms sibling of the box-mean smoothing window (5 @ 60fps)
+
+/** Box-mean smoothing window in frames at the given rate (falls back to the 60fps literal 5). */
+export function smoothWindow(msPerFrame?: number): number {
+  return msPerFrame != null ? Math.max(1, msToFrames(SMOOTH_WINDOW_MS, msPerFrame)) : 5;
+}
 
 export function trailVelocity(a: SwingTrailPoint, b: SwingTrailPoint): number {
   const dt = b.timestamp - a.timestamp;
@@ -418,7 +454,8 @@ export function smoothVelocities(
  */
 export const TAKEAWAY_MIN_TRAVEL_BH = 0.5;
 
-const BODY_HEIGHT_MIN_FRAMES = 20;  // fewer confident nose↔ankle frames → ruler unreliable
+const BODY_HEIGHT_MIN_FRAMES = 20;  // fewer confident nose↔ankle frames → ruler unreliable (60fps fallback)
+const BODY_HEIGHT_MIN_MS = 333;     // 1b: ms sibling of BODY_HEIGHT_MIN_FRAMES (20 @ 60fps)
 const BODY_HEIGHT_TRIM = 0.2;       // drop top/bottom 20% before averaging
 const BODY_HEIGHT_MIN_CONFIDENCE = 0.5;
 
@@ -429,6 +466,8 @@ const BODY_HEIGHT_MIN_CONFIDENCE = 0.5;
  * 0.09–0.22 BH before reversing, real takeaways climbed 0.51–0.56 BH.
  */
 const SUSTAINED_REVERSAL_FRAMES = 3;
+const SUSTAINED_REVERSAL_MS = 50; // 1b: ms sibling of SUSTAINED_REVERSAL_FRAMES (3 @ 60fps)
+const STILLNESS_MIN_MS = 33;      // 1b: ms sibling of the stillness run threshold (2 @ 60fps)
 
 export type FaceOnTakeawayOnset = {
   /** Trail-space onset index; null ⇒ caller must fall back to findSetupEndIndex. */
@@ -454,7 +493,7 @@ export type FaceOnTakeawayOnset = {
  * where BOTH joints have confidence >= 0.5. Height-only by design — tolerant of
  * the known lower-body L/R swap. Returns null when too few confident frames.
  */
-function lockedBodyHeightFromFrames(frames: PoseFrame[]): number | null {
+function lockedBodyHeightFromFrames(frames: PoseFrame[], msPerFrame?: number): number | null {
   const heights: number[] = [];
   for (const f of frames) {
     const nose = f.joints.nose;
@@ -466,7 +505,8 @@ function lockedBodyHeightFromFrames(frames: PoseFrame[]): number | null {
     const dy = nose.y - ankle.y;
     heights.push(Math.sqrt(dx * dx + dy * dy));
   }
-  if (heights.length < BODY_HEIGHT_MIN_FRAMES) return null;
+  const minFrames = msPerFrame != null ? msToFrames(BODY_HEIGHT_MIN_MS, msPerFrame) : BODY_HEIGHT_MIN_FRAMES;
+  if (heights.length < minFrames) return null;
   heights.sort((a, b) => a - b);
   const lo = Math.floor(heights.length * BODY_HEIGHT_TRIM);
   const hi = heights.length - lo;
@@ -481,9 +521,11 @@ function lockedBodyHeightFromFrames(frames: PoseFrame[]): number | null {
 export function findTakeawayOnsetFaceOn(
   trail: SwingTrailPoint[],
   frames: PoseFrame[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (MEDIAN_GATE_WINDOW/BODY_HEIGHT_MIN_FRAMES/SUSTAINED_REVERSAL_FRAMES). Optional: tests omit it.
+  // Rate for the gate window / ruler-min / reversal-run / smoothing (falls back to 60fps literals).
   msPerFrame?: number,
 ): FaceOnTakeawayOnset {
+  const gate = medianGateWindow(msPerFrame);
+  const reversalRunMax = msPerFrame != null ? Math.max(1, msToFrames(SUSTAINED_REVERSAL_MS, msPerFrame)) : SUSTAINED_REVERSAL_FRAMES;
   const nullResult = (
     fallbackReason: FaceOnTakeawayOnset["fallbackReason"],
     extra?: Partial<FaceOnTakeawayOnset>,
@@ -498,11 +540,11 @@ export function findTakeawayOnsetFaceOn(
   });
 
   try {
-    if (trail.length < MEDIAN_GATE_WINDOW + 1) {
+    if (trail.length < gate + 1) {
       return nullResult("trail_too_short");
     }
 
-    const bh = lockedBodyHeightFromFrames(frames);
+    const bh = lockedBodyHeightFromFrames(frames, msPerFrame);
     if (bh == null) {
       return nullResult("ruler_unreliable");
     }
@@ -511,7 +553,7 @@ export function findTakeawayOnsetFaceOn(
     // This is the confirm/travel signal; Δx > 0 is the takeaway direction for both
     // handedness.
     const leadX = trail.map((p) => p.leadX);
-    const s = smoothVelocities(leadX, 5);
+    const s = smoothVelocities(leadX, smoothWindow(msPerFrame));
 
     // Candidate generator — re-run the OLD 6-of-8 directional-window test
     // (findSetupEndIndex's window math, left unmodified there) on the wrist-
@@ -519,9 +561,9 @@ export function findTakeawayOnsetFaceOn(
     // Each window of 8 raw deltas is sorted, its min+max dropped, and the middle
     // 6 required strictly positive → a committed directional move, not a spike.
     const windowStarts: number[] = [];
-    for (let i = MEDIAN_GATE_WINDOW; i < trail.length; i++) {
+    for (let i = gate; i < trail.length; i++) {
       const window: number[] = [];
-      for (let j = i - (MEDIAN_GATE_WINDOW - 1); j <= i; j++) {
+      for (let j = i - (gate - 1); j <= i; j++) {
         window.push(trail[j].x - trail[j - 1].x);
       }
       window.sort((a, b) => a - b);
@@ -529,7 +571,7 @@ export function findTakeawayOnsetFaceOn(
       for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
         if (window[k] <= 0) { allPositive = false; break; }
       }
-      if (allPositive) windowStarts.push(i - MEDIAN_GATE_WINDOW);
+      if (allPositive) windowStarts.push(i - gate);
     }
 
     // Group contiguous window-starts (gap > 1 ⇒ new trigger group); each group's
@@ -569,7 +611,7 @@ export function findTakeawayOnsetFaceOn(
         }
         if (s[i] < s[i - 1]) {
           reversalRun++;
-          if (reversalRun >= SUSTAINED_REVERSAL_FRAMES) break; // sustained reversal → reject
+          if (reversalRun >= reversalRunMax) break; // sustained reversal → reject
         } else {
           reversalRun = 0; // flat OR rising resets
         }

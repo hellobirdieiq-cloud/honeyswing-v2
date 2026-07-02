@@ -22,6 +22,7 @@ import {
   findTakeawayOnsetFaceOn,
   msToFrames,
   smoothVelocities,
+  smoothWindow,
   type FaceOnImpactConsensusShadow,
   type FaceOnTakeawayOnset,
   type FaceOnTopXExtreme,
@@ -133,7 +134,7 @@ function detectFaceOnSwingStart(
   frame: number | null;
   reliability: "high" | "medium" | "low" | null;
 } {
-  if (frames.length < 30) return { frame: null, reliability: null };
+  if (frames.length < msToFrames(A.swingStart.baselineWindowMs, msPerFrame)) return { frame: null, reliability: null };
 
   const avg: (number | null)[] = new Array(frames.length).fill(null);
   for (let i = 1; i < frames.length; i++) {
@@ -145,7 +146,7 @@ function detectFaceOnSwingStart(
   }
 
   // Baseline: mean of the N lowest avg values within the first window frames.
-  const window = Math.min(A.swingStart.baselineWindowFrames, avg.length - 1);
+  const window = Math.min(msToFrames(A.swingStart.baselineWindowMs, msPerFrame), avg.length - 1);
   const baselineCandidates: number[] = [];
   for (let i = 1; i <= window; i++) {
     if (avg[i] != null) baselineCandidates.push(avg[i] as number);
@@ -203,7 +204,7 @@ function detectFaceOnSwingStart(
 // X-rise-vs-footRef heuristic, which keyed off the wrong axis for face-on.)
 // ---------------------------------------------------------------------------
 
-const IMPACT_SPEED_LOOKBACK = 3; // frames; 2D leftWrist displacement window
+const IMPACT_SPEED_LOOKBACK_MS = 50; // 2D leftWrist displacement window (3 frames @ 60fps)
 const IMPACT_PEAK_PERCENTILE = 0.95; // robust max (ignores a single noisy spike)
 const IMPACT_BAND_THRESHOLD = 0.9; // band = speed >= threshold * peak
 
@@ -216,9 +217,10 @@ export function detectFaceOnImpact(
   // and 0 when either frame's joint is missing. (Mirrors testLeadWristImpact.leadWristSpeed.)
   const n = frames.length;
   if (n === 0) return { frame: null, reliability: null };
+  const lookback = Math.max(1, msToFrames(IMPACT_SPEED_LOOKBACK_MS, msPerFrame));
   const speed = new Array<number>(n).fill(0);
-  for (let f = IMPACT_SPEED_LOOKBACK; f < n; f++) {
-    const a = frames[f - IMPACT_SPEED_LOOKBACK].joints.leftWrist;
+  for (let f = lookback; f < n; f++) {
+    const a = frames[f - lookback].joints.leftWrist;
     const b = frames[f].joints.leftWrist;
     if (!a || !b) continue;
     const dx = b.x - a.x;
@@ -475,7 +477,6 @@ function detectFaceOnTop(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (consensusWindowFrames)
   msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   const totalSpan = impactIdx - swingStartIdx;
@@ -503,7 +504,7 @@ function detectFaceOnTop(
     }
   }
 
-  const window = A.top.consensusWindowFrames;
+  const window = msToFrames(A.top.consensusWindowMs, msPerFrame);
   // rightWrist z max within ±window of velMinFi.
   let zMaxFi: number | null = null;
   let zMaxV = -Infinity;
@@ -561,7 +562,6 @@ function detectFaceOnTopXExtreme(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (consensusWindowFrames spread tol)
   msPerFrame: number,
 ): FaceOnTopXExtreme {
   const empty: FaceOnTopXExtreme = {
@@ -616,7 +616,7 @@ function detectFaceOnTopXExtreme(
   // Reliability mirrors detectFaceOnTop's tiering: all 3 present and tightly
   // clustered = high; ≥2 = medium; a single landmark = low.
   const reliability: "high" | "medium" | "low" =
-    picks.length === 3 && spread <= A.top.consensusWindowFrames
+    picks.length === 3 && spread <= msToFrames(A.top.consensusWindowMs, msPerFrame)
       ? "high"
       : picks.length >= 2
         ? "medium"
@@ -648,7 +648,7 @@ function detectFaceOnFinish(
   const lastIdx = frames.length - 1;
   const tsx: (number | null)[] = frames.map((f) => f.joints.rightShoulder?.x ?? null);
 
-  const W = A.finish.rollingWindow;
+  const W = msToFrames(A.finish.rollingWindowMs, msPerFrame);
   const rolling: (number | null)[] = tsx.map((_, i) => {
     const lo = Math.max(0, i - Math.floor(W / 2));
     const hi = Math.min(lastIdx, i + Math.floor(W / 2));
@@ -764,7 +764,7 @@ export function detectFaceOnPhases(input: {
   // to the exact findSetupEndIndex value (always computed → fallback path is
   // byte-identical to today). Both spaces are trail-space.
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
   const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
   const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
@@ -1113,7 +1113,7 @@ export function detectFaceOnPhasesDebug(input: {
   result.swingStartFrame = swingStart.frame;
 
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
   const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
   const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;

@@ -28,6 +28,7 @@ import {
   findSetupEndIndex,
   msToFrames,
   smoothVelocities,
+  smoothWindow,
   type PhaseRuleDebug,
   type PhaseRuleReliability,
 } from "./phaseDetectionShared";
@@ -62,7 +63,6 @@ const PHASE_ORDER: SwingPhase[] = [
  */
 function detectDTLSwingStart(
   frames: PoseFrame[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (baselineFrames/watchTimeoutFrames/F-3 lookback)
   msPerFrame: number,
 ): {
   frame: number | null;
@@ -70,6 +70,10 @@ function detectDTLSwingStart(
   baselineUsed: number;
   thresholdUsed: number;
 } {
+  // 1b: rate-derived frame counts (fall back to the old literals at 60fps).
+  const baselineN = msToFrames(A.swingStart.baselineMs, msPerFrame);
+  const watchTimeoutN = msToFrames(A.swingStart.watchTimeoutMs, msPerFrame);
+  const lb = Math.max(1, msToFrames(A.swingStart.riseLookbackMs, msPerFrame));
   const spreadX: (number | null)[] = frames.map((f) => {
     const lh = f.joints.leftHip;
     const rh = f.joints.rightHip;
@@ -92,7 +96,7 @@ function detectDTLSwingStart(
 
   // Baseline: mean(|dSpreadX|) over first N frames where dSpreadX is defined.
   const baselineSamples: number[] = [];
-  for (let i = 1; i <= A.swingStart.baselineFrames && i < dSpreadX.length; i++) {
+  for (let i = 1; i <= baselineN && i < dSpreadX.length; i++) {
     const v = dSpreadX[i];
     if (v != null) baselineSamples.push(Math.abs(v));
   }
@@ -106,20 +110,20 @@ function detectDTLSwingStart(
   const watchThreshold = Math.max(baseline * A.swingStart.watchMultiplier, A.swingStart.watchFloor);
 
   let watchTimeout = 0;
-  for (let F = 3; F < dSpreadX.length - 1; F++) {
+  for (let F = lb; F < dSpreadX.length - 1; F++) {
     const sxF = spreadX[F];
-    const sxF3 = spreadX[F - 3];
+    const sxF3 = spreadX[F - lb];
     const mxF = midX[F];
-    const mxF3 = midX[F - 3];
+    const mxF3 = midX[F - lb];
 
     if (sxF != null && sxF3 != null) {
       if (sxF - sxF3 > A.swingStart.spreadRiseDelta) {
-        watchTimeout = A.swingStart.watchTimeoutFrames;
+        watchTimeout = watchTimeoutN;
       }
     }
     if (mxF != null && mxF3 != null) {
       if (Math.abs(mxF - mxF3) > A.swingStart.midXDriftDelta) {
-        watchTimeout = A.swingStart.watchTimeoutFrames;
+        watchTimeout = watchTimeoutN;
       }
     }
     const watchMode = watchTimeout > 0;
@@ -151,7 +155,6 @@ function detectDTLSwingStart(
 function detectDTLTrueAddress(
   frames: PoseFrame[],
   topIdx: number,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (windowFrames/backScanCapBeforeTop)
   msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   // Pre-compute per-frame signals so the window scan stays cheap.
@@ -170,8 +173,8 @@ function detectDTLTrueAddress(
     return b.x - a.x;
   });
 
-  const W = A.trueAddress.windowFrames;
-  const scanEnd = Math.max(0, topIdx - A.trueAddress.backScanCapBeforeTop);
+  const W = msToFrames(A.trueAddress.windowMs, msPerFrame);
+  const scanEnd = Math.max(0, topIdx - msToFrames(A.trueAddress.backScanCapBeforeTopMs, msPerFrame));
 
   for (let end = scanEnd; end >= W - 1; end--) {
     const start = end - (W - 1);
@@ -239,7 +242,8 @@ function detectDTLTop(
       tWx < windowMax - A.top.minTravel
     ) {
       let hasDeeperMin = false;
-      for (let k = 1; k <= A.top.lookaheadFrames && F + k <= topSearchEnd; k++) {
+      const lookaheadN = msToFrames(A.top.lookaheadMs, msPerFrame);
+      for (let k = 1; k <= lookaheadN && F + k <= topSearchEnd; k++) {
         if (points[F + k].trailX < tWx) {
           hasDeeperMin = true;
           break;
@@ -356,7 +360,7 @@ export function detectDTLPhases(input: {
 
   // Phase 2 — takeaway directional gate (start-of-window address candidate)
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
   const takeawayAddressIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
   reliability.takeaway = "medium";
 
