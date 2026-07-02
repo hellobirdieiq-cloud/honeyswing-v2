@@ -43,8 +43,8 @@ DB timestamp strings are parsed only via `lib/datetime.ts` `parseDbTimestamp`; n
 ### Domain Analysis Details
 
 - **Angles** (`angles.ts`): 7 biomechanical angles (spine, elbows, knees, hip rotation, shoulder tilt). Min confidence threshold: 0.5.
-- **Phases** (`phaseDetection.ts`): 6 swing phases (address → takeaway → top → downswing → impact → finish). Uses velocity-based heuristic with setup detection; falls back to percentage-based splits.
-- **Tempo** (`tempoAnalysis.ts`): Backswing/downswing ratio. "Good" = 2.5–3.5 ratio. Sanity checks withhold tempo when phases are fallback-only, durations < 50ms, or ratio is implausible.
+- **Phases** (`phaseDetection.ts`): 5 swing phases (takeaway → top → downswing → impact → follow_through; `SwingPhase`, phaseDetection.ts:33-38). Uses velocity-based heuristic with setup detection; falls back to percentage-based splits.
+- **Tempo** (`tempoAnalysis.ts`): Backswing/downswing ratio. "Good" = 2.5–3.5 ratio. Sanity checks withhold tempo when phases are fallback-only, durations < `TEMPO_MIN_PHASE_MS` (120ms, tempoAnalysis.ts:106), or ratio is implausible.
 - **Scoring** (`scoring.ts`): 0–100 score averaging 7 component scores against biomechanical targets. Missing data scores 0.
 
 ## Tech Stack
