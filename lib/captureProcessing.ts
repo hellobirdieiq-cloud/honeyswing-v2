@@ -146,8 +146,11 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
   let rtmwForFailure: Rtmw133Frame[] | null = null;
 
   try {
-    // EXTERNAL ASSUMPTION — 45s pipeline timeout. Covers observed worst-case extraction (~30s on a 5s clip) plus margin; revisit if clip length grows. Not a measured ceiling.
-    const EXTRACTION_TIMEOUT_MS = 45000;
+    // EXTERNAL ASSUMPTION — 90s pipeline timeout, sized for decimation 2 (120fps): extraction
+    // scales with frame count, so the 60fps observed worst case (~30s on a 5s clip) doubles to
+    // ~60s < 90s. Revisit if clip length grows. Not a measured ceiling; unverified on-device at
+    // decimation 2 until the 120fps test swing logs extractionMs.
+    const EXTRACTION_TIMEOUT_MS = 90000;
     const result = await Promise.race([
       extractPoseFromVideo(
         video.path,
