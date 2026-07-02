@@ -153,7 +153,11 @@ function detectFaceOnSwingStart(
   }
   if (baselineCandidates.length < 5) return { frame: null, reliability: null };
   baselineCandidates.sort((a, b) => a - b);
-  const takeN = Math.min(A.swingStart.baselineLowestN, baselineCandidates.length);
+  // 1c A2: baseline = mean of the calmest FRACTION of the window (baselineLowestN/baselineWindowFrames
+  // = 20/30 ≈ ⅔), rate-independent, clamped to [floor, candidates]. At 60fps window=30 → 20 (unchanged).
+  // EXTERNAL ASSUMPTION — the min-sample floor (10) is unvalidated; chosen to keep the baseline mean
+  // statistically usable on short/poor-tracking windows. Revisit at clinic calibration.
+  const takeN = Math.min(Math.max(Math.round(window * A.swingStart.baselineLowestN / A.swingStart.baselineWindowFrames), 10), baselineCandidates.length);
   let baseSum = 0;
   for (let i = 0; i < takeN; i++) baseSum += baselineCandidates[i];
   const baseline = baseSum / takeN;
