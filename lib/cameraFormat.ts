@@ -8,4 +8,4 @@
 export const CAPTURE_WIDTH = 1920;
 export const CAPTURE_HEIGHT = 1080;
 export const CAPTURE_FPS = 240;
-export const ANALYZER_DECIMATION = 4;
+export const ANALYZER_DECIMATION = 2;
