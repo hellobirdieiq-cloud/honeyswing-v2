@@ -140,10 +140,11 @@ export const EXTERNAL_ASSUMPTIONS = {
         // anchored on a takeaway-derived freshTop ≈ the app's topXExtreme; the budget keeps the
         // search OFF the broken stored/derived finish. Validated: [topIdx, finish] truncates
         // 9d1606a6 (finish 103 < impact 125) and over-widens e212431b (decoys at 184/196).
-        // ⚠️ 50 frames is validated ONLY at 60 fps (all 6 ground-truth swings = 16.667 ms/frame
-        // = 0.83 s of downswing). It is a FRAME count, not a duration — convert via
-        // msToFrames(~833, msPerFrame) before any non-60-fps capture rate ships.
         downswingBudget: 50,       // raised 45→50 in the viewer after 3a814184's ~47-frame downswing
+                                   // (60fps frame form; kept for the deferred diagnostic scripts)
+        // 1d: ms sibling of downswingBudget (50 @ 60fps) — live consumers convert via msToFrames.
+        // Validated ground truth is 0.83s of downswing (6 swings, all 16.667 ms/frame).
+        downswingBudgetMs: 833,
         xcrossLeadOffset: 0.06,    // L: shaft-lean offset — wrist leads the feet midpoint at impact
         xcrossAnchorRadius: 11,    // pick the xCross crossing nearest the provisional anchor within ±this
         xcrossAnchorRadiusMs: 183, // 1b: ms sibling of xcrossAnchorRadius (11 @ 60fps)

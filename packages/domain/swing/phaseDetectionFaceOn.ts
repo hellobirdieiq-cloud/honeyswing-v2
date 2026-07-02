@@ -73,7 +73,7 @@ function computeImpactConsensus(
 ): FaceOnImpactConsensus | null {
   if (!preCanonical) return null;
   // hi is clamped to the array inside computeFaceOnImpactConsensus.
-  const hi = topIdx + A.impact.consensus.downswingBudget;
+  const hi = topIdx + msToFrames(A.impact.consensus.downswingBudgetMs, msPerFrame);
   return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded, msPerFrame });
 }
 
