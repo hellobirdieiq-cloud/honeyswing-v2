@@ -25,11 +25,6 @@ import {
 } from '../../packages/domain/swing/analysisPipeline';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import type { PoseSequence, PoseFrame } from '../../packages/pose/PoseTypes';
-import {
-  TEMPO_LABELS,
-  type TempoRating,
-} from '../../packages/domain/swing/tempoAnalysis';
-import VisualCoachCard from '../../components/VisualCoachCard';
 import { classifyCapture, type CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from '../../lib/handedness';
 import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
@@ -42,16 +37,10 @@ import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';
 import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
 import type { ProcessSwingResult } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
-import { frameToLandmarks, pickKeyFrame, buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
+import { buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
 import { deriveTempoDisplay, derivePartialReason } from '../../packages/domain/swing/tempoDisplay';
 import { reconstructAnalysisFromRecord } from '../../lib/reconstructAnalysis';
 import type { GripClassification } from '../../lib/classifyGrip';
-
-const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
-  solid:            { label: 'Solid',            color: '#00FF66' },
-  playable:         { label: 'Playable',         color: '#FFB020' },
-  needs_adjustment: { label: 'Needs Adjustment', color: '#FF4444' },
-};
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -394,8 +383,6 @@ export default function ResultScreen() {
     return () => cancelAnimationFrame(raf);
   }, [finalScore]);
 
-  const isLowConfidence = classification?.validity === 'partial';
-
   // Task 7: frequency-limited coaching tips + Task 8: positive reinforcement
   const { processedTips, positiveResult } = useMemo<{
     processedTips: ProcessedCoachingTip[];
@@ -482,22 +469,6 @@ export default function ResultScreen() {
     const focus = computeFocus(angles, getCachedAgeTier(), Date.now());
     if (focus) saveFocus(focus).catch((err) => console.error('[HoneySwing]', err));
   }, [angles]);
-
-  const tempoRating = tempo?.tempoRating as TempoRating | undefined;
-  const tempoLabel = tempoRating ? TEMPO_LABELS[tempoRating] : null;
-
-  const keyFrame = useMemo(
-    () => (effectiveMotion ? pickKeyFrame(effectiveMotion.frames) : null),
-    [effectiveMotion],
-  );
-  const keyLandmarks = useMemo(
-    () => (keyFrame ? frameToLandmarks(keyFrame) : []),
-    [keyFrame],
-  );
-
-  // Skeleton preview dimensions — compact 3:4 landscape-ish for coaching card
-  const skeletonW = screenW - 48;
-  const skeletonH = Math.round(skeletonW * 0.85);
 
   // Header identity: the viewed swing's OWN attribution governs (not the current
   // primary). Live swing belongs to the current primary, so its pre-load fallback
