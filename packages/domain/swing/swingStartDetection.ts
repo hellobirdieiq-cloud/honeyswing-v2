@@ -15,7 +15,7 @@
 
 import type { PoseFrame } from "../../pose/PoseTypes";
 import { calculateGolfAngles } from "./angles";
-import { msToFrames } from "./phaseDetectionShared";
+import { msToFrames, scalePerFrameFloor } from "./phaseDetectionShared";
 
 export type SwingStartResult = {
   trueAddressFrame: number;
@@ -70,6 +70,7 @@ function detectAddressDTL(
   const addrWindow = msPerFrame != null ? msToFrames(ADDRESS_WINDOW_MS, msPerFrame) : ADDRESS_WINDOW;
   const addrTopBuffer = msPerFrame != null ? msToFrames(ADDRESS_TOP_BUFFER_MS, msPerFrame) : ADDRESS_TOP_BUFFER;
   const addrMinE = msPerFrame != null ? msToFrames(ADDRESS_MIN_E_MS, msPerFrame) : ADDRESS_MIN_E;
+  const headMax = scalePerFrameFloor(HEAD_DELTA_MAX, msPerFrame); // 1b-2: per-ms head-still floor
   const eStartRaw = topIdx - addrTopBuffer;
   const eStart = Math.min(eStartRaw, frames.length - 1);
   const eEnd = addrMinE;
@@ -105,7 +106,7 @@ function detectAddressDTL(
 
     let headOk = true;
     for (let k = 0; k < noses.length - 1; k++) {
-      if (Math.abs(noses[k + 1] - noses[k]) >= HEAD_DELTA_MAX) {
+      if (Math.abs(noses[k + 1] - noses[k]) >= headMax) {
         headOk = false;
         break;
       }

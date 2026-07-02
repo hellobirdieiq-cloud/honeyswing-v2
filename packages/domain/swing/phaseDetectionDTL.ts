@@ -27,6 +27,7 @@ import {
   emptyReliability,
   findSetupEndIndex,
   msToFrames,
+  scalePerFrameFloor,
   smoothVelocities,
   smoothWindow,
   type PhaseRuleDebug,
@@ -175,6 +176,7 @@ function detectDTLTrueAddress(
 
   const W = msToFrames(A.trueAddress.windowMs, msPerFrame);
   const scanEnd = Math.max(0, topIdx - msToFrames(A.trueAddress.backScanCapBeforeTopMs, msPerFrame));
+  const headMax = scalePerFrameFloor(A.trueAddress.headDeltaMax, msPerFrame); // 1b-2: per-ms head-still floor
 
   for (let end = scanEnd; end >= W - 1; end--) {
     const start = end - (W - 1);
@@ -196,7 +198,7 @@ function detectDTLTrueAddress(
       if (s > spineMax) spineMax = s;
       if (k < kneeMin) kneeMin = k;
       if (k > kneeMax) kneeMax = k;
-      if (Math.abs(h) >= A.trueAddress.headDeltaMax) {
+      if (Math.abs(h) >= headMax) {
         headOk = false;
         break;
       }
@@ -301,6 +303,7 @@ function detectDTLFinish(
     impactIdx + Math.round(downswingFrames * A.finish.searchMultiplier),
   );
   const finishSearchStart = impactIdx + msToFrames(A.finish.minFollowMs, msPerFrame);
+  const velFloor = scalePerFrameFloor(A.finish.velocityFloor, msPerFrame); // 1b-2: per-ms stop floor
 
   if (finishSearchStart < 1 || finishSearchStart >= finishSearchEnd - 1) {
     return { frame: finishSearchEnd, complete: false };
@@ -311,9 +314,9 @@ function detectDTLFinish(
     const d1 = Math.hypot(points[F + 1].x - points[F].x, points[F + 1].y - points[F].y);
     const d2 = Math.hypot(points[F + 2].x - points[F + 1].x, points[F + 2].y - points[F + 1].y);
     if (
-      d0 < A.finish.velocityFloor &&
-      d1 < A.finish.velocityFloor &&
-      d2 < A.finish.velocityFloor
+      d0 < velFloor &&
+      d1 < velFloor &&
+      d2 < velFloor
     ) {
       return { frame: F, complete: true };
     }

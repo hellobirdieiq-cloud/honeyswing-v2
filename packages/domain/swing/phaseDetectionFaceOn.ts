@@ -328,6 +328,8 @@ export function detectFaceOnThumbCrossing(
   topIdx: number,
   followIdx: number,
   isLeftHanded: boolean,
+  // 1b-2: capture rate for the hold window (60fps fallback; the sole caller is a diagnostic script).
+  msPerFrame?: number,
 ): ThumbCrossingResult {
   const cmcName = isLeftHanded ? "rightThumb" : "leftThumb";
   const tipName = isLeftHanded ? "rightThumbTip" : "leftThumbTip";
@@ -356,7 +358,7 @@ export function detectFaceOnThumbCrossing(
 
   // All neg→pos crossings that hold positive thumbHoldFrames consecutive valid frames.
   // Each carries its bounding |dx| amplitude for the teleport-spike guard.
-  const hold = A.impact.thumbHoldFrames;
+  const hold = msPerFrame != null ? msToFrames(A.impact.thumbHoldMs, msPerFrame) : A.impact.thumbHoldFrames;
   const crossings: { cross: number; amp: number }[] = [];
   for (let k = 0; k + 1 < samples.length; k++) {
     const a = samples[k];
@@ -427,14 +429,19 @@ export function selectFaceOnImpact(args: {
   isLeftHanded: boolean;
   hasPreCanonical: boolean;
   isOverride: boolean;
+  // 1b-2: capture rate for the cross-check tolerance (60fps fallback when absent; tests omit it).
+  msPerFrame?: number;
 }): ImpactSelection {
-  const { arcBottomFrame, consensus, isLeftHanded, hasPreCanonical, isOverride } = args;
+  const { arcBottomFrame, consensus, isLeftHanded, hasPreCanonical, isOverride, msPerFrame } = args;
   const impactArcbottom = arcBottomFrame;
   const finalSub = consensus?.final ?? null;
   const finalRounded = finalSub != null ? Math.round(finalSub) : null;
   const impactDelta = finalRounded != null ? finalRounded - impactArcbottom : null;
+  const crossCheckTol = msPerFrame != null
+    ? msToFrames(A.impact.crossCheckThresholdMs, msPerFrame)
+    : A.impact.crossCheckThresholdFrames;
   const impactCrossCheckMismatch =
-    impactDelta != null && Math.abs(impactDelta) > A.impact.crossCheckThresholdFrames;
+    impactDelta != null && Math.abs(impactDelta) > crossCheckTol;
 
   // Arc-bottom fallback — preserves today's graceful behavior; reliability LOW so a low-credibility
   // impact can be suppressed downstream. final/delta still logged for provenance.
@@ -884,6 +891,7 @@ export function detectFaceOnPhases(input: {
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: input.impactOverride != null,
+    msPerFrame,
   });
   const impactIdx = selection.impactIdx;
   const {
@@ -1171,6 +1179,7 @@ export function detectFaceOnPhasesDebug(input: {
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: false,
+    msPerFrame,
   });
   const impactIdx = selection.impactIdx;
   result.impactIdx = impactIdx;

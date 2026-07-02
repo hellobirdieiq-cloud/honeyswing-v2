@@ -108,8 +108,10 @@ export const EXTERNAL_ASSUMPTIONS = {
       // ground truth 137.6) via scripts/output/_thumbCrossing.mjs; re-validate vs corpus.
       thumbConfMin: 0.4,        // skip frames where either thumb joint conf < this
       thumbHoldFrames: 2,       // crossing must hold positive this many consecutive valid frames
+      thumbHoldMs: 33,          // 1b-2: ms sibling of thumbHoldFrames (2 @ 60fps)
       thumbMinValidCoverage: 0.5, // fraction of window frames that must pass conf, else fall back
       crossCheckThresholdFrames: 6, // |thumb − arcBottom| above this sets the reliability flag
+      crossCheckThresholdMs: 100, // 1b-2: ms sibling of crossCheckThresholdFrames (6 @ 60fps)
       // [EXTERNAL ASSUMPTION / NO SOURCE — clinic-calibrated, N=12 (10 real / 2 artifact)]
       // Reject the thumb crossing → arc-bottom when |thumb − arcBottom| exceeds this. SEPARATE
       // from crossCheckThresholdFrames (6, reliability downgrade only). 15 = center of the empty
@@ -300,6 +302,19 @@ export function msPerFrameFromTrail(points: SwingTrailPoint[]): number {
 export function msToFrames(ms: number, msPerFrame: number): number {
   if (msPerFrame <= 0) return 0;
   return Math.round(ms / msPerFrame);
+}
+
+/**
+ * Reference capture rate the per-frame *spatial* floors (displacement thresholds) were
+ * calibrated at: 240fps source / 4 decimation = 60fps = 1000/60 ms/frame. A per-frame
+ * displacement floor scales linearly with dt, so at another rate use `floor · msPerFrame / REF_MS_60`
+ * (exactly the calibrated value at 60fps).
+ */
+export const REF_MS_60 = 1000 / 60;
+
+/** Scale a per-frame displacement floor (calibrated at 60fps) to the given rate. */
+export function scalePerFrameFloor(floor60: number, msPerFrame?: number): number {
+  return msPerFrame != null && msPerFrame > 0 ? floor60 * (msPerFrame / REF_MS_60) : floor60;
 }
 
 // ---------------------------------------------------------------------------

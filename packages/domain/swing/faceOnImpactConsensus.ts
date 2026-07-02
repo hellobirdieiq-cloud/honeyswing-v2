@@ -41,13 +41,17 @@ export function median(nums: number[]): number {
   return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
 }
 
-/** Rolling median over a ±2 window (5 frames), skipping NaN. NaN only if the whole window is NaN. */
-export function rollingMedian5(vals: number[]): number[] {
+/**
+ * Rolling median over a ±`half` window (default ±2 = 5 frames @ 60fps), skipping NaN. NaN only if
+ * the whole window is NaN. 1b-2: `half` is rate-derived by the caller so the smoothing spans a fixed
+ * duration; the default preserves the original 5-frame behavior for any caller that omits it.
+ */
+export function rollingMedian5(vals: number[], half: number = 2): number[] {
   const n = vals.length;
   const out = new Array<number>(n);
   for (let i = 0; i < n; i++) {
     const win: number[] = [];
-    for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
+    for (let j = Math.max(0, i - half); j <= Math.min(n - 1, i + half); j++) {
       if (Number.isFinite(vals[j])) win.push(vals[j]);
     }
     out[i] = win.length ? median(win) : NaN;
@@ -266,6 +270,8 @@ export function computeFaceOnImpactConsensus(args: {
   const sustainN = mpf != null ? msToFrames(C.xcrossSustainMs, mpf) : C.xcrossSustainFrames;
   const anchorRadiusN = mpf != null ? msToFrames(C.xcrossAnchorRadiusMs, mpf) : C.xcrossAnchorRadius;
   const refineRadiusN = mpf != null ? msToFrames(C.refineRadiusMs, mpf) : C.refineRadius;
+  // rolling-median half-window: 83ms ≈ 5 frames (±2) @ 60fps; rate-derived so smoothing spans a fixed duration.
+  const medHalf = mpf != null ? Math.floor(msToFrames(83, mpf) / 2) : 2;
 
   const leadWrist = toSeries(frames, `${leadSide}Wrist` as JointName);
   const trailWrist = toSeries(frames, `${trailSide}Wrist` as JointName);
@@ -276,7 +282,7 @@ export function computeFaceOnImpactConsensus(args: {
   const trailAnkle = toSeries(frames, `${trailSide}Ankle` as JointName);
   const leftWrist = toSeries(frames, "leftWrist");
   const rightWrist = toSeries(frames, "rightWrist");
-  const leadFootMedX = rollingMedian5(leadAnkle.x);
+  const leadFootMedX = rollingMedian5(leadAnkle.x, medHalf);
 
   // wrist-below-shoulder gate (y grows downward → wrist below shoulder ⇒ wrist.y > shoulder.y)
   const gated = (f: number): boolean =>
@@ -329,8 +335,8 @@ export function computeFaceOnImpactConsensus(args: {
   );
 
   // S1 = xCross — both-ankle-midpoint crossing of the better-confidence wrist.
-  const leadMedX = rollingMedian5(leadAnkle.x);
-  const trailMedX = rollingMedian5(trailAnkle.x);
+  const leadMedX = rollingMedian5(leadAnkle.x, medHalf);
+  const trailMedX = rollingMedian5(trailAnkle.x, medHalf);
   const feetMidX = (f: number) => (leadMedX[f] + trailMedX[f]) / 2;
   const selAt = (f: number): { x: number; conf: number; which: "lead" | "trail" | "none" } => {
     const lP = leadWrist.present[f];
