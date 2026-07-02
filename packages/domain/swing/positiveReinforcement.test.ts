@@ -248,7 +248,13 @@ group('General card rotation');
 {
   const engine = new PositiveReinforcementEngine();
   const seen = new Set<string>();
-  for (let i = 0; i < GENERAL_CARDS.length * 3; i++) {
+  // Coupon collector with exclusion: pickFromPool draws uniformly from the
+  // pool minus the floor(N/2) most recent indices, so with N=10 a fixed
+  // unseen card is missed per draw with prob (available-1)/available —
+  // 9/10 · 8/9 · 7/8 · 6/7 · 5/6 during warm-up (= 1/2), then 4/5 per draw.
+  // Union bound over N cards: P(fail) <= 5 · 0.8^(K-5). K = N·3 = 30 gave
+  // ~1.9% flake; K = N·30 = 300 bounds failure at ~1e-28.
+  for (let i = 0; i < GENERAL_CARDS.length * 30; i++) {
     const result = engine.processSwing(highConfidence, goodScores, 0);
     if (result.card) seen.add(result.card.message);
   }
