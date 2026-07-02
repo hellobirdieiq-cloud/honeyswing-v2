@@ -25,14 +25,6 @@
               {
                 "name": "MediaPipeTasksVision",
                 "version": "~> 0.10.9"
-              },
-              {
-                "name": "GoogleUtilities",
-                "modular_headers": true
-              },
-              {
-                "name": "RecaptchaInterop",
-                "modular_headers": true
               }
             ]
           },
