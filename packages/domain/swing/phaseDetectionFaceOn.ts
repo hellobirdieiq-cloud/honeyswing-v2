@@ -68,11 +68,12 @@ function computeImpactConsensus(
   preCanonical: PoseSequence | undefined,
   topIdx: number,
   isLeftHanded: boolean,
+  msPerFrame: number,
 ): FaceOnImpactConsensus | null {
   if (!preCanonical) return null;
   // hi is clamped to the array inside computeFaceOnImpactConsensus.
   const hi = topIdx + A.impact.consensus.downswingBudget;
-  return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded });
+  return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded, msPerFrame });
 }
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
@@ -474,6 +475,8 @@ function detectFaceOnTop(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (consensusWindowFrames)
+  msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   const totalSpan = impactIdx - swingStartIdx;
   if (totalSpan < 6) return { frame: null, reliability: null };
@@ -558,6 +561,8 @@ function detectFaceOnTopXExtreme(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (consensusWindowFrames spread tol)
+  msPerFrame: number,
 ): FaceOnTopXExtreme {
   const empty: FaceOnTopXExtreme = {
     frame: null,
@@ -760,8 +765,8 @@ export function detectFaceOnPhases(input: {
   // byte-identical to today). Both spaces are trail-space.
   const velocities = computeTrailVelocities(trail);
   const smoothed = smoothVelocities(velocities, 5);
-  const fallbackIdx = findSetupEndIndex(smoothed, trail);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   reliability.takeaway = "medium";
 
@@ -843,8 +848,8 @@ export function detectFaceOnPhases(input: {
   // (detectFaceOnTop) is retained as a logged shadow only (top_velmin_shadow); it mis-picks
   // over the wider takeaway-anchored window, so it is no longer the top source.
   const topSearchAnchor = takeawayIdx;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
   assumptionsUsed.push("faceOn.top");
   if (topXExtreme.frame == null) {
     return {
@@ -871,7 +876,7 @@ export function detectFaceOnPhases(input: {
   // The consensus window is takeaway/top-anchored — it does NOT depend on finish, so finish can be
   // computed AFTER impact (re-anchored on it below) with no cycle.
   const consensus =
-    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded) : null;
+    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame) : null;
   const impactConsensusShadow = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,
@@ -1109,8 +1114,8 @@ export function detectFaceOnPhasesDebug(input: {
 
   const velocities = computeTrailVelocities(trail);
   const smoothed = smoothVelocities(velocities, 5);
-  const fallbackIdx = findSetupEndIndex(smoothed, trail);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   result.takeawayAddressIdx = takeawayAddressIdx;
   result.addressIdx = takeawayAddressIdx;
@@ -1141,8 +1146,8 @@ export function detectFaceOnPhasesDebug(input: {
   // velocity-min is retained as a logged shadow only.
   const takeawayIdxFrame = trailIdxToFrame(takeawayAddressIdx) ?? takeawayAddressIdx;
   const topSearchAnchor = takeawayIdxFrame;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
   result.topVelMinShadow = topVelMin.frame;
   result.topXExtreme = topXExtreme;
   result.topIdx = topXExtreme.frame;
@@ -1158,7 +1163,7 @@ export function detectFaceOnPhasesDebug(input: {
 
   // Final impact: xCross CONSENSUS (primary) vs arc-bottom (per-reason fallback) — shared selector.
   // Computed over [topIdx, topIdx+downswingBudget] on preCanonical; mirrors detectFaceOnPhases.
-  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded);
+  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame);
   result.impactConsensus = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,

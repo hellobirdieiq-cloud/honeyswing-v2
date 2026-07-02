@@ -19,6 +19,7 @@ import {
   type PhaseRuleDebug,
 } from "./phaseDetection";
 import { detectSwingStart } from "./swingStartDetection";
+import { msPerFrameFromFrames } from "./phaseDetectionShared";
 import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
@@ -233,6 +234,8 @@ function computePhaseWindowedAngles(
   frames: PoseFrame[],
   phases: DetectedPhase[],
   addressFrameIdx?: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (address +9 / top·impact ±2 windows)
+  msPerFrame?: number,
 ): PhaseWindowResult {
   const addressPhase = phases.find(p => p.phase === 'takeaway')!;
   const topPhase = phases.find(p => p.phase === 'top')!;
@@ -299,6 +302,8 @@ function computePhaseWindowedAngles(
 function shouldFallback(
   frames: PoseFrame[],
   phases: DetectedPhase[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (frames.length<20, impact edge margins)
+  msPerFrame?: number,
 ): boolean {
   if (frames.length < 20) return true;
   if (phases.length === 0) return true;
@@ -372,6 +377,8 @@ function applyVisibilityWeighting(
   phases: DetectedPhase[],
   currentAngles: GolfAngles,
   addressIdx: number = 0,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (address/top/impact ranges)
+  msPerFrame?: number,
 ): { angles: GolfAngles; debug: VisibilityWeightingResult; implausibleDebug: ImplausibleFrameDebug } {
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
@@ -467,6 +474,8 @@ function applyVisibilityWeighting(
 function computeZTrace(
   frames: PoseFrame[],
   phases: DetectedPhase[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (address/top/impact ±2 windows)
+  msPerFrame?: number,
 ): ZTraceDebug {
   const addressRange: [number, number] = [0, Math.min(9, frames.length - 1)];
   const topPhase = phases.find(p => p.phase === 'top');
@@ -604,6 +613,10 @@ export function analyzePoseSequence(
   }
 
   const trail = buildTrailPoints(canonical);
+  // 1a plumbing seam. Pipeline window helpers + detectSwingStart index canonical.frames, so they
+  // use the FRAMES-based rate (may differ from the dispatcher's trail-based msPerFrame when wrists
+  // drop out). Unused in 1a; consumed in 1b (averageFrames windows, min-length guards, edge margins).
+  const msPerFrame = msPerFrameFromFrames(canonical.frames);
   const earlyAngle = detectCameraAngleEarly(canonical);
   const { phases, fallbackGate, ruleDebug } = detectSwingPhasesWithDebug({
     canonical,
@@ -620,6 +633,7 @@ export function analyzePoseSequence(
     { address: phaseAddressIdx, top: phaseTopIdx },
     isLeftHanded,
     earlyAngle.angle,
+    msPerFrame,
   );
   const resolvedAddressIdx =
     addressFrameIdx ?? (
@@ -638,12 +652,12 @@ export function analyzePoseSequence(
   let frameDebug: Omit<FrameSelectionDebug, 'fallback_gate'>;
   let isHeuristicPhases = false;
 
-  if (shouldFallback(canonical.frames, phases)) {
+  if (shouldFallback(canonical.frames, phases, msPerFrame)) {
     const midFrame = canonical.frames[Math.floor(canonical.frames.length / 2)];
     angles = calculateGolfAngles(midFrame);
     frameDebug = { frame_selection_method: 'mid_frame_fallback' };
   } else {
-    const result = computePhaseWindowedAngles(canonical.frames, phases, resolvedAddressIdx);
+    const result = computePhaseWindowedAngles(canonical.frames, phases, resolvedAddressIdx, msPerFrame);
     angles = result.angles;
     frameDebug = result.debug;
     isHeuristicPhases = true;
@@ -654,7 +668,7 @@ export function analyzePoseSequence(
   let visibilityWeightingDebug: VisibilityWeightingResult | undefined;
   let implausibleFrameDebug: ImplausibleFrameDebug | undefined;
   if (isHeuristicPhases) {
-    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles, resolvedAddressIdx);
+    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles, resolvedAddressIdx, msPerFrame);
     angles = visWeighting.angles;
     visibilityWeightingDebug = visWeighting.debug;
     implausibleFrameDebug = visWeighting.implausibleDebug;
@@ -762,7 +776,7 @@ export function analyzePoseSequence(
       angle_gating: angleGating,
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
-      z_trace: computeZTrace(canonical.frames, phases),
+      z_trace: computeZTrace(canonical.frames, phases, msPerFrame),
       keypoint_veto: untrustedMap,
       keypoint_identity: toIdentityDebug(identity),
       phase_rules: ruleDebug,

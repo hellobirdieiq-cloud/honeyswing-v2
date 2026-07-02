@@ -60,7 +60,11 @@ const PHASE_ORDER: SwingPhase[] = [
  * canonical transform preserves |dSpreadX| magnitude for lefties (joint-name
  * swap + x-mirror cancel out — see rules doc DTL Phase 0 notes).
  */
-function detectDTLSwingStart(frames: PoseFrame[]): {
+function detectDTLSwingStart(
+  frames: PoseFrame[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (baselineFrames/watchTimeoutFrames/F-3 lookback)
+  msPerFrame: number,
+): {
   frame: number | null;
   reliability: "high" | "medium" | "low" | null;
   baselineUsed: number;
@@ -147,6 +151,8 @@ function detectDTLSwingStart(frames: PoseFrame[]): {
 function detectDTLTrueAddress(
   frames: PoseFrame[],
   topIdx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (windowFrames/backScanCapBeforeTop)
+  msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   // Pre-compute per-frame signals so the window scan stays cheap.
   const spineAngles: (number | null)[] = frames.map((f) => calculateGolfAngles(f).spineAngle);
@@ -344,14 +350,14 @@ export function detectDTLPhases(input: {
   }
 
   // Phase 0 — swing_start
-  const swingStart = detectDTLSwingStart(frames);
+  const swingStart = detectDTLSwingStart(frames, msPerFrame);
   reliability.swing_start = swingStart.reliability;
   assumptionsUsed.push("dtl.swingStart");
 
   // Phase 2 — takeaway directional gate (start-of-window address candidate)
   const velocities = computeTrailVelocities(trail);
   const smoothed = smoothVelocities(velocities, 5);
-  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
+  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
   reliability.takeaway = "medium";
 
   // Phase 3 — top
@@ -374,7 +380,7 @@ export function detectDTLPhases(input: {
   reliability.top = "high";
 
   // Phase 1 — true_address (search backward from top)
-  const trueAddress = detectDTLTrueAddress(frames, topIdx);
+  const trueAddress = detectDTLTrueAddress(frames, topIdx, msPerFrame);
   reliability.true_address = trueAddress.reliability ?? "low";
   assumptionsUsed.push("dtl.trueAddress");
   const addressIdx = trueAddress.frame != null ? trueAddress.frame : takeawayAddressIdx;

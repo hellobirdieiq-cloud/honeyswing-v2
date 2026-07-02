@@ -301,6 +301,8 @@ const MEDIAN_GATE_REQUIRED = 6;   // middle N that must all be positive (drops 1
 export function findSetupEndIndexStillness(
   smoothed: number[],
   points: SwingTrailPoint[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (stillCount threshold). Optional: legacy/tests omit it.
+  msPerFrame?: number,
 ): number {
   const sorted = [...smoothed].filter((v) => v > 0).sort((a, b) => a - b);
   const median = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
@@ -330,9 +332,11 @@ export function findSetupEndIndexStillness(
 export function findSetupEndIndex(
   smoothed: number[],
   points: SwingTrailPoint[],
+  // 1a plumbing seam; consumed in 1b (MEDIAN_GATE_WINDOW). Optional: legacy/tests omit it.
+  msPerFrame?: number,
 ): number {
   if (points.length < MEDIAN_GATE_WINDOW + 1) {
-    return findSetupEndIndexStillness(smoothed, points);
+    return findSetupEndIndexStillness(smoothed, points, msPerFrame);
   }
 
   const lastIdx = points.length - 1;
@@ -356,7 +360,7 @@ export function findSetupEndIndex(
       break;
     }
   }
-  return findSetupEndIndexStillness(smoothed, points);
+  return findSetupEndIndexStillness(smoothed, points, msPerFrame);
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +481,8 @@ function lockedBodyHeightFromFrames(frames: PoseFrame[]): number | null {
 export function findTakeawayOnsetFaceOn(
   trail: SwingTrailPoint[],
   frames: PoseFrame[],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (MEDIAN_GATE_WINDOW/BODY_HEIGHT_MIN_FRAMES/SUSTAINED_REVERSAL_FRAMES). Optional: tests omit it.
+  msPerFrame?: number,
 ): FaceOnTakeawayOnset {
   const nullResult = (
     fallbackReason: FaceOnTakeawayOnset["fallbackReason"],

@@ -59,6 +59,8 @@ function sign(v: number): -1 | 0 | 1 {
 function detectAddressDTL(
   frames: PoseFrame[],
   topIdx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (ADDRESS_WINDOW/ADDRESS_TOP_BUFFER/ADDRESS_MIN_E/HEAD_DELTA_MAX)
+  msPerFrame?: number,
 ): { idx: number; detected: boolean } {
   const eStartRaw = topIdx - ADDRESS_TOP_BUFFER;
   const eStart = Math.min(eStartRaw, frames.length - 1);
@@ -111,6 +113,8 @@ function detectStartDTL(
   frames: PoseFrame[],
   addressIdx: number,
   topIdx: number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 1a plumbing seam; consumed in 1b (START_WINDOW)
+  msPerFrame?: number,
 ): { idx: number; detected: boolean } {
   const addrSpine = spineOf(frames[addressIdx]);
   const addrKnee = kneeOf(frames[addressIdx]);
@@ -182,6 +186,8 @@ export function detectSwingStart(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted for API symmetry; canonical frames are already handedness-normalized
   isLeftHanded: boolean,
   cameraAngle: "face_on" | "dtl" | "unknown",
+  // 1a plumbing seam; threaded to detectAddressDTL/detectStartDTL, consumed in 1b. Optional: tests omit it.
+  msPerFrame?: number,
 ): SwingStartResult {
   if (cameraAngle === "face_on") {
     // EXTERNAL_ASSUMPTION: face-on address = phase-detected address
@@ -194,7 +200,7 @@ export function detectSwingStart(
     };
   }
 
-  const addr = detectAddressDTL(frames, phases.top);
+  const addr = detectAddressDTL(frames, phases.top, msPerFrame);
   if (!addr.detected) {
     return {
       trueAddressFrame: phases.address,
@@ -203,7 +209,7 @@ export function detectSwingStart(
     };
   }
 
-  const start = detectStartDTL(frames, addr.idx, phases.top);
+  const start = detectStartDTL(frames, addr.idx, phases.top, msPerFrame);
   if (!start.detected) {
     return {
       trueAddressFrame: addr.idx,

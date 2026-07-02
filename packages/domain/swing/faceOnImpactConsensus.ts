@@ -245,6 +245,8 @@ export function computeFaceOnImpactConsensus(args: {
   hi: number;
   isLeftHanded: boolean;
   signFlipOverride?: number;
+  // 1a plumbing seam; consumed in 1b/1c (xcrossAnchorRadius / refineRadius / xcrossSustainFrames / rollingMedian5)
+  msPerFrame?: number;
 }): FaceOnImpactConsensus {
   const { frames, isLeftHanded } = args;
   const leadSide = isLeftHanded ? "right" : "left";
