@@ -27,8 +27,13 @@ dependencies** — runtime purity (global reads, RN/Expo singletons, types that
 transitively pull native) is not separately verified. All the biomechanics (phase
 detection, angles, tempo, scoring) is plain functions over `PoseFrame[]`, and each
 module has a `*.test.ts` beside it, run by `npm test` (`scripts/run-tests.mjs`,
-all 46 `lib/` + `packages/` suites). The UI and native layers feed it data and
+all 50 `lib/` + `packages/` suites). The UI and native layers feed it data and
 render its output, but never live inside it.
+
+Exception: a few hydration hooks lifted out of a single screen (Batch 5.2/5.3)
+are co-located beside that screen instead of centralized in `lib/` —
+`app/analysis/useSwingSource.ts`, `app/analysis/useSwingVideoClock.ts`,
+`app/(tabs)/useSettingsData.ts` — since they have exactly one caller.
 
 ## Directory tree
 
@@ -47,22 +52,29 @@ honeyswing-v2/
 │
 ├── lib/                        ← glue: hooks, stores, persistence
 │   ├── useSwingCapture.ts      ← orchestrates capture → analyze → persist
-│   ├── captureFlow.ts          ← pure capture-flow decisions (+ .test.ts)
+│   ├── captureProcessing.ts    ← processRecordedVideo pipeline (lifted from useSwingCapture)
 │   ├── extractPoseFromVideo.ts ← runs RTMW pose detector on the MP4
 │   ├── swingMotionStore.ts     ← in-memory handoff: record → result
 │   ├── persistSwing.ts         ← writes the row to Supabase (orchestration)
-│   ├── swingRowBuilders.ts     ← pure swings-row builders (+ .test.ts)
+│   ├── accountLifecycle.ts     ← account teardown / age-tier switch / coach-check (+ .test.ts)
+│   ├── reconstructAnalysis.ts  ← pure AnalysisResult reconstruction (+ .test.ts)
 │   ├── swingStore.ts           ← reads swings back (history / playback)
 │   └── supabase.ts · database.types.ts · …
 │
 ├── packages/
-│   ├── pose/                   ← pose abstraction (swappable backend)
-│   │   ├── PoseProvider.ts · PoseTypes.ts   (PoseFrame, PoseSequence)
-│   │   └── rtmw/               ← 133-keypoint RTMW adapter
+│   ├── pose/                   ← pose types + RTMW adapter (RTMW-only; the
+│   │   │                          PoseProvider swappable-backend abstraction
+│   │   │                          + MLKitProvider stub were deleted 2026-07-01,
+│   │   │                          zero importers — commit f344747)
+│   │   ├── PoseTypes.ts        (PoseFrame, PoseSequence, JointName)
+│   │   └── rtmw/               ← 133-keypoint RTMW adapter (cocoWholebody.ts,
+│   │                              Rtmw133Frame.ts, rtmwAdapter.ts)
 │   └── domain/swing/           ← 🧠 PURE analysis (no UI / no native)
 │       ├── analysisPipeline.ts ← master orchestrator (15 stages, 0–14)
 │       ├── phaseDetection.ts · angles.ts · tempoAnalysis.ts
 │       ├── scoring.ts · cameraAngle.ts · lowerBodyIdentity.ts
+│       ├── captureFlow.ts · swingRowBuilders.ts · captureValidity.ts
+│       ├── positiveReinforcement.ts · tipFrequency.ts · tempoDisplay.ts
 │       └── … (keypointVeto, canonicalTransform, confidenceScore, …)
 │
 ├── native-assets/ios/HoneyVisionCameraPosePlugin.swift  ← live MediaPipe
@@ -74,7 +86,7 @@ honeyswing-v2/
 > inventory (incl. `scripts/`, `components/`, `packages/domain/clinic/`,
 > `targets/watch/`, `ios/honeyswing/`), see **Code size** below.
 
-## Code size (snapshot — 2026-06-30)
+## Code size (snapshot — 2026-07-02)
 
 Counts source files only (`.ts`, `.tsx`, `.swift`); excludes `node_modules`,
 build output (`ios/Pods`, `ios/build`, `.expo`, `dist`, `.venv`), and the
@@ -85,52 +97,57 @@ whole-repo reconciliation follows it.
 
 | Area | Lines | Files |
 |---|--:|--:|
-| `packages/domain/swing/` | 16,300 | 53 |
-| `lib/` | 13,308 | 84 |
-| `app/` | 12,479 | 44 |
-| `native-assets/` | 2,654 | 11 |
+| `packages/domain/swing/` | 20,109 | 65 |
+| `lib/` | 11,382 | 81 |
+| `app/` | 12,540 | 47 |
+| `native-assets/` | 2,617 | 11 |
 | `supabase/` | 682 | 2 |
-| `packages/pose/` | 531 | 7 |
+| `packages/pose/` | 408 | 5 |
 | `modules/` | 77 | 2 |
-| **Total** | **46,031** | **203** |
+| **Total** | **47,815** | **213** |
 
 **10 biggest single files**
 
 | Lines | File |
 |--:|---|
-| 1,218 | `packages/domain/swing/phaseDetectionFaceOn.ts` |
+| 1,236 | `packages/domain/swing/phaseDetectionFaceOn.ts` |
 | 998 | `lib/outbox.ts` |
 | 988 | `packages/domain/swing/visibilityWeighting.test.ts` |
 | 904 | `app/clinic/coach-mode/Tab1LiveView.tsx` |
-| 850 | `app/analysis/result.tsx` |
-| 797 | `app/(tabs)/settings.tsx` |
+| 814 | `packages/domain/swing/analysisPipeline.ts` |
 | 780 | `packages/domain/swing/tiltCorrection.suite.test.ts` |
-| 776 | `packages/domain/swing/analysisPipeline.ts` |
+| 772 | `app/(tabs)/settings.tsx` |
 | 732 | `packages/domain/swing/foreshorteningCorrection.test.ts` |
 | 725 | `packages/domain/swing/positiveReinforcement.test.ts` |
+| 697 | `app/(tabs)/record.tsx` |
+
+`app/analysis/result.tsx` dropped out of the top 10 entirely (850→525 lines,
+Batch 5.2 decomposition into `useSwingSource.ts` / `useSwingVideoClock.ts` +
+3 pure modules).
 
 **Test vs non-test (by area)**
 
 | Area | Test LOC | Non-test LOC | % tests |
 |---|--:|--:|--:|
-| `packages/domain/swing/` | 7,879 | 8,421 | 48% |
-| `lib/` | 5,334 | 7,974 | 40% |
-| `app/` | 0 | 12,479 | 0% |
-| `packages/pose/` | 110 | 421 | 21% |
-| `native-assets/` | 0 | 2,654 | 0% |
+| `packages/domain/swing/` | 10,207 | 9,902 | 51% |
+| `lib/` | 3,740 | 7,642 | 33% |
+| `app/` | 0 | 12,540 | 0% |
+| `packages/pose/` | 110 | 298 | 27% |
+| `native-assets/` | 0 | 2,617 | 0% |
 | `supabase/` | 0 | 682 | 0% |
 | `modules/` | 0 | 77 | 0% |
 
-After the 5 domain test suites moved back beside their implementations,
-`packages/domain/swing/` is now the largest area (~48% tests) and `lib/` fell to
-~40% tests (from 53%).
+`packages/domain/swing/` remains the largest area and now crosses the halfway
+mark on tests (~51%); `lib/` fell further to ~33% tests (from 53%, then 40%)
+as Batch 2/5 moved pure modules and their tests out to `packages/domain/swing/`
+and lifted co-located hooks out to `app/`.
 
 ⚠️ **Coverage note:** these are line counts, not pass/fail coverage. `npm test`
-(`scripts/run-tests.mjs`) executes all 46 `lib/` + `packages/` suites and exits
+(`scripts/run-tests.mjs`) executes all 50 `lib/` + `packages/` suites and exits
 non-zero on any failure (an earlier `find lib …` runner silently skipped every
-`packages/` suite; fixed in `773cabd`). As of 2026-06-30, 43 of 46 pass — three
-pre-existing domain suites are red pending triage: `tipFrequency`,
-`metricDefinitions`, `phaseDetectionDTL`.
+`packages/` suite; fixed in `773cabd`). As of 2026-07-02, 49 of 50 pass — one
+suite is red and parked (not pending triage): `phaseDetectionDTL`
+(`tipFrequency` and `metricDefinitions` were fixed test-side in Batch 3).
 
 ### Whole-repo reconciliation
 
@@ -138,40 +155,40 @@ The per-area table above is a **7-area subset** (`app/ lib/ packages/pose/
 packages/domain/swing/ native-assets/ modules/` + supabase `.ts`), `.ts/.tsx/.swift`
 only. The whole repo (adds `.sql`, plus the areas below) is:
 
-**292 files / 67,373 lines.** Subtracting the 4,932-line generated
-`supabase/migrations/20260417055038_remote_schema.sql` leaves **62,441** — but
+**303 files / 69,502 lines.** Subtracting the 4,932-line generated
+`supabase/migrations/20260417055038_remote_schema.sql` leaves **64,570** — but
 that is an **upper bound** on hand-authored code, not a pure figure: it still
-includes `ios/honeyswing/` generated/duplicated Swift (3,246; `AppDelegate.swift`
+includes `ios/honeyswing/` generated/duplicated Swift (3,373; `AppDelegate.swift`
 is Expo-generated, the `Honey*` plugins are build-time copies of
-`native-assets/ios/`). Removing those too puts hand-authored at **≈ 59,195**.
+`native-assets/ios/`). Removing those too puts hand-authored at **≈ 61,197**.
 
-**Working-tree vs tracked:** the 292 files / 67,373 lines is a **working-tree**
-count (files on disk). The git-**tracked** repo is **274 files / 63,397 lines** —
-~18 files are gitignored (chiefly the generated `ios/honeyswing/` Swift, 3,246)
-or untracked. Tracked minus the generated schema = 63,397 − 4,932 = **58,465**,
-consistent with the ≈ 59,195 hand-authored figure above.
+**Working-tree vs tracked:** the 303 files / 69,502 lines is a **working-tree**
+count (files on disk). The git-**tracked** repo is **288 files / 65,789 lines** —
+~15 files are gitignored (chiefly the generated `ios/honeyswing/` Swift, 3,373)
+or untracked. Tracked minus the generated schema = 65,789 − 4,932 = **60,857**,
+consistent with the ≈ 61,197 hand-authored figure above.
 
 Areas missing from the 7-area view:
 
 | Area | Lines | Files |
 |---|--:|--:|
-| `scripts/` (dev/diagnostic tooling) | 8,849 | 27 |
+| `scripts/` (dev/diagnostic tooling) | 9,067 | 28 |
 | `supabase/` `.sql` migrations | 5,209 | 14 |
-| `ios/honeyswing/` (generated/duplicated native) | 3,246 | 13 |
+| `ios/honeyswing/` (generated/duplicated native) | 3,373 | 13 |
 | `components/` | 2,164 | 11 |
 | `packages/domain/clinic/` | 1,116 | 14 |
 | `targets/watch/` (parked, unshipped Watch IMU) | 756 | 9 |
 | root (`expo-env.d.ts`) | 2 | 1 |
-| **Added** | **21,342** | **89** |
+| **Added** | **21,687** | **90** |
 
-Reconciliation (the 203-file / 46,031-line per-area total is a 7-area subset):
+Reconciliation (the 213-file / 47,815-line per-area total is a 7-area subset):
 
 ```
-  46,031   7-area subset (.ts/.tsx/.swift)
-+ 15,017   remainder (scripts + ios/honeyswing + components + targets/watch + root)
+  47,815   7-area subset (.ts/.tsx/.swift)
++ 15,362   remainder (scripts + ios/honeyswing + components + targets/watch + root)
 +  1,116   packages/domain/clinic (.ts, previously missed)
 +  5,209   supabase .sql migrations (7-area supabase figure was .ts-only)
-= 67,373   whole repo   (files: 203 + 61 + 14 + 14 = 292)
+= 69,502   whole repo   (files: 213 + 62 + 14 + 14 = 303)
 ```
 
 Note: `scripts/` is a maintained, read-only validation/diagnostic toolkit —
@@ -180,8 +197,8 @@ harnesses that run production functions over ground-truth swings via `npx tsx`
 app code. `targets/watch/` is the parked, unshipped Watch IMU feature — neither
 inflates shipped app size. `ios/honeyswing/` is generated/duplicated native glue
 (`AppDelegate.swift` generated; `Honey*` plugins are build-time copies of
-`native-assets/ios/`), so the `62,441` figure overstates hand-authored code;
-excluding `ios/honeyswing/` lands at **≈ 59,195**.
+`native-assets/ios/`), so the `64,570` figure overstates hand-authored code;
+excluding `ios/honeyswing/` lands at **≈ 61,197**.
 
 ## Runtime data flow
 
@@ -200,9 +217,12 @@ How one swing moves through the system, end to end:
                                   │ on stop
                                   ▼
  ┌─────────────────────────────────────────────────────────────┐
- │ EXTRACT  (extractPoseFromVideo.ts)                           │
+ │ EXTRACT  (extractPoseFromVideo.ts, via captureProcessing.ts)  │
  │   MP4 ──► RTMW detector ──► 133-keypoint frames              │
  │        ──► rtmwToPoseFrame() ──► PoseSequence                │
+ │   ANALYZER_DECIMATION = 2 (cameraFormat.ts) → 120fps         │
+ │   effective extraction (was decimation 4 / 60fps). ⚠️ not     │
+ │   yet verified on-device as of this doc revision.            │
  └───────────────────────────────┬─────────────────────────────┘
                                   ▼
  ┌─────────────────────────────────────────────────────────────┐
@@ -244,6 +264,7 @@ How one swing moves through the system, end to end:
 |---|---|---|
 | Capture UI | `app/(tabs)/record.tsx` | record screen + live skeleton |
 | Capture orchestration | `lib/useSwingCapture.ts` | `useSwingCapture`, `finalizeCapture` |
+| Capture video pipeline | `lib/captureProcessing.ts` | `processRecordedVideo` (decimated RTMW extraction) |
 | Live native pose | `native-assets/ios/HoneyVisionCameraPosePlugin.swift` | MediaPipe BlazePose |
 | Pose extraction | `lib/extractPoseFromVideo.ts` | `extractPoseFromVideo` (RTMW) |
 | Pose types | `packages/pose/PoseTypes.ts` | `PoseFrame`, `PoseSequence` |
@@ -257,6 +278,10 @@ How one swing moves through the system, end to end:
 | Row builders (pure, tested) | `packages/domain/swing/swingRowBuilders.ts` | `buildWatchImuDebug`, `enrichFramesWithVelocity`, `calcPoseSuccessRate`, … |
 | Capture-flow decisions (pure, tested) | `packages/domain/swing/captureFlow.ts` | `computeNavigationBlockReason`, `deriveClassification` |
 | Playback read | `lib/swingStore.ts` | `getSwingById`, `getSwingMotionFrames` |
+| Result-screen data source | `app/analysis/useSwingSource.ts` | `useSwingSource` (live store vs history fetch vs reconstruction) |
+| Result-screen video clock | `app/analysis/useSwingVideoClock.ts` | `useSwingVideoClock` |
+| Settings hydration | `app/(tabs)/useSettingsData.ts` | `useSettingsData` |
+| Account lifecycle (pure, tested) | `lib/accountLifecycle.ts` | account teardown, age-tier switch, coach check |
 
 ## One-line summary
 
@@ -274,7 +299,7 @@ the diagnostic trail. File/line references point at the verified source.
 
 ## Analysis pipeline — stage by stage
 
-`analyzePoseSequence` (`packages/domain/swing/analysisPipeline.ts:520`) is the
+`analyzePoseSequence` (`packages/domain/swing/analysisPipeline.ts:553`) is the
 single orchestrator. It runs these stages in order over the `PoseFrame[]`:
 
 ```
@@ -309,12 +334,12 @@ Notes that matter when reading the code:
 - **Canonical space (stage 2):** RH swings are mirrored, LH swings pass through,
   so downstream sign conventions hold for both. In canonical space the `left*`
   joints are the **TRAIL** arm — see the long comment at
-  `analysisPipeline.ts:554`.
+  `analysisPipeline.ts:587-595`.
 - **Two angle paths (stage 6):** the phase-windowed path is preferred; the
   mid-frame fallback runs only when phases are unreliable (`shouldFallback`),
   and it skips visibility weighting, wrist-hinge, and face-to-path entirely.
 - **Empty input** returns a fully-zeroed `AnalysisResult` early
-  (`analysisPipeline.ts:585`) rather than throwing.
+  (`analysisPipeline.ts:618`) rather than throwing.
 - **`watchImuReadings` / `gravityReadings`** are optional sensor seams that
   no-op when empty — a swing with no paired sensor behaves exactly as before.
 
@@ -324,13 +349,19 @@ The headline `score` is **tempo-only** — a 9-band traffic light over
 `tempoRatio` (`scoring.ts:scoreTempoTrafficLight`). Angles are computed and
 persisted but **do not** feed the headline number.
 
-Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:76`)
+Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:75`)
 picks the worst-scoring metric to drive the Visual Coach focus cue on the result
-and record screens (`app/analysis/result.tsx:566`), and persisted `angles` are
-re-read for history display (`result.tsx:117`). The persisted `category_scores`
-column, by contrast, has **no in-app reader** — written from `analysis.aggregate`
-(`persistSwing.ts:134`) and selected in `swingStore.ts` but consumed nowhere in
-this repo (likely the external web inspector / future use).
+screen, called at `result.tsx:257` (`computeFocus(angles, getCachedAgeTier(),
+Date.now())`); `record.tsx` displays the saved `FocusData` but does not call
+`computeFocus` itself. `angles` is defined once, at `result.tsx:150`
+(`analysis?.angles`), and that single definition is the only consumer inside
+`result.tsx` — the live-vs-history resolution the doc previously attributed to
+a second "history display" re-read now happens upstream, inside
+`useSwingSource.ts` (`analysis` itself already resolves live store vs. history
+fetch vs. reconstruction before `angles` is derived from it). The persisted
+`category_scores` column, by contrast, has **no in-app reader** — written from
+`analysis.aggregate` (`persistSwing.ts:134`) and selected in `swingStore.ts` but
+consumed nowhere in this repo (likely the external web inspector / future use).
 
 | Tempo ratio (backswing/downswing) | Score | Band |
 |---|---|---|
@@ -365,7 +396,7 @@ From `packages/pose/PoseTypes.ts`:
   frameWidth, frameHeight }`.
 - **`PoseSequence`** — `{ frames, source, metadata: { fps?, durationMs? } }`.
 
-The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:100`):
+The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:101`):
 
 ```ts
 {
@@ -412,7 +443,7 @@ identity correction is re-applied at read time in
 ## The `swing_debug` diagnostic tree
 
 Every stage writes telemetry into `swing_debug` (`FrameSelectionDebug`,
-`analysisPipeline.ts:53`). It is the audit trail used by the web swing inspector:
+`analysisPipeline.ts:54`). It is the audit trail used by the web swing inspector:
 frame-selection method + fallback gate, camera-angle spreads (shoulder/hip/avg),
 scoring breakdown, confidence components, foreshortening + tilt correction,
 keypoint veto + identity maps, phase rules, lead-wrist hinge / synthetic clubhead
@@ -457,10 +488,15 @@ downstream never branch on camera angle:
   recalibration step is a single edit, not a hunt through the detectors.
 - **Frame-rate independence.** Rules express windows in milliseconds;
   `msToFrames(ms, msPerFrame)` converts using the capture's real ms/frame
-  (`msPerFrameFromTrail`). ⚠️ The face-on impact search window
-  `EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus.downswingBudget` (= 50,
-  `phaseDetectionShared.ts:128`) is a raw **frame** count validated only at
-  60 fps; convert via `msToFrames` before any non-60fps capture ships.
+  (`msPerFrameFromTrail`). The face-on impact search window
+  `EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus.downswingBudget` (= 50 @ 60fps,
+  `phaseDetectionShared.ts:143`) now has an ms-sibling, `downswingBudgetMs: 833`
+  (`phaseDetectionShared.ts:147`, commit `9eb2895`) — live consumers convert via
+  `msToFrames`, so this is rate-independent ahead of the 120fps capture shipping
+  (commit `a211128`). Related: `captureValidity.ts` (`VALID_MIN_MS = 500`,
+  `PARTIAL_MIN_MS = 250`, commit `c3b82d5`) and `confidenceScore.ts`'s
+  frame-coverage ramp (`MIN_MS = 250`, `GOOD_MS = 1000`, commit `405836f`) were
+  converted to duration-based thresholds in the same rate-independence effort.
 - **Shared takeaway gate.** `findSetupEndIndex` finds the end of address with a
   sign-aware directional test: slide an 8-frame window over canonical
   wrist-midpoint Δx, drop the min+max, require the middle 6 all `> 0` (a
