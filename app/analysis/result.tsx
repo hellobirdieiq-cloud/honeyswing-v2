@@ -3,13 +3,12 @@ import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, Activity
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { VideoView } from 'expo-video';
 import { styles } from './resultStyles';
 import { computeFocus, saveFocus } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, supabase } from '../../lib/supabase';
-import { getSwingVideoSignedUrl } from '../../lib/getSwingVideoUrl';
 import { GOLD } from '../../lib/colors';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import { getActiveProfileHandedness } from '../../lib/handedness';
@@ -26,6 +25,7 @@ import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumu
 import { buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
 import { deriveTempoDisplay } from '../../packages/domain/swing/tempoDisplay';
 import { useSwingSource } from './useSwingSource';
+import { useSwingVideoClock } from './useSwingVideoClock';
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -52,20 +52,12 @@ export default function ResultScreen() {
   const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
   const [coachName, setCoachName] = useState<string | null>(null);
   const [limitHit, setLimitHit] = useState(false);
-  const [speed, setSpeed] = useState(0.25);
   // Stage view mode. Default 'overlay' (skeleton on the video frame). Only
   // meaningful when a video exists; the no-video path renders skeleton-only and
   // never shows the segmented control.
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
-  // Remote playback for historical swings: signed URL resolved ONCE per record
-  // load from video_storage_path (private swing-videos bucket). null = no
-  // remote video → skeleton-only (existing behavior). Local videoUri wins.
-  const [remoteVideoUrl, setRemoteVideoUrl] = useState<string | null>(null);
-  // One quiet re-sign on playback error (expired URL / transient network),
-  // then give up → skeleton-only. Guards against an error→retry loop.
-  const remoteRetriedRef = useRef(false);
 
   // Swing-data resolution (live store vs history fetch vs reconstruction) —
   // see useSwingSource.ts. gripCloud also lives there (vanished feature, kept).
@@ -81,15 +73,23 @@ export default function ResultScreen() {
     videoUri,
   } = useSwingSource(swingId, isLeftHanded);
 
-  // Frame-index ↔ video-time mapping. Post-hoc extraction guarantees frame i
-  // ↔ video time i × msPerFrame (timestamps assigned as i × step in
-  // extractPoseFromVideo.ts), so this is exact and offset-free.
-  const msPerFrame = useMemo(() => {
-    const frames = effectiveMotion?.frames;
-    return frames && frames.length > 1
-      ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) / (frames.length - 1)
-      : 33;
-  }, [effectiveMotion]);
+  // Video/skeleton clock subsystem (player, signed-URL + one-retry, speed,
+  // playhead, single seek path) — see useSwingVideoClock.ts.
+  const videoStoragePath = swingRecord?.video_storage_path ?? null;
+  const {
+    player,
+    effectiveVideoUri,
+    isPlaying,
+    videoIdx,
+    speed,
+    setSpeed,
+    seekToFrame,
+  } = useSwingVideoClock({
+    frames: effectiveMotion?.frames,
+    videoUri,
+    videoStoragePath,
+    isLiveSwing,
+  });
 
   // Re-read on focus (not just mount) so a profile switched while this screen was
   // backgrounded is reflected when the viewer regains focus.
@@ -100,19 +100,6 @@ export default function ResultScreen() {
     }, []),
   );
 
-  // Local capture file wins (live swing, byte-identical to the previous
-  // behavior); remote signed URL is the historical-view fallback. useVideoPlayer
-  // recreates the player when the source changes (keyed on the parsed source),
-  // so the null → signed-URL transition re-runs setup and re-attaches the
-  // player-dep'd listener effects below.
-  const videoStoragePath = swingRecord?.video_storage_path ?? null;
-  const effectiveVideoUri = videoUri ?? remoteVideoUrl;
-
-  const player = useVideoPlayer(effectiveVideoUri, (p) => {
-    p.loop = true;
-    p.playbackRate = 0.25;
-  });
-
   // Driven mode (video present): the skeleton canvas matches the video panel
   // exactly — same width (content column, container padding 24/side) and the
   // video's 9:16 aspect — so the identity transform in SwingSkeletonCanvas
@@ -120,97 +107,6 @@ export default function ResultScreen() {
   const hasVideo = !!(effectiveVideoUri && player);
   const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
   const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
-
-  useEffect(() => {
-    if (player) player.playbackRate = speed;
-  }, [speed, player]);
-
-  const [isPlaying, setIsPlaying] = useState(false);
-  useEffect(() => {
-    if (!player) return;
-    const sub = player.addListener('playingChange', (payload) => {
-      setIsPlaying(payload.isPlaying);
-    });
-    return () => sub.remove();
-  }, [player]);
-
-  // Remote-playback failure path: one silent re-sign (expired URL / transient
-  // network), then surrender to skeleton-only (remoteVideoUrl → null collapses
-  // every video gate). Local-file playback (videoUri set) is never touched.
-  useEffect(() => {
-    if (!player || videoUri || !remoteVideoUrl) return;
-    const sub = player.addListener('statusChange', (payload) => {
-      if (payload.status !== 'error') return;
-      console.warn('[HoneySwing] remote video playback error:', payload.error?.message);
-      if (remoteRetriedRef.current || !videoStoragePath) {
-        setRemoteVideoUrl(null);
-        return;
-      }
-      remoteRetriedRef.current = true;
-      getSwingVideoSignedUrl(videoStoragePath).then((url) => setRemoteVideoUrl(url));
-    });
-    return () => sub.remove();
-  }, [player, videoUri, remoteVideoUrl, videoStoragePath]);
-
-  // Skeleton playhead, derived from the video player's clock. null until the
-  // first timeUpdate; the canvas call site maps no-video → null → the canvas
-  // stays uncontrolled (self-clocked rAF).
-  const [videoIdx, setVideoIdx] = useState<number | null>(null);
-  const frameCount = effectiveMotion?.frames?.length ?? 0;
-  useEffect(() => {
-    if (!player) return;
-    // expo-video emits timeUpdate ONLY when the interval is set (default 0 =
-    // disabled). 1/60 s keeps step with one data-frame per ~16.7 ms at 1×.
-    player.timeUpdateEventInterval = 1 / 60;
-    const sub = player.addListener('timeUpdate', (payload) => {
-      if (frameCount === 0) return;
-      const idx = Math.round((payload.currentTime * 1000) / msPerFrame);
-      setVideoIdx(Math.min(Math.max(0, idx), frameCount - 1));
-    });
-    return () => {
-      // No interval reset here: on unmount useVideoPlayer has already
-      // release()d the player (its hook is declared first, cleanups run in
-      // declaration order) and the native Property setter throws
-      // NativeSharedObjectNotFound on a released object; on dep-change
-      // re-runs the effect body re-sets 1/60 anyway. sub.remove() is safe
-      // either way — listeners live JS-side, no native-peer lookup.
-      sub.remove();
-    };
-  }, [player, frameCount, msPerFrame]);
-
-  // Deferred-play timer guard: a chip tap <100 ms before back-nav would fire
-  // play() on a released player (same NativeSharedObjectNotFound throw, via
-  // the global handler). Clear the timer on unmount and no-op the callback
-  // once unmounted.
-  const seekTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      if (seekTimerRef.current != null) {
-        clearTimeout(seekTimerRef.current);
-        seekTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  // THE one seek path for every phase-chip surface (canvas row + video-section
-  // row). Divergent chip behavior was the original sync bug — keep it single.
-  const seekToFrame = useCallback((index: number) => {
-    if (!player) return;
-    player.pause();
-    player.currentTime = Math.max(0, (index * msPerFrame) / 1000);
-    // Sync skeleton immediately — timeUpdate is not reliably emitted while
-    // paused.
-    setVideoIdx(Math.min(Math.max(0, index), Math.max(0, frameCount - 1)));
-    if (seekTimerRef.current != null) clearTimeout(seekTimerRef.current);
-    seekTimerRef.current = setTimeout(() => {
-      seekTimerRef.current = null;
-      if (!isMountedRef.current) return;
-      player.play();
-    }, 100);
-  }, [player, msPerFrame, frameCount]);
 
   const scrollRef = useRef<ScrollView>(null);
   const [videoSectionY, setVideoSectionY] = useState<number | null>(null);
@@ -240,20 +136,6 @@ export default function ResultScreen() {
       }).catch((err) => console.error('[HoneySwing]', err));
     }, []),
   );
-
-  // Resolve the uploaded video into a signed URL ONCE per record load —
-  // historical views only. Local videoUri (live swing) wins; storage_path
-  // null (never/in-flight upload) → stays skeleton-only with no error.
-  useEffect(() => {
-    if (videoUri || isLiveSwing || !videoStoragePath) return;
-    let cancelled = false;
-    getSwingVideoSignedUrl(videoStoragePath).then((url) => {
-      if (!cancelled && url) setRemoteVideoUrl(url);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [videoUri, isLiveSwing, videoStoragePath]);
 
   useEffect(() => {
     const reason = swingRecord?.failure_reason;
