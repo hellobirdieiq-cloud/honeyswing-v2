@@ -527,6 +527,39 @@ it as the new data shape stabilizes, not after rows pile up — because the
 moment they do, this item starts climbing back toward #1. Findings #13, #14,
 #15.
 
+## 7. Follow-ups — accepted test-coverage gaps (2026-07-02, safety-net project)
+
+The "strengthen the engineering safety net" project (findings #1–#5, #8;
+commits 6f66c6a…b8454e9) closed the typecheck perimeter, fixed runner
+discovery, and added suites for tempoAnalysis / angles / phaseDetectionShared
+/ skeletonProjection (test baseline now 54 suites / 53 green / 1 parked red).
+The following surfaces were **deliberately left untested** so the gap is a
+decision, not an accident. Rationale everywhere: no fake confidence from
+heavy React-Native mocks; device validation remains the real gate for
+native-bound flows.
+
+- **`lib/useSwingCapture.ts` (refs-as-refs invariant)** — hook with top-level
+  react-native / vision-camera / expo imports; not node-loadable. Its
+  documented invariants stay guarded by device QA; its extracted decision
+  logic is already covered by `packages/domain/swing/captureFlow.test.ts`.
+- **`lib/captureProcessing.ts` `processRecordedVideo`** — native-bound glue
+  (vision-camera-pose, pose extraction, persistence side-effects). All
+  branching it performs is delegated to the tested pure `captureFlow`
+  helpers; a node test would mock away everything it actually does.
+- **`app/analysis/useSwingSource.ts` / `useSwingVideoClock.ts`** — React
+  hooks; exercising them off-device requires an RN test-renderer harness,
+  rejected by the no-heavy-mocks principle. Revisit only if a pure decision
+  core is ever extracted from them.
+- **Deferred: on-device visual check of the skeleton overlay** — the
+  Step 4.1 extraction (commit 9d42c60) is pure code motion and is pinned by
+  `components/skeletonProjection.test.ts`, but the overlay has NOT been
+  re-verified on device (operator decision). Verify both render modes
+  (driven video-overlay identity mapping and self-clocked hip-anchored fit)
+  before the next device build.
+- **Still blocked, not a gap decision:** `phaseDetectionLegacy` tests wait on
+  the legacy-freeze decision (finding #7); the parked `phaseDetectionDTL`
+  red remains out of scope.
+
 ---
 *Measurement provenance: all commands executed 2026-07-02 (second Phase 2
 run) from the repo root; first background batch invalidated by a stale
