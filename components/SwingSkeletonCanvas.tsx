@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Svg, { Line, Circle, Polygon, Path, G } from 'react-native-svg';
-import type { PoseFrame, JointName, NormalizedJoint } from '../packages/pose/PoseTypes';
+import type { PoseFrame, JointName } from '../packages/pose/PoseTypes';
 import type { DetectedPhase, SwingPhase } from '../packages/domain/swing/phaseDetection';
 import { GOLD } from '../lib/colors';
-
-const MIN_CONF = 0.2;
+import {
+  getJoint,
+  spatialMedian,
+  temporalMedianSmooth,
+  buildPath,
+  makeDrivenTransform,
+  makeAnchoredTransform,
+} from './skeletonProjection';
 
 const COLOR_TORSO_LINE = 'rgba(240,240,240,0.9)';
 const COLOR_TORSO_FILL = 'rgba(200,200,200,0.7)';
@@ -89,55 +95,6 @@ const RING_DOTS: JointName[] = ['leftElbow', 'rightElbow', 'leftWrist', 'rightWr
 const LEFT_HAND_JOINTS: JointName[] = ['leftWrist', 'leftPinky', 'leftIndex', 'leftThumb'];
 const RIGHT_HAND_JOINTS: JointName[] = ['rightWrist', 'rightPinky', 'rightIndex', 'rightThumb'];
 
-function getJoint(frame: PoseFrame, name: JointName): NormalizedJoint | null {
-  const j = frame.joints[name];
-  return j && (j.confidence ?? 0) >= MIN_CONF ? j : null;
-}
-
-function spatialMedian(frame: PoseFrame, names: JointName[]): { x: number; y: number } | null {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const n of names) {
-    const j = getJoint(frame, n);
-    if (j) { xs.push(j.x); ys.push(j.y); }
-  }
-  if (xs.length === 0) return null;
-  xs.sort((a, b) => a - b);
-  ys.sort((a, b) => a - b);
-  const mid = Math.floor(xs.length / 2);
-  return { x: xs[mid], y: ys[mid] };
-}
-
-function temporalMedianSmooth(
-  pts: ({ x: number; y: number } | null)[],
-  windowSize = 5,
-): ({ x: number; y: number } | null)[] {
-  const half = Math.floor(windowSize / 2);
-  return pts.map((_, i) => {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    for (let j = Math.max(0, i - half); j <= Math.min(pts.length - 1, i + half); j++) {
-      const p = pts[j];
-      if (p) { xs.push(p.x); ys.push(p.y); }
-    }
-    if (xs.length === 0) return null;
-    xs.sort((a, b) => a - b);
-    ys.sort((a, b) => a - b);
-    const m = Math.floor(xs.length / 2);
-    return { x: xs[m], y: ys[m] };
-  });
-}
-
-function buildPath(pts: { x: number; y: number }[]): string {
-  if (pts.length === 0) return '';
-  if (pts.length === 1) return `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
-  for (let i = 1; i < pts.length; i++) {
-    d += ` L ${pts[i].x.toFixed(1)} ${pts[i].y.toFixed(1)}`;
-  }
-  return d;
-}
-
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'full_swing',     label: 'Full Swing' },
@@ -189,35 +146,11 @@ export default function SwingSkeletonCanvas({
   const transform = useMemo(() => {
     if (frames.length === 0) return null;
     if (driven) {
-      // Driven mode: video & pose share the full 9:16 frame (no crop on either
-      // side — pose extracted from the full frame, video contain-fit in a 9:16
-      // box), so the identity mapping puts each joint on the golfer's pixel.
-      // Keypoints are faithful-anatomical (decode conjugation fix) — no flip.
-      const tx = (x: number) => x * width;
-      const ty = (y: number) => y * height;
-      return { tx, ty };
+      // Driven mode: identity mapping, no flip — see makeDrivenTransform's doc
+      // in skeletonProjection.ts (moved verbatim with the math).
+      return makeDrivenTransform(width, height);
     }
-    const f0 = frames[0];
-    const top = getJoint(f0, 'leftShoulder') ?? getJoint(f0, 'rightShoulder') ?? getJoint(f0, 'nose');
-    const bot =
-      getJoint(f0, 'leftAnkle') ??
-      getJoint(f0, 'rightAnkle') ??
-      getJoint(f0, 'leftFootIndex') ??
-      getJoint(f0, 'rightFootIndex');
-    const lh = getJoint(f0, 'leftHip');
-    const rh = getJoint(f0, 'rightHip');
-    if (!top || !bot || !lh || !rh) return null;
-    const vertical = Math.max(0.01, bot.y - top.y);
-    const scale = (height * 0.75) / vertical;
-    const H_PAD = 0.70;
-    const hScale = scale * H_PAD;
-    const hipX0 = (lh.x + rh.x) / 2;
-    const hipY0 = (lh.y + rh.y) / 2;
-    const anchorX = width / 2;
-    const anchorY = height * 0.40;
-    const tx = (x: number) => anchorX + (x - hipX0) * hScale;
-    const ty = (y: number) => anchorY + (y - hipY0) * scale;
-    return { tx, ty };
+    return makeAnchoredTransform(frames[0], width, height);
   }, [driven, frames, width, height]);
 
   const endIdx = useMemo(() => {
