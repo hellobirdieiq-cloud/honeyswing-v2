@@ -39,7 +39,16 @@ import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
-import { computeNavigationBlockReason, deriveClassification, type CapturePhase } from '@/packages/domain/swing/captureFlow';
+import {
+  computeNavigationBlockReason,
+  deriveClassification,
+  deriveFallbackGateReason,
+  selectLeadWristForGrip,
+  buildWatchImuPersistPayload,
+  planDriftEvent,
+  evaluateWatchAutoStart,
+  type CapturePhase,
+} from '@/packages/domain/swing/captureFlow';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -431,10 +440,7 @@ export function useSwingCapture({
           );
           analysisMs = Date.now() - t0;
 
-          const fallbackGateReason =
-            analysis.swing_debug?.fallback_gate != null
-              ? 'no-swing'
-              : null;
+          const fallbackGateReason = deriveFallbackGateReason(analysis.swing_debug);
 
           console.log('[HoneySwing] extractionMs', extractionMs, 'analysisMs', analysisMs);
 
@@ -444,7 +450,7 @@ export function useSwingCapture({
             const addressPhase = analysis.phases?.find((p) => p.phase === 'takeaway');
             if (addressPhase && addressPhase.index < poseFrames.length) {
               const frame = poseFrames[addressPhase.index];
-              const leadWrist = isLeftHandedRef.current ? frame.joints.rightWrist : frame.joints.leftWrist;
+              const leadWrist = selectLeadWristForGrip(frame.joints, isLeftHandedRef.current);
               if (leadWrist) {
                 nativeGripResult = await Promise.race([
                   classifyGripFrames({
@@ -487,14 +493,7 @@ export function useSwingCapture({
             result.videoDurationMs ?? null,
             result.videoFrameCount ?? null,
             result.extractionTotalMs ?? null,
-            watchSummary && watchReadings.length > 0
-              ? {
-                  readings: watchReadings,
-                  summary: watchSummary,
-                  alignment: watchAlignment,
-                  captureSeq: watchSeq,
-                }
-              : null,
+            buildWatchImuPersistPayload(watchReadings, watchSummary, watchAlignment, watchSeq),
             activeProfileSnapshotRef.current?.isLeftHanded,
           ).then((swingId) => {
             if (swingId) {
@@ -560,13 +559,14 @@ export function useSwingCapture({
                 .catch((e) => console.warn('[HoneySwing] persistPoseFull failed', e));
             }
 
-            if (
-              swingId &&
-              !driftFailure &&
-              typeof driftFrameCount === 'number' &&
-              typeof driftDurationMs === 'number'
-            ) {
-              recordDriftEvent(swingId, driftFrameCount, driftDurationMs, CAPTURE_FPS)
+            const drift = planDriftEvent({
+              swingId,
+              failure: driftFailure,
+              frameCount: driftFrameCount,
+              durationMs: driftDurationMs,
+            });
+            if (drift) {
+              recordDriftEvent(drift.swingId, drift.frameCount, drift.durationMs, CAPTURE_FPS)
                 .catch((e) => console.warn('[HoneySwing] recordDriftEvent failed', e));
             }
           });
@@ -646,8 +646,13 @@ export function useSwingCapture({
   // late-join) — it never starts a recording.
   useEffect(() => {
     const unsub = watch.registerStartedHandler((started) => {
-      const fresh = started.startedAgeMs <= STARTED_FRESHNESS_MS;
-      if (preArmedRef.current && fresh && capturePhaseRef.current === 'idle') {
+      const { fresh, shouldStart } = evaluateWatchAutoStart({
+        startedAgeMs: started.startedAgeMs,
+        freshnessMs: STARTED_FRESHNESS_MS,
+        preArmed: preArmedRef.current,
+        phase: capturePhaseRef.current,
+      });
+      if (shouldStart) {
         console.log('[useSwingCapture] watch started → auto-start video', {
           seq: started.seq,
           ageMs: Math.round(started.startedAgeMs),

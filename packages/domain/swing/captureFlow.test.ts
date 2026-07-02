@@ -7,8 +7,17 @@
  * the original tryNavigate gate and classification override in useSwingCapture.ts.
  */
 
-import { computeNavigationBlockReason, deriveClassification } from './captureFlow';
+import {
+  computeNavigationBlockReason,
+  deriveClassification,
+  deriveFallbackGateReason,
+  selectLeadWristForGrip,
+  buildWatchImuPersistPayload,
+  planDriftEvent,
+  evaluateWatchAutoStart,
+} from './captureFlow';
 import type { CaptureClassification } from './captureValidity';
+import type { WatchImuReading, WatchImuMeasured } from './watchImu';
 
 let passed = 0;
 let failed = 0;
@@ -100,6 +109,82 @@ assertEq(overridden.reason, 'no-swing', 'fallbackGateReason set → reason no-sw
 assertEq(overridden.frameCount, 30, 'frameCount preserved');
 assertEq(overridden.goodFrameCount, 25, 'goodFrameCount preserved');
 assertEq(overridden.poseSuccessRate, 0.83, 'poseSuccessRate preserved');
+
+// ---------------------------------------------------------------------------
+// deriveFallbackGateReason — `!= null` semantics: only null/undefined pass through
+// ---------------------------------------------------------------------------
+
+group('deriveFallbackGateReason');
+assertEq(deriveFallbackGateReason({ fallback_gate: 'tempo-implausible' }), 'no-swing', 'gate string → no-swing');
+assertEq(deriveFallbackGateReason({ fallback_gate: 0 }), 'no-swing', 'gate 0 (falsy but != null) → no-swing');
+assertEq(deriveFallbackGateReason({ fallback_gate: false }), 'no-swing', 'gate false (falsy but != null) → no-swing');
+assertEq(deriveFallbackGateReason({ fallback_gate: null }), null, 'gate null → null');
+assertEq(deriveFallbackGateReason({ fallback_gate: undefined }), null, 'gate undefined → null');
+assertEq(deriveFallbackGateReason({}), null, 'gate absent → null');
+assertEq(deriveFallbackGateReason(undefined), null, 'swing_debug undefined → null');
+assertEq(deriveFallbackGateReason(null), null, 'swing_debug null → null');
+
+// ---------------------------------------------------------------------------
+// selectLeadWristForGrip — lead wrist: right for lefties, left for righties
+// ---------------------------------------------------------------------------
+
+group('selectLeadWristForGrip');
+const L = { x: 0.1, y: 0.2 };
+const R = { x: 0.8, y: 0.2 };
+assertEq(selectLeadWristForGrip({ leftWrist: L, rightWrist: R }, false), L, 'right-handed → leftWrist');
+assertEq(selectLeadWristForGrip({ leftWrist: L, rightWrist: R }, true), R, 'left-handed → rightWrist');
+assertEq(selectLeadWristForGrip({ leftWrist: undefined, rightWrist: R }, false), undefined, 'missing lead joint passes through as undefined');
+assertEq(selectLeadWristForGrip({ leftWrist: L, rightWrist: undefined }, true), undefined, 'missing lead joint (lefty) passes through as undefined');
+
+// ---------------------------------------------------------------------------
+// buildWatchImuPersistPayload — payload iff summary measured AND readings present
+// ---------------------------------------------------------------------------
+
+group('buildWatchImuPersistPayload');
+const reading: WatchImuReading = { t: 1000, ax: 0.1, ay: 0.2, az: 0.3, gx: 0.4, gy: 0.5, gz: 0.6 };
+const summary: WatchImuMeasured = { sampleCount: 1, derivedHz: 200, maxAccelMagnitudeG: 1.5 };
+assertEq(buildWatchImuPersistPayload([], summary, null, 3), null, 'no readings → null');
+assertEq(buildWatchImuPersistPayload([reading], null, null, 3), null, 'no summary → null');
+assertEq(buildWatchImuPersistPayload([], null, null, 3), null, 'neither → null');
+const payload = buildWatchImuPersistPayload([reading], summary, null, 7);
+assert(payload !== null, 'readings + summary → payload');
+assert(payload?.readings.length === 1 && payload.readings[0] === reading, 'readings passed by reference');
+assertEq(payload?.summary, summary, 'summary passed by reference');
+assertEq(payload?.alignment, null, 'alignment null passes through');
+assertEq(payload?.captureSeq, 7, 'captureSeq passes through');
+
+// ---------------------------------------------------------------------------
+// planDriftEvent — gate: swingId + clean extraction + both numbers measured
+// ---------------------------------------------------------------------------
+
+group('planDriftEvent');
+const okDrift = planDriftEvent({ swingId: 's1', failure: null, frameCount: 240, durationMs: 4000 });
+assert(okDrift !== null, 'all valid → plan');
+assertEq(okDrift?.swingId, 's1', 'swingId narrowed through');
+assertEq(okDrift?.frameCount, 240, 'frameCount narrowed through');
+assertEq(okDrift?.durationMs, 4000, 'durationMs narrowed through');
+const zeroDrift = planDriftEvent({ swingId: 's1', failure: null, frameCount: 0, durationMs: 0 });
+assert(zeroDrift !== null && zeroDrift.frameCount === 0 && zeroDrift.durationMs === 0, 'zero measurements are valid numbers → plan (matches original typeof gate)');
+assertEq(planDriftEvent({ swingId: null, failure: null, frameCount: 240, durationMs: 4000 }), null, 'no swingId → null');
+assertEq(planDriftEvent({ swingId: 's1', failure: 'no-person', frameCount: 240, durationMs: 4000 }), null, 'extraction failure → null');
+assertEq(planDriftEvent({ swingId: 's1', failure: null, frameCount: null, durationMs: 4000 }), null, 'frameCount null → null');
+assertEq(planDriftEvent({ swingId: 's1', failure: null, frameCount: 240, durationMs: undefined }), null, 'durationMs undefined → null');
+
+// ---------------------------------------------------------------------------
+// evaluateWatchAutoStart — fresh (<= threshold) AND pre-armed AND idle
+// ---------------------------------------------------------------------------
+
+group('evaluateWatchAutoStart');
+const go = evaluateWatchAutoStart({ startedAgeMs: 100, freshnessMs: 2500, preArmed: true, phase: 'idle' });
+assert(go.fresh && go.shouldStart, 'fresh + preArmed + idle → start');
+const boundary = evaluateWatchAutoStart({ startedAgeMs: 2500, freshnessMs: 2500, preArmed: true, phase: 'idle' });
+assert(boundary.fresh && boundary.shouldStart, 'ageMs == freshnessMs is fresh (<= semantics)');
+const stale = evaluateWatchAutoStart({ startedAgeMs: 2501, freshnessMs: 2500, preArmed: true, phase: 'idle' });
+assert(!stale.fresh && !stale.shouldStart, 'stale signal → fresh false, no start');
+const notArmed = evaluateWatchAutoStart({ startedAgeMs: 100, freshnessMs: 2500, preArmed: false, phase: 'idle' });
+assert(notArmed.fresh && !notArmed.shouldStart, 'not pre-armed → fresh true but no start');
+const busy = evaluateWatchAutoStart({ startedAgeMs: 100, freshnessMs: 2500, preArmed: true, phase: 'capturing' });
+assert(busy.fresh && !busy.shouldStart, 'phase not idle → fresh true but no start');
 
 // ---------------------------------------------------------------------------
 // Summary
