@@ -8,6 +8,7 @@ import {
   frameToLandmarks,
   pickKeyFrame,
   buildRawTips,
+  dedupeWorstMetricScores,
   TIP_SCORE_THRESHOLD,
   METRIC_KEY_MAP,
 } from './coachingTips';
@@ -303,6 +304,65 @@ group('C13. Mixed: some pass, some filtered');
   assert(keys.includes('spineAngle'), 'spineAngle included');
   assert(keys.includes('elbow'), 'elbow included');
   assert(keys.includes('tempo'), 'tempo included');
+}
+
+// ---------------------------------------------------------------------------
+// Section D — dedupeWorstMetricScores (Batch 5.2 lift from result.tsx)
+// ---------------------------------------------------------------------------
+
+group('D1. Worst score wins per mapped key');
+{
+  const scores = dedupeWorstMetricScores([
+    makeEntry('leftElbowAngle', 72),
+    makeEntry('rightElbowAngle', 55),
+    makeEntry('spineAngle', 91),
+  ]);
+  assertEq(scores.length, 2, 'left+right elbow collapse to one key');
+  assert(scores[0].metricKey === 'elbow' && scores[0].score === 55, 'elbow keeps the worse score (55)');
+  assert(scores[1].metricKey === 'spineAngle' && scores[1].score === 91, 'spineAngle passes through');
+}
+
+group('D2. Missing entries skipped (SCR-0b-1)');
+{
+  const scores = dedupeWorstMetricScores([
+    makeEntry('spineAngle', 0, 'missing'),
+    makeEntry('shoulderTilt', 88),
+  ]);
+  assert(scores.length === 1 && scores[0].metricKey === 'shoulderTilt', 'missing spineAngle (score 0) not pulled in');
+}
+
+group('D3. Unmapped metrics skipped');
+{
+  const scores = dedupeWorstMetricScores([
+    makeEntry('notARealMetric', 10),
+    makeEntry('tempo', 65),
+  ]);
+  assert(scores.length === 1 && scores[0].metricKey === 'tempo', 'unmapped metric dropped, tempo mapped');
+}
+
+group('D4. ARRAY ORDER: first-seen mapped-key insertion order (load-bearing)');
+{
+  // positiveReinforcementEngine picks the FIRST improved metric by array order —
+  // a later, worse score must update the value but NOT the position.
+  const scores = dedupeWorstMetricScores([
+    makeEntry('shoulderTilt', 70),
+    makeEntry('leftKneeAngle', 60),
+    makeEntry('spineAngle', 50),
+    makeEntry('rightKneeAngle', 40),
+  ]);
+  assertEq(
+    scores.map((s) => s.metricKey).join(','),
+    'shoulderTilt,kneeFlex,spineAngle',
+    'order = first-seen; later worse score does not reorder',
+  );
+  assertEq(scores[1].score, 40, 'kneeFlex holds the later, worse score (40) at its original position');
+}
+
+group('D5. No tip threshold — good scores included (unlike buildRawTips)');
+{
+  const scores = dedupeWorstMetricScores([makeEntry('spineAngle', 95)]);
+  assert(scores.length === 1 && scores[0].score === 95, 'score 95 included (positive reinforcement needs good scores)');
+  assertEq(dedupeWorstMetricScores([]).length, 0, 'empty breakdown → empty array');
 }
 
 // ---------------------------------------------------------------------------

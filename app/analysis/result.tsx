@@ -42,12 +42,9 @@ import SwingSkeletonCanvas from '../../components/SwingSkeletonCanvas';
 import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
 import type { ProcessSwingResult } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
-import { frameToLandmarks, pickKeyFrame, buildRawTips, METRIC_KEY_MAP } from '../../lib/coachingTips';
-import {
-  scoreTempoTrafficLight,
-  TEMPO_GREEN_LOWER,
-  TEMPO_GREEN_UPPER,
-} from '../../packages/domain/swing/scoring';
+import { frameToLandmarks, pickKeyFrame, buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
+import { deriveTempoDisplay, derivePartialReason } from '../../packages/domain/swing/tempoDisplay';
+import { reconstructAnalysisFromRecord } from '../../lib/reconstructAnalysis';
 import type { GripClassification } from '../../lib/classifyGrip';
 
 const GRIP_CHIP_COLORS: Record<string, { label: string; color: string }> = {
@@ -72,61 +69,6 @@ const NO_DATA_FAILURE_REASONS = new Set([
   'recording-error',
   'extract-or-analyze-threw',
 ]);
-
-// Reconstruct an AnalysisResult from a persisted SwingRecord — used by the
-// history-tap path where the in-memory store doesn't hold the tapped swing.
-// `swingConfidence` and `cameraAngleResult` are NOT persisted today; safe
-// defaults (matching the empty-sequence shape at analysisPipeline.ts:515-527)
-// gate coaching tips off via the confidence threshold at result.tsx :290.
-// Follow-up: persist swingConfidence + cameraAngleResult for full-fidelity
-// tips on historical swings. Re-analyzing motion_frames is NOT a fix —
-// persistSwing.ts:191-199 stores only the average gravity vector, so
-// applyTiltCorrection rejects (insufficient_samples) on replay and the
-// re-analyzed score diverges from the persisted one.
-function reconstructAnalysisFromRecord(record: SwingRecord): AnalysisResult {
-  return {
-    score: record.score,
-    honeyBoom: record.honey_boom ?? false,
-    cameraAngleValid: record.camera_angle_valid ?? false,
-    swingConfidence: {
-      overall: 0,
-      tier: 'low',
-      components: {
-        jointVisibility: 0,
-        cameraAngle: 0,
-        phaseDetection: 0,
-        frameCoverage: 0,
-      },
-    },
-    cameraAngleResult: {
-      angle: 'unknown',
-      shoulderSpread: 0,
-      hipSpread: 0,
-      avgSpread: 0,
-      footIndexNorm: null,
-      weights: {
-        spineAngle: 0,
-        leftElbowAngle: 0,
-        rightElbowAngle: 0,
-        leftKneeAngle: 0,
-        rightKneeAngle: 0,
-        hipSpreadDelta: 0,
-        shoulderTilt: 0,
-        tempo: 0,
-      },
-    },
-    angles: record.angles ?? undefined,
-    tempo: record.tempo ?? null,
-    phases: record.phases ?? undefined,
-    trail: record.trail_points ?? undefined,
-    metricConfidences: record.metric_confidences ?? undefined,
-    // swing_debug omitted: DB column is a superset (persistSwing.ts:229-246
-    // spreads extra debug keys), not a clean FrameSelectionDebug. Sole
-    // consumer (scoring_breakdown tip build) is gated off by the
-    // low-confidence default above.
-    // aggregate omitted: explicitly NOT persisted per analysisPipeline.ts:104.
-  };
-}
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -424,33 +366,15 @@ export default function ResultScreen() {
   const analysis: AnalysisResult | null = isLiveSwing
     ? (storedAnalysis ?? fallbackAnalysis)
     : reconstructedAnalysis;
-  const partialReason: string | null =
-    analysis?.swing_debug?.fallback_gate != null
-      ? String(analysis.swing_debug.fallback_gate)
-      : swingRecord?.failure_reason === 'no-swing'
-        ? swingRecord.failure_reason
-        : null;
+  const partialReason: string | null = derivePartialReason(
+    analysis?.swing_debug,
+    swingRecord?.failure_reason,
+  );
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
 
-  const tempoResult = tempo ? scoreTempoTrafficLight(tempo.tempoRatio) : null;
-  const isGreen = tempoResult?.isGreen ?? false;
-  const tooFast = !!tempo && tempo.tempoRatio < TEMPO_GREEN_LOWER;
-  const tooSlow = !!tempo && tempo.tempoRatio > TEMPO_GREEN_UPPER;
-  const scoreColor = isGreen ? '#44CC44' : '#FFFFFF';
-  const tempoLabelText = isGreen
-    ? 'Perfect swing speed!'
-    : tooFast
-    ? 'Slow down your backswing'
-    : tooSlow
-    ? 'Speed up your backswing'
-    : null;
-  const coachingCueText = tooFast
-    ? "Swing back slow like you're moving through honey"
-    : tooSlow
-    ? 'Whip the club head back fast'
-    : null;
+  const { scoreColor, tempoLabelText, coachingCueText } = deriveTempoDisplay(tempo);
 
   const finalScore = analysis?.score ?? 0;
   const [displayedScore, setDisplayedScore] = useState(0);
@@ -490,18 +414,9 @@ export default function ResultScreen() {
       estimatedAngleDeg,
     );
 
-    // Build deduped metric scores (same metricKey mapping as buildRawTips, keep worst score)
-    const worstByKey = new Map<string, number>();
-    for (const entry of breakdown) {
-      if (entry.dataQuality === 'missing') continue;  // SCR-0b-1: don't pull "0" worst from missing
-      const mappedKey = METRIC_KEY_MAP[entry.metric];
-      if (!mappedKey) continue;
-      const existing = worstByKey.get(mappedKey);
-      if (existing === undefined || entry.score < existing) {
-        worstByKey.set(mappedKey, entry.score);
-      }
-    }
-    const dedupedScores = Array.from(worstByKey.entries()).map(([metricKey, score]) => ({ metricKey, score }));
+    // Deduped metric scores (same metricKey mapping as buildRawTips, keep worst
+    // score) — array order is load-bearing, see dedupeWorstMetricScores.
+    const dedupedScores = dedupeWorstMetricScores(breakdown);
 
     const swingConfidence = analysis.swingConfidence ?? { tier: 'low' as const, overall: 0 };
     const posResult = positiveReinforcementEngine.processSwing(

@@ -82,3 +82,26 @@ export function buildRawTips(breakdown: ScoringBreakdownEntry[]): RawCoachingTip
 
   return Array.from(seen.keys()).map((metricKey) => ({ metricKey }));
 }
+
+/**
+ * Deduped worst score per mapped metricKey — same METRIC_KEY_MAP mapping as
+ * buildRawTips but WITHOUT the tip-score threshold (positive reinforcement
+ * needs good scores too). ARRAY ORDER IS LOAD-BEARING: first-seen mapped-key
+ * order (Map insertion) — positiveReinforcementEngine picks the first improved
+ * metric by array order when several improve at once.
+ */
+export function dedupeWorstMetricScores(
+  breakdown: ScoringBreakdownEntry[],
+): { metricKey: string; score: number }[] {
+  const worstByKey = new Map<string, number>();
+  for (const entry of breakdown) {
+    if (entry.dataQuality === 'missing') continue;  // SCR-0b-1: don't pull "0" worst from missing
+    const mappedKey = METRIC_KEY_MAP[entry.metric];
+    if (!mappedKey) continue;
+    const existing = worstByKey.get(mappedKey);
+    if (existing === undefined || entry.score < existing) {
+      worstByKey.set(mappedKey, entry.score);
+    }
+  }
+  return Array.from(worstByKey.entries()).map(([metricKey, score]) => ({ metricKey, score }));
+}
