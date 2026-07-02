@@ -55,22 +55,25 @@ const KEY_JOINTS: JointName[] = [
   'leftElbow', 'rightElbow', 'leftKnee', 'rightKnee',
 ];
 
-function makeFrame(confidentKeyJointCount: number, confidence = 0.9): PoseFrame {
+function makeFrame(confidentKeyJointCount: number, confidence = 0.9, timestampMs = 0): PoseFrame {
   const joints = createEmptyJoints();
   for (let i = 0; i < confidentKeyJointCount && i < KEY_JOINTS.length; i++) {
     const name = KEY_JOINTS[i];
     joints[name] = { name, x: 0.5, y: 0.5, confidence };
   }
-  return { timestampMs: 0, joints, frameWidth: 1080, frameHeight: 1920 };
+  return { timestampMs, joints, frameWidth: 1080, frameHeight: 1920 };
 }
 
-function makeFrameArray(totalCount: number, goodCount: number): PoseFrame[] {
+const MS_60FPS = 1000 / 60;
+const MS_120FPS = 1000 / 120;
+
+function makeFrameArray(totalCount: number, goodCount: number, spacingMs = MS_60FPS): PoseFrame[] {
   const frames: PoseFrame[] = [];
   for (let i = 0; i < goodCount; i++) {
-    frames.push(makeFrame(8)); // all 8 key joints confident
+    frames.push(makeFrame(8, 0.9, frames.length * spacingMs)); // all 8 key joints confident
   }
   for (let i = 0; i < totalCount - goodCount; i++) {
-    frames.push(makeFrame(0)); // no confident joints
+    frames.push(makeFrame(0, 0.9, frames.length * spacingMs)); // no confident joints
   }
   return frames;
 }
@@ -240,6 +243,45 @@ group('B13. poseSuccessRate = goodFrameCount / frameCount');
   const frames = makeFrameArray(40, 32);
   const result = classifyCapture(frames);
   assertEq(result.poseSuccessRate, 32 / 40, 'poseSuccessRate = 32/40 = 0.80');
+}
+
+// ---------------------------------------------------------------------------
+// Section C — rate independence (1c A3: gates are ms of coverage, not frames)
+// ---------------------------------------------------------------------------
+
+group('C1. 120fps valid: same 500ms coverage as 30 frames @60fps needs 60 frames');
+{
+  const result = classifyCapture(makeFrameArray(60, 60, MS_120FPS));
+  assertEq(result.validity, 'valid', 'validity = valid (60 frames @120fps = 500ms)');
+}
+
+group('C2. 120fps partial: 30 frames is only 250ms of coverage');
+{
+  const result = classifyCapture(makeFrameArray(30, 30, MS_120FPS));
+  assertEq(result.validity, 'partial', 'validity = partial (30 frames @120fps = 250ms)');
+  assertEq(result.reason, 'Try a slower, fuller swing next time.', 'reason mentions slower swing');
+}
+
+group('C3. 120fps invalid: below the 250ms partial floor');
+{
+  const result = classifyCapture(makeFrameArray(29, 29, MS_120FPS));
+  assertEq(result.validity, 'invalid', 'validity = invalid (29 frames @120fps < 250ms)');
+  assertEq(result.reason, 'The swing was too quick to catch.', 'reason = too quick');
+}
+
+group('C4. Rate independence: same physical coverage classifies identically');
+{
+  const at60 = classifyCapture(makeFrameArray(30, 30, MS_60FPS));
+  const at120 = classifyCapture(makeFrameArray(60, 60, MS_120FPS));
+  assertEq(at60.validity, at120.validity, '500ms of good frames → valid at both rates');
+}
+
+group('C5. Degenerate timestamps (all 0) fall back to 60fps frame counts');
+{
+  const zeroTs = (n: number) => Array.from({ length: n }, () => makeFrame(8, 0.9, 0));
+  assertEq(classifyCapture(zeroTs(VALID_MIN_FRAMES)).validity, 'valid', '30 zero-ts frames → valid (fallback)');
+  assertEq(classifyCapture(zeroTs(PARTIAL_MIN_FRAMES)).validity, 'partial', '15 zero-ts frames → partial (fallback)');
+  assertEq(classifyCapture(zeroTs(PARTIAL_MIN_FRAMES - 1)).validity, 'invalid', '14 zero-ts frames → invalid (fallback)');
 }
 
 // ---------------------------------------------------------------------------

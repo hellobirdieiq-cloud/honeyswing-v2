@@ -1,6 +1,13 @@
 import type { PoseFrame, JointName } from '../../pose/PoseTypes';
+import { msPerFrameFromFrames, msToFrames } from './phaseDetectionShared';
 
 // ── Tunable thresholds (single source of truth) ──────────────────────
+// 1c A3: the classification gates are physical capture coverage in ms,
+// not frame counts — the old 30/15 frame values were 60fps-only.
+export const VALID_MIN_MS = 500;
+export const PARTIAL_MIN_MS = 250;
+// 60fps frame-count fallbacks, used only when frame timestamps are
+// degenerate (span 0 → msPerFrameFromFrames returns 0).
 export const VALID_MIN_FRAMES = 30;
 export const VALID_MIN_POSE_RATE = 0.70;
 export const PARTIAL_MIN_FRAMES = 15;
@@ -40,21 +47,24 @@ export function classifyCapture(frames: PoseFrame[]): CaptureClassification {
   const frameCount = frames.length;
   const goodFrameCount = frames.filter(isGoodFrame).length;
   const poseSuccessRate = frameCount > 0 ? goodFrameCount / frameCount : 0;
+  const msPerFrame = msPerFrameFromFrames(frames);
+  const validMinFrames = msPerFrame > 0 ? msToFrames(VALID_MIN_MS, msPerFrame) : VALID_MIN_FRAMES;
+  const partialMinFrames = msPerFrame > 0 ? msToFrames(PARTIAL_MIN_MS, msPerFrame) : PARTIAL_MIN_FRAMES;
 
-  if (frameCount >= VALID_MIN_FRAMES && poseSuccessRate >= VALID_MIN_POSE_RATE) {
+  if (frameCount >= validMinFrames && poseSuccessRate >= VALID_MIN_POSE_RATE) {
     return { validity: 'valid', frameCount, goodFrameCount, poseSuccessRate, reason: null };
   }
 
-  if (frameCount >= PARTIAL_MIN_FRAMES && poseSuccessRate >= PARTIAL_MIN_POSE_RATE) {
+  if (frameCount >= partialMinFrames && poseSuccessRate >= PARTIAL_MIN_POSE_RATE) {
     const reason =
-      frameCount < VALID_MIN_FRAMES
+      frameCount < validMinFrames
         ? 'Try a slower, fuller swing next time.'
         : 'Step back a bit so we can see you better.';
     return { validity: 'partial', frameCount, goodFrameCount, poseSuccessRate, reason };
   }
 
   const reason =
-    frameCount < PARTIAL_MIN_FRAMES
+    frameCount < partialMinFrames
       ? 'The swing was too quick to catch.'
       : 'We couldn\u2019t see you clearly enough.';
   return { validity: 'invalid', frameCount, goodFrameCount, poseSuccessRate, reason };
