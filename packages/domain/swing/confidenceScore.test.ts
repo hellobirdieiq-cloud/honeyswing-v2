@@ -14,9 +14,11 @@
  * No assertions on aggregation / multiplication / combination math (HC4).
  */
 
-import { getMetricConfidence } from './confidenceScore';
+import { getMetricConfidence, computeSwingConfidence } from './confidenceScore';
 import type { GatedMetricKey, VisibilityWeightingResult } from './visibilityWeighting';
-import type { MetricConfidenceWeights } from './cameraAngle';
+import type { CameraAngleResult, MetricConfidenceWeights } from './cameraAngle';
+import type { PoseFrame } from '../../pose/PoseTypes';
+import { createEmptyJoints } from '../../pose/PoseTypes';
 
 // ---------------------------------------------------------------------------
 // Test harness (matches lib/visibilityWeighting.test.ts:44-68)
@@ -214,6 +216,80 @@ group('(e) hipSpreadDelta executes normally');
 
   assertEq(r.visibilityConfidence, 1, '(e) hipSpreadDelta + null → visibility defaults to 1');
   assertEq(r.cameraConfidence, 0.2, '(e) hipSpreadDelta cameraConfidence preserved');
+}
+
+// ===========================================================================
+// TESTS — computeSwingConfidence frame coverage (1c A4: ms-based ramp)
+// ===========================================================================
+
+const MS_60FPS = 1000 / 60;
+const MS_120FPS = 1000 / 120;
+
+// Every visibility key joint confident → jointVisibility saturates; the only
+// variable across these fixtures is frameCoverage.
+function makeConfidentFrame(timestampMs: number): PoseFrame {
+  const joints = createEmptyJoints();
+  const keyJoints = [
+    'leftShoulder', 'rightShoulder', 'leftHip', 'rightHip',
+    'leftElbow', 'rightElbow', 'leftWrist', 'rightWrist',
+    'leftKnee', 'rightKnee',
+  ] as const;
+  for (const name of keyJoints) {
+    joints[name] = { name, x: 0.5, y: 0.5, confidence: 0.9 };
+  }
+  return { timestampMs, joints, frameWidth: 1080, frameHeight: 1920 };
+}
+
+function makeConfidentFrames(count: number, spacingMs: number): PoseFrame[] {
+  return Array.from({ length: count }, (_, i) => makeConfidentFrame(i * spacingMs));
+}
+
+function makeFaceOnAngle(): CameraAngleResult {
+  return {
+    angle: 'face_on',
+    shoulderSpread: 0.2,
+    hipSpread: 0.15,
+    avgSpread: 0.175,
+    footIndexNorm: 0.827,
+    weights: makeCameraWeights(),
+  };
+}
+
+group('(f) 60fps round-trip: thresholds resolve to legacy 15/60 frames');
+{
+  // 60 frames @60fps = 1000ms coverage → goodFrames = 60 → frameCoverage 1.0
+  const r = computeSwingConfidence(makeConfidentFrames(60, MS_60FPS), makeFaceOnAngle(), true);
+  assertEq(r.components.frameCoverage, 1.0, '(f) 60 frames @60fps → frameCoverage 1.0');
+}
+
+group('(g) 120fps: same physical coverage → same frameCoverage and tier');
+{
+  // 1000ms of coverage at both rates → both saturate the ramp
+  const at60 = computeSwingConfidence(makeConfidentFrames(60, MS_60FPS), makeFaceOnAngle(), true);
+  const at120 = computeSwingConfidence(makeConfidentFrames(120, MS_120FPS), makeFaceOnAngle(), true);
+  assertEq(at120.components.frameCoverage, at60.components.frameCoverage,
+    '(g) 1000ms coverage → equal frameCoverage at 60 and 120fps');
+  assertEq(at120.tier, at60.tier, '(g) 1000ms coverage → equal tier at 60 and 120fps');
+
+  // Mid-ramp: 500ms coverage (30 frames @60 / 60 frames @120) → equal score
+  const mid60 = computeSwingConfidence(makeConfidentFrames(30, MS_60FPS), makeFaceOnAngle(), true);
+  const mid120 = computeSwingConfidence(makeConfidentFrames(60, MS_120FPS), makeFaceOnAngle(), true);
+  assertEq(mid120.components.frameCoverage, mid60.components.frameCoverage,
+    '(g) 500ms coverage → equal mid-ramp frameCoverage at both rates');
+  assert(mid60.components.frameCoverage > 0.3 && mid60.components.frameCoverage < 1.0,
+    '(g) 500ms coverage sits on the ramp (0.3–1.0)');
+
+  // Without the conversion, 120 frames @120fps would have read as 2× coverage:
+  // 60 frames @120fps is only 500ms, so it must NOT saturate.
+  assert(mid120.components.frameCoverage < 1.0,
+    '(g) 60 frames @120fps (500ms) does not saturate the ramp');
+}
+
+group('(h) degenerate timestamps fall back to 60fps frame counts');
+{
+  const zeroTs = Array.from({ length: 60 }, () => makeConfidentFrame(0));
+  const r = computeSwingConfidence(zeroTs, makeFaceOnAngle(), true);
+  assertEq(r.components.frameCoverage, 1.0, '(h) 60 zero-ts frames → fallback GOOD_FRAMES=60 → 1.0');
 }
 
 // ===========================================================================

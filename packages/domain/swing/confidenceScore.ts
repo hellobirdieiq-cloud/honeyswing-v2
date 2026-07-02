@@ -27,6 +27,7 @@
 import type { PoseFrame } from '../../pose/PoseTypes';
 import type { CameraAngleResult, MetricConfidenceWeights } from './cameraAngle';
 import type { GatedMetricKey, VisibilityWeightingResult } from './visibilityWeighting';
+import { msPerFrameFromFrames, msToFrames } from './phaseDetectionShared';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export interface ConfidenceComponents {
   cameraAngle: number;
   /** 0-1: heuristic phase windows (1.0) vs mid-frame fallback (0.3) */
   phaseDetection: number;
-  /** 0-1: frame count relative to GOOD_FRAMES threshold */
+  /** 0-1: capture coverage relative to the GOOD_MS threshold */
   frameCoverage: number;
 }
 
@@ -65,12 +66,17 @@ export const CONFIDENCE_HIGH = 0.75;
 export const CONFIDENCE_MEDIUM = 0.50;
 
 /**
- * Frame count scoring curve.
+ * Frame coverage scoring curve, in ms of capture (1c A4: the ramp measures
+ * physical coverage, not frame counts — 15/60 frames were 60fps-only).
  * 0 frames → 0.0.
- * Below MIN_FRAMES → linear ramp to 0.3.
- * MIN_FRAMES to GOOD_FRAMES → linear ramp 0.3 to 1.0.
- * Above GOOD_FRAMES → 1.0.
+ * Below MIN_MS → linear ramp to 0.3.
+ * MIN_MS to GOOD_MS → linear ramp 0.3 to 1.0.
+ * Above GOOD_MS → 1.0.
  */
+const MIN_MS = 250;
+const GOOD_MS = 1000;
+// 60fps frame-count fallbacks, used only when frame timestamps are
+// degenerate (span 0 → msPerFrameFromFrames returns 0).
 const MIN_FRAMES = 15;
 const GOOD_FRAMES = 60;
 
@@ -149,15 +155,15 @@ function scorePhaseDetection(method: 'heuristic' | 'fallback'): number {
 }
 
 /**
- * Frame count sub-score.
- * Graduated: 0 → 0.0, below MIN_FRAMES → up to 0.3,
- * MIN_FRAMES to GOOD_FRAMES → 0.3 to 1.0, above → 1.0.
+ * Frame count sub-score against rate-resolved thresholds.
+ * Graduated: 0 → 0.0, below minFrames → up to 0.3,
+ * minFrames to goodFrames → 0.3 to 1.0, above → 1.0.
  */
-function scoreFrameCount(frameCount: number): number {
-  if (frameCount >= GOOD_FRAMES) return 1.0;
+function scoreFrameCount(frameCount: number, minFrames: number, goodFrames: number): number {
+  if (frameCount >= goodFrames) return 1.0;
   if (frameCount <= 0) return 0.0;
-  if (frameCount < MIN_FRAMES) return (frameCount / MIN_FRAMES) * 0.3;
-  return 0.3 + 0.7 * ((frameCount - MIN_FRAMES) / (GOOD_FRAMES - MIN_FRAMES));
+  if (frameCount < minFrames) return (frameCount / minFrames) * 0.3;
+  return 0.3 + 0.7 * ((frameCount - minFrames) / (goodFrames - minFrames));
 }
 
 /**
@@ -230,7 +236,10 @@ export function computeSwingConfidence(
   const jointVisibility = scoreJointVisibility(visibilityFrames);
   const cameraAngleScore = scoreCameraAngle(cameraAngle);
   const phaseDetection = scorePhaseDetection(isHeuristicPhases ? 'heuristic' : 'fallback');
-  const frameCoverage = scoreFrameCount(frames.length);
+  const msPerFrame = msPerFrameFromFrames(frames);
+  const minFrames = msPerFrame > 0 ? msToFrames(MIN_MS, msPerFrame) : MIN_FRAMES;
+  const goodFrames = msPerFrame > 0 ? msToFrames(GOOD_MS, msPerFrame) : GOOD_FRAMES;
+  const frameCoverage = scoreFrameCount(frames.length, minFrames, goodFrames);
 
   const raw =
     WEIGHT_JOINT_VISIBILITY * jointVisibility +
