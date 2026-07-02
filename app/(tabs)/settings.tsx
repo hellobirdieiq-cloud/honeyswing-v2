@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -9,18 +9,18 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
-import { useRouter, useFocusEffect, type Href } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { useUser, useAuth } from '@clerk/expo';
-import { getCoachCode } from '../../lib/coachCode';
-import { linkCoach, unlinkCoach, checkIsCoach } from '../../lib/referralAttribution';
-import { getIsLeftHanded, setIsLeftHanded } from '../../lib/handedness';
-import { getWatchCaptureEnabled, setWatchCaptureEnabled } from '../../lib/watchCaptureSetting';
+import { linkCoach, unlinkCoach } from '../../lib/referralAttribution';
+import { setIsLeftHanded } from '../../lib/handedness';
+import { setWatchCaptureEnabled } from '../../lib/watchCaptureSetting';
 import { restorePurchases, ENTITLEMENT_ID } from '../../lib/purchases';
-import { getAgeTier, applyAgeTier, type AgeTier } from '../../lib/ageTier';
-import { getProfiles, addProfile, deleteProfile, saveProfiles, setPrimaryProfile, type PlayerProfile } from '../../lib/playerProfiles';
+import { applyAgeTier, type AgeTier } from '../../lib/ageTier';
+import { addProfile, deleteProfile, saveProfiles, setPrimaryProfile } from '../../lib/playerProfiles';
 import { deleteAccountAndPurgeLocal } from '../../lib/accountLifecycle';
+import { useSettingsData } from './useSettingsData';
 import { GOLD } from '../../lib/colors';
 
 const AGE_TIER_LABELS: Record<AgeTier, string> = {
@@ -39,29 +39,26 @@ export default function SettingsScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [coachName, setCoachName] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
-  const [isLeftHanded, setIsLeftHandedState] = useState(false);
-  const [watchCapture, setWatchCaptureState] = useState(false);
-  const [ageTier, setAgeTierState] = useState<AgeTier>('youth');
-  const [isCoach, setIsCoach] = useState(false);
-  const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerIsLeft, setNewPlayerIsLeft] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      getCoachCode().then((code) => setCoachName(code)).catch((err) => console.error('[HoneySwing]', err));
-      getIsLeftHanded().then(setIsLeftHandedState).catch((err) => console.error('[HoneySwing]', err));
-      getWatchCaptureEnabled().then(setWatchCaptureState).catch((err) => console.error('[HoneySwing]', err));
-      getAgeTier().then(setAgeTierState).catch((err) => console.error('[HoneySwing]', err));
-      getProfiles().then(setProfiles).catch((err) => console.error('[HoneySwing]', err));
+  // On-focus hydration + hydrated states — see useSettingsData.ts.
+  const {
+    coachName,
+    setCoachName,
+    isLeftHanded,
+    setIsLeftHandedState,
+    watchCapture,
+    setWatchCaptureState,
+    ageTier,
+    setAgeTierState,
+    isCoach,
+    profiles,
+    setProfiles,
+    refreshProfiles,
+  } = useSettingsData(isSignedIn, user);
 
-      checkIsCoach(isSignedIn && user ? user.id : null)
-        .then(setIsCoach)
-        .catch((err) => console.error('[HoneySwing]', err));
-    }, [isSignedIn, user]),
-  );
   function handleAddCoach() {
     Alert.prompt(
       'Add Coach',
@@ -326,8 +323,7 @@ export default function SettingsScreen() {
                 onPress={async () => {
                   try {
                     await setPrimaryProfile(p.id);
-                    const next = await getProfiles();
-                    setProfiles(next);
+                    await refreshProfiles();
                   } catch (err) { console.error('[HoneySwing]', err); }
                 }}
                 activeOpacity={0.7}
@@ -353,8 +349,7 @@ export default function SettingsScreen() {
                           onPress: async () => {
                             try {
                               await deleteProfile(p.id);
-                              const next = await getProfiles();
-                              setProfiles(next);
+                              await refreshProfiles();
                             } catch (err) { console.error('[HoneySwing]', err); }
                           },
                         },
@@ -424,8 +419,7 @@ export default function SettingsScreen() {
             onPress={async () => {
               try {
                 await addProfile(newPlayerName, newPlayerIsLeft);
-                const next = await getProfiles();
-                setProfiles(next);
+                await refreshProfiles();
                 setNewPlayerName('');
                 setNewPlayerIsLeft(false);
               } catch (err) { console.error('[HoneySwing]', err); }
