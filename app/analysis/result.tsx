@@ -5,27 +5,13 @@ import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { styles } from './resultStyles';
-import {
-  getCurrentSwingMotion,
-  getCurrentSwingAnalysis,
-  getCurrentSwingVideoUri,
-  getCurrentSwingId,
-  computeFocus,
-  saveFocus,
-} from '../../lib/swingMotionStore';
+import { computeFocus, saveFocus } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, supabase } from '../../lib/supabase';
-import { getSwingById, getSwingMotionFrames, type SwingRecord } from '../../lib/swingStore';
 import { getSwingVideoSignedUrl } from '../../lib/getSwingVideoUrl';
 import { GOLD } from '../../lib/colors';
-import {
-  analyzePoseSequence,
-  type AnalysisResult,
-} from '../../packages/domain/swing/analysisPipeline';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
-import type { PoseSequence, PoseFrame } from '../../packages/pose/PoseTypes';
-import { classifyCapture, type CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getActiveProfileHandedness } from '../../lib/handedness';
 import { getPrimaryProfile, getProfiles, type PlayerProfile } from '../../lib/playerProfiles';
 import { resolveHeaderProfile } from '../../lib/headerIdentity';
@@ -38,9 +24,8 @@ import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveRei
 import type { ProcessSwingResult } from '@/packages/domain/swing/positiveReinforcement';
 import { sessionAccumulator, type SessionInsight } from '../../lib/sessionAccumulator';
 import { buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
-import { deriveTempoDisplay, derivePartialReason } from '../../packages/domain/swing/tempoDisplay';
-import { reconstructAnalysisFromRecord } from '../../lib/reconstructAnalysis';
-import type { GripClassification } from '../../lib/classifyGrip';
+import { deriveTempoDisplay } from '../../packages/domain/swing/tempoDisplay';
+import { useSwingSource } from './useSwingSource';
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -63,18 +48,6 @@ export default function ResultScreen() {
   const router = useRouter();
   const { swingId } = useLocalSearchParams<{ swingId?: string }>();
   const { width: screenW } = useWindowDimensions();
-  const motion = getCurrentSwingMotion();
-  const storedAnalysis = getCurrentSwingAnalysis();
-  const videoUri = getCurrentSwingVideoUri();
-  const liveSwingId = getCurrentSwingId();
-  // "live" means: the in-memory store holds the swing being viewed. True when
-  // either (a) URL carries no swingId AND in-memory has data (live capture
-  // path where persist returned no id), or (b) URL swingId matches the
-  // in-memory id (live capture path with successful persist). History-tap
-  // navigation falls through to false because the tapped swingId won't match.
-  const isLiveSwing = motion !== null && (!swingId || swingId === liveSwingId);
-  const [swingRecord, setSwingRecord] = useState<SwingRecord | null>(null);
-  const [recordLoaded, setRecordLoaded] = useState(false);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
   const [coachName, setCoachName] = useState<string | null>(null);
@@ -85,10 +58,7 @@ export default function ResultScreen() {
   // never shows the segmented control.
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
   const swingAddedRef = useRef(false);
-  const [gripCloud, setGripCloud] = useState<GripClassification | null>(null);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
-  const [historicalFrames, setHistoricalFrames] = useState<PoseFrame[] | null>(null);
-  const [framesLoading, setFramesLoading] = useState(false);
   // Remote playback for historical swings: signed URL resolved ONCE per record
   // load from video_storage_path (private swing-videos bucket). null = no
   // remote video → skeleton-only (existing behavior). Local videoUri wins.
@@ -97,22 +67,19 @@ export default function ResultScreen() {
   // then give up → skeleton-only. Guards against an error→retry loop.
   const remoteRetriedRef = useRef(false);
 
-  const effectiveMotion = useMemo(
-    () =>
-      isLiveSwing
-        ? motion
-        : historicalFrames
-          ? {
-              frames: historicalFrames,
-              recordedAt: 0,
-              // EXTERNAL ASSUMPTION: source='live-camera' for historical frames.
-              // Verified no consumer branches on this value (only assigned to
-              // sequence.source).
-              source: 'live-camera' as const,
-            }
-          : null,
-    [isLiveSwing, motion, historicalFrames],
-  );
+  // Swing-data resolution (live store vs history fetch vs reconstruction) —
+  // see useSwingSource.ts. gripCloud also lives there (vanished feature, kept).
+  const {
+    isLiveSwing,
+    effectiveMotion,
+    swingRecord,
+    recordLoaded,
+    framesLoading,
+    classification,
+    analysis,
+    partialReason,
+    videoUri,
+  } = useSwingSource(swingId, isLeftHanded);
 
   // Frame-index ↔ video-time mapping. Post-hoc extraction guarantees frame i
   // ↔ video time i × msPerFrame (timestamps assigned as i × step in
@@ -274,29 +241,6 @@ export default function ResultScreen() {
     }, []),
   );
 
-  useEffect(() => {
-    if (!swingId) return;
-    setRecordLoaded(false);
-    getSwingById(swingId)
-      .then((swing) => {
-        if (!swing) return;
-        setSwingRecord(swing);
-        const gc = swing.swing_debug?.grip_cloud as GripClassification | undefined;
-        if (gc && !gc.analysis_failed) setGripCloud(gc);
-      })
-      .catch((err) => console.error('[HoneySwing]', err))
-      .finally(() => setRecordLoaded(true));
-  }, [swingId]);
-
-  useEffect(() => {
-    if (!swingId || isLiveSwing) return;
-    setFramesLoading(true);
-    getSwingMotionFrames(swingId)
-      .then((frames) => setHistoricalFrames(frames))
-      .catch((err) => console.error('[HoneySwing]', err))
-      .finally(() => setFramesLoading(false));
-  }, [swingId, isLiveSwing]);
-
   // Resolve the uploaded video into a signed URL ONCE per record load —
   // historical views only. Local videoUri (live swing) wins; storage_path
   // null (never/in-flight upload) → stays skeleton-only with no error.
@@ -321,44 +265,6 @@ export default function ResultScreen() {
     }
   }, [swingRecord, router]);
 
-  const classification: CaptureClassification | null = useMemo(
-    () => (effectiveMotion ? classifyCapture(effectiveMotion.frames) : null),
-    [effectiveMotion],
-  );
-
-  const sequence: PoseSequence | null = useMemo(() => {
-    if (!effectiveMotion) return null;
-    return {
-      frames: effectiveMotion.frames,
-      source: effectiveMotion.source,
-      metadata: {
-        durationMs:
-          effectiveMotion.frames.length > 1
-            ? effectiveMotion.frames[effectiveMotion.frames.length - 1].timestampMs - effectiveMotion.frames[0].timestampMs
-            : 0,
-      },
-    };
-  }, [effectiveMotion]);
-
-  const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
-    if (isLeftHanded === null) return null;
-    if (!isLiveSwing) return null;
-    if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
-    return analyzePoseSequence(sequence, isLeftHanded);
-  }, [sequence, classification, storedAnalysis, isLiveSwing, isLeftHanded]);
-
-  const reconstructedAnalysis: AnalysisResult | null = useMemo(
-    () => (swingRecord && !isLiveSwing ? reconstructAnalysisFromRecord(swingRecord) : null),
-    [swingRecord, isLiveSwing],
-  );
-
-  const analysis: AnalysisResult | null = isLiveSwing
-    ? (storedAnalysis ?? fallbackAnalysis)
-    : reconstructedAnalysis;
-  const partialReason: string | null = derivePartialReason(
-    analysis?.swing_debug,
-    swingRecord?.failure_reason,
-  );
   const angles = analysis?.angles;
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
