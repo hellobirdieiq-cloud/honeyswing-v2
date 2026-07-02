@@ -15,6 +15,7 @@
 
 import type { PoseFrame } from "../../pose/PoseTypes";
 import { calculateGolfAngles } from "./angles";
+import { msToFrames, scalePerFrameFloor } from "./phaseDetectionShared";
 
 export type SwingStartResult = {
   trueAddressFrame: number;
@@ -22,17 +23,21 @@ export type SwingStartResult = {
   reliability: "HIGH" | "MED" | "LOW";
 };
 
-// DTL V3 thresholds
+// DTL V3 thresholds (frame literals kept as 60fps fallbacks; *_MS are the rate-independent forms)
 const ADDRESS_WINDOW = 8;             // frames in the stillness window
+const ADDRESS_WINDOW_MS = 133;        // 1b: ms sibling of ADDRESS_WINDOW (8 @ 60fps)
 const ADDRESS_TOP_BUFFER = 20;         // earliest E starts at phases.top - 20
+const ADDRESS_TOP_BUFFER_MS = 333;    // 1b: ms sibling of ADDRESS_TOP_BUFFER (20 @ 60fps)
 const ADDRESS_MIN_E = 7;               // smallest E allowed (window [0..7])
+const ADDRESS_MIN_E_MS = 117;         // 1b: ms sibling of ADDRESS_MIN_E (7 @ 60fps)
 const SPINE_RANGE_MAX_DEG = 1.5;
 const KNEE_RANGE_MAX_DEG = 2.0;
 const HEAD_DELTA_MAX = 0.006;          // per-frame |Δ noseX|
 
 const SPINE_DELTA_MIN_DEG = 1.0;       // motion threshold from address
 const KNEE_DELTA_MIN_DEG = 1.5;        // motion threshold from address
-const START_WINDOW = 3;                // frames evaluated per F
+const START_WINDOW = 3;                // frames evaluated per F (60fps fallback)
+const START_WINDOW_MS = 50;            // 1b: ms sibling of START_WINDOW (3 @ 60fps)
 
 function spineOf(frame: PoseFrame | undefined): number | null {
   if (!frame) return null;
@@ -59,16 +64,22 @@ function sign(v: number): -1 | 0 | 1 {
 function detectAddressDTL(
   frames: PoseFrame[],
   topIdx: number,
+  // Rate for the stillness window / top-buffer / min-E (falls back to 60fps literals).
+  msPerFrame?: number,
 ): { idx: number; detected: boolean } {
-  const eStartRaw = topIdx - ADDRESS_TOP_BUFFER;
+  const addrWindow = msPerFrame != null ? msToFrames(ADDRESS_WINDOW_MS, msPerFrame) : ADDRESS_WINDOW;
+  const addrTopBuffer = msPerFrame != null ? msToFrames(ADDRESS_TOP_BUFFER_MS, msPerFrame) : ADDRESS_TOP_BUFFER;
+  const addrMinE = msPerFrame != null ? msToFrames(ADDRESS_MIN_E_MS, msPerFrame) : ADDRESS_MIN_E;
+  const headMax = scalePerFrameFloor(HEAD_DELTA_MAX, msPerFrame); // 1b-2: per-ms head-still floor
+  const eStartRaw = topIdx - addrTopBuffer;
   const eStart = Math.min(eStartRaw, frames.length - 1);
-  const eEnd = ADDRESS_MIN_E;
+  const eEnd = addrMinE;
   if (eStart < eEnd) return { idx: -1, detected: false };
 
   for (let E = eStart; E >= eEnd; E--) {
-    const start = Math.max(0, E - (ADDRESS_WINDOW - 1));
+    const start = Math.max(0, E - (addrWindow - 1));
     const end = Math.min(frames.length - 1, E);
-    if (end - start + 1 < ADDRESS_WINDOW) continue;
+    if (end - start + 1 < addrWindow) continue;
 
     const spines: number[] = [];
     const knees: number[] = [];
@@ -95,7 +106,7 @@ function detectAddressDTL(
 
     let headOk = true;
     for (let k = 0; k < noses.length - 1; k++) {
-      if (Math.abs(noses[k + 1] - noses[k]) >= HEAD_DELTA_MAX) {
+      if (Math.abs(noses[k + 1] - noses[k]) >= headMax) {
         headOk = false;
         break;
       }
@@ -111,7 +122,10 @@ function detectStartDTL(
   frames: PoseFrame[],
   addressIdx: number,
   topIdx: number,
+  // Rate for the per-F evaluation window (falls back to the 60fps literal).
+  msPerFrame?: number,
 ): { idx: number; detected: boolean } {
+  const startWin = msPerFrame != null ? Math.max(1, msToFrames(START_WINDOW_MS, msPerFrame)) : START_WINDOW;
   const addrSpine = spineOf(frames[addressIdx]);
   const addrKnee = kneeOf(frames[addressIdx]);
   const addrNose = noseXOf(frames[addressIdx]);
@@ -120,14 +134,14 @@ function detectStartDTL(
   }
 
   const fStart = Math.max(0, addressIdx + 1);
-  const fEnd = Math.min(frames.length - 1 - (START_WINDOW - 1), topIdx - 2);
+  const fEnd = Math.min(frames.length - 1 - (startWin - 1), topIdx - 2);
   if (fStart > fEnd) return { idx: -1, detected: false };
 
   for (let F = fStart; F <= fEnd; F++) {
     const spines: (number | null)[] = [];
     const knees: (number | null)[] = [];
     const noses: (number | null)[] = [];
-    for (let i = 0; i < START_WINDOW; i++) {
+    for (let i = 0; i < startWin; i++) {
       spines.push(spineOf(frames[F + i]));
       knees.push(kneeOf(frames[F + i]));
       noses.push(noseXOf(frames[F + i]));
@@ -179,9 +193,11 @@ function detectStartDTL(
 export function detectSwingStart(
   frames: PoseFrame[],
   phases: { address: number; top: number },
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- accepted for API symmetry; canonical frames are already handedness-normalized
+  // Accepted for API symmetry; canonical frames are already handedness-normalized.
   isLeftHanded: boolean,
   cameraAngle: "face_on" | "dtl" | "unknown",
+  // Capture rate, threaded to detectAddressDTL/detectStartDTL. Optional: tests omit it (60fps fallback).
+  msPerFrame?: number,
 ): SwingStartResult {
   if (cameraAngle === "face_on") {
     // EXTERNAL_ASSUMPTION: face-on address = phase-detected address
@@ -194,7 +210,7 @@ export function detectSwingStart(
     };
   }
 
-  const addr = detectAddressDTL(frames, phases.top);
+  const addr = detectAddressDTL(frames, phases.top, msPerFrame);
   if (!addr.detected) {
     return {
       trueAddressFrame: phases.address,
@@ -203,7 +219,7 @@ export function detectSwingStart(
     };
   }
 
-  const start = detectStartDTL(frames, addr.idx, phases.top);
+  const start = detectStartDTL(frames, addr.idx, phases.top, msPerFrame);
   if (!start.detected) {
     return {
       trueAddressFrame: addr.idx,

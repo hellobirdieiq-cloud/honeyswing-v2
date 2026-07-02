@@ -27,7 +27,9 @@ import {
   emptyReliability,
   findSetupEndIndex,
   msToFrames,
+  scalePerFrameFloor,
   smoothVelocities,
+  smoothWindow,
   type PhaseRuleDebug,
   type PhaseRuleReliability,
 } from "./phaseDetectionShared";
@@ -60,12 +62,19 @@ const PHASE_ORDER: SwingPhase[] = [
  * canonical transform preserves |dSpreadX| magnitude for lefties (joint-name
  * swap + x-mirror cancel out — see rules doc DTL Phase 0 notes).
  */
-function detectDTLSwingStart(frames: PoseFrame[]): {
+function detectDTLSwingStart(
+  frames: PoseFrame[],
+  msPerFrame: number,
+): {
   frame: number | null;
   reliability: "high" | "medium" | "low" | null;
   baselineUsed: number;
   thresholdUsed: number;
 } {
+  // 1b: rate-derived frame counts (fall back to the old literals at 60fps).
+  const baselineN = msToFrames(A.swingStart.baselineMs, msPerFrame);
+  const watchTimeoutN = msToFrames(A.swingStart.watchTimeoutMs, msPerFrame);
+  const lb = Math.max(1, msToFrames(A.swingStart.riseLookbackMs, msPerFrame));
   const spreadX: (number | null)[] = frames.map((f) => {
     const lh = f.joints.leftHip;
     const rh = f.joints.rightHip;
@@ -88,7 +97,7 @@ function detectDTLSwingStart(frames: PoseFrame[]): {
 
   // Baseline: mean(|dSpreadX|) over first N frames where dSpreadX is defined.
   const baselineSamples: number[] = [];
-  for (let i = 1; i <= A.swingStart.baselineFrames && i < dSpreadX.length; i++) {
+  for (let i = 1; i <= baselineN && i < dSpreadX.length; i++) {
     const v = dSpreadX[i];
     if (v != null) baselineSamples.push(Math.abs(v));
   }
@@ -102,20 +111,20 @@ function detectDTLSwingStart(frames: PoseFrame[]): {
   const watchThreshold = Math.max(baseline * A.swingStart.watchMultiplier, A.swingStart.watchFloor);
 
   let watchTimeout = 0;
-  for (let F = 3; F < dSpreadX.length - 1; F++) {
+  for (let F = lb; F < dSpreadX.length - 1; F++) {
     const sxF = spreadX[F];
-    const sxF3 = spreadX[F - 3];
+    const sxF3 = spreadX[F - lb];
     const mxF = midX[F];
-    const mxF3 = midX[F - 3];
+    const mxF3 = midX[F - lb];
 
     if (sxF != null && sxF3 != null) {
       if (sxF - sxF3 > A.swingStart.spreadRiseDelta) {
-        watchTimeout = A.swingStart.watchTimeoutFrames;
+        watchTimeout = watchTimeoutN;
       }
     }
     if (mxF != null && mxF3 != null) {
       if (Math.abs(mxF - mxF3) > A.swingStart.midXDriftDelta) {
-        watchTimeout = A.swingStart.watchTimeoutFrames;
+        watchTimeout = watchTimeoutN;
       }
     }
     const watchMode = watchTimeout > 0;
@@ -147,6 +156,7 @@ function detectDTLSwingStart(frames: PoseFrame[]): {
 function detectDTLTrueAddress(
   frames: PoseFrame[],
   topIdx: number,
+  msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   // Pre-compute per-frame signals so the window scan stays cheap.
   const spineAngles: (number | null)[] = frames.map((f) => calculateGolfAngles(f).spineAngle);
@@ -164,8 +174,9 @@ function detectDTLTrueAddress(
     return b.x - a.x;
   });
 
-  const W = A.trueAddress.windowFrames;
-  const scanEnd = Math.max(0, topIdx - A.trueAddress.backScanCapBeforeTop);
+  const W = msToFrames(A.trueAddress.windowMs, msPerFrame);
+  const scanEnd = Math.max(0, topIdx - msToFrames(A.trueAddress.backScanCapBeforeTopMs, msPerFrame));
+  const headMax = scalePerFrameFloor(A.trueAddress.headDeltaMax, msPerFrame); // 1b-2: per-ms head-still floor
 
   for (let end = scanEnd; end >= W - 1; end--) {
     const start = end - (W - 1);
@@ -187,7 +198,7 @@ function detectDTLTrueAddress(
       if (s > spineMax) spineMax = s;
       if (k < kneeMin) kneeMin = k;
       if (k > kneeMax) kneeMax = k;
-      if (Math.abs(h) >= A.trueAddress.headDeltaMax) {
+      if (Math.abs(h) >= headMax) {
         headOk = false;
         break;
       }
@@ -233,7 +244,8 @@ function detectDTLTop(
       tWx < windowMax - A.top.minTravel
     ) {
       let hasDeeperMin = false;
-      for (let k = 1; k <= A.top.lookaheadFrames && F + k <= topSearchEnd; k++) {
+      const lookaheadN = msToFrames(A.top.lookaheadMs, msPerFrame);
+      for (let k = 1; k <= lookaheadN && F + k <= topSearchEnd; k++) {
         if (points[F + k].trailX < tWx) {
           hasDeeperMin = true;
           break;
@@ -291,6 +303,7 @@ function detectDTLFinish(
     impactIdx + Math.round(downswingFrames * A.finish.searchMultiplier),
   );
   const finishSearchStart = impactIdx + msToFrames(A.finish.minFollowMs, msPerFrame);
+  const velFloor = scalePerFrameFloor(A.finish.velocityFloor, msPerFrame); // 1b-2: per-ms stop floor
 
   if (finishSearchStart < 1 || finishSearchStart >= finishSearchEnd - 1) {
     return { frame: finishSearchEnd, complete: false };
@@ -301,9 +314,9 @@ function detectDTLFinish(
     const d1 = Math.hypot(points[F + 1].x - points[F].x, points[F + 1].y - points[F].y);
     const d2 = Math.hypot(points[F + 2].x - points[F + 1].x, points[F + 2].y - points[F + 1].y);
     if (
-      d0 < A.finish.velocityFloor &&
-      d1 < A.finish.velocityFloor &&
-      d2 < A.finish.velocityFloor
+      d0 < velFloor &&
+      d1 < velFloor &&
+      d2 < velFloor
     ) {
       return { frame: F, complete: true };
     }
@@ -344,14 +357,14 @@ export function detectDTLPhases(input: {
   }
 
   // Phase 0 — swing_start
-  const swingStart = detectDTLSwingStart(frames);
+  const swingStart = detectDTLSwingStart(frames, msPerFrame);
   reliability.swing_start = swingStart.reliability;
   assumptionsUsed.push("dtl.swingStart");
 
   // Phase 2 — takeaway directional gate (start-of-window address candidate)
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
-  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
+  const takeawayAddressIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
   reliability.takeaway = "medium";
 
   // Phase 3 — top
@@ -374,7 +387,7 @@ export function detectDTLPhases(input: {
   reliability.top = "high";
 
   // Phase 1 — true_address (search backward from top)
-  const trueAddress = detectDTLTrueAddress(frames, topIdx);
+  const trueAddress = detectDTLTrueAddress(frames, topIdx, msPerFrame);
   reliability.true_address = trueAddress.reliability ?? "low";
   assumptionsUsed.push("dtl.trueAddress");
   const addressIdx = trueAddress.frame != null ? trueAddress.frame : takeawayAddressIdx;

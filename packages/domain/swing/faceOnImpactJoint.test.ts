@@ -62,7 +62,10 @@ for (let i = 0; i < N; i++) {
   const rw = wristAt(i, B_LEAD);
   joints.leftWrist = { name: "leftWrist", x: lw.x, y: lw.y, z: 0, confidence: 0.99 };
   joints.rightWrist = { name: "rightWrist", x: rw.x, y: rw.y, z: 0, confidence: 0.99 };
-  frames.push({ timestampMs: i * 33, joints, frameWidth: 1, frameHeight: 1 });
+  // 60fps fixture: the reference arcBottomJoint below hardcodes a 3-frame lookback (the 60fps
+  // value), so the fixture must run at 60fps for the ms-based detector lookback (50ms → 3 frames)
+  // to match it. (Was 33ms/30fps, where 50ms → 2 frames and the arc-bottom shifted by 1.)
+  frames.push({ timestampMs: i * (1000 / 60), joints, frameWidth: 1, frameHeight: 1 });
 }
 
 // Local copy of the production algorithm, parameterized by joint — used ONLY to show
@@ -89,7 +92,7 @@ function arcBottomJoint(fs: PoseFrame[], j: "leftWrist" | "rightWrist"): number 
 }
 
 console.log("\n── T1: detectFaceOnImpact pins the TRAIL wrist (leftWrist) ──");
-const result = detectFaceOnImpact(frames, 33);
+const result = detectFaceOnImpact(frames, 1000 / 60);
 const trailFrame = arcBottomJoint(frames, "leftWrist"); // canonical TRAIL wrist
 const leadFrame = arcBottomJoint(frames, "rightWrist"); // canonical LEAD wrist
 console.log(`  detector.frame=${result.frame}  trailArcBottom=${trailFrame}  leadArcBottom=${leadFrame}`);

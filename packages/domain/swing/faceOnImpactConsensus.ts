@@ -23,7 +23,7 @@
  */
 
 import type { JointName, PoseFrame } from "../../pose/PoseTypes";
-import { EXTERNAL_ASSUMPTIONS } from "./phaseDetectionShared";
+import { EXTERNAL_ASSUMPTIONS, msToFrames } from "./phaseDetectionShared";
 
 const C = EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus;
 
@@ -41,13 +41,17 @@ export function median(nums: number[]): number {
   return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
 }
 
-/** Rolling median over a ±2 window (5 frames), skipping NaN. NaN only if the whole window is NaN. */
-export function rollingMedian5(vals: number[]): number[] {
+/**
+ * Rolling median over a ±`half` window (default ±2 = 5 frames @ 60fps), skipping NaN. NaN only if
+ * the whole window is NaN. 1b-2: `half` is rate-derived by the caller so the smoothing spans a fixed
+ * duration; the default preserves the original 5-frame behavior for any caller that omits it.
+ */
+export function rollingMedian5(vals: number[], half: number = 2): number[] {
   const n = vals.length;
   const out = new Array<number>(n);
   for (let i = 0; i < n; i++) {
     const win: number[] = [];
-    for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
+    for (let j = Math.max(0, i - half); j <= Math.min(n - 1, i + half); j++) {
       if (Number.isFinite(vals[j])) win.push(vals[j]);
     }
     out[i] = win.length ? median(win) : NaN;
@@ -139,6 +143,8 @@ export function detectXCross(
   rows: ImpactXRow[],
   L: number = C.xcrossLeadOffset,
   confMin: number = C.xcrossConfMin,
+  // 1b: sustain rows, rate-derived by the caller; falls back to the 60fps literal.
+  sustain: number = C.xcrossSustainFrames,
 ): { cross: number | null; crossFrame: number | null; crossings: XCrossing[] } {
   const crossings: XCrossing[] = [];
   for (let j = 1; j < rows.length; j++) {
@@ -146,9 +152,9 @@ export function detectXCross(
     const b = rows[j];
     const gA = a.g;
     const gB = b.g;
-    // hold ≥ xcrossSustainFrames consecutive rows at/above the line (b plus the following ones).
+    // hold ≥ sustain consecutive rows at/above the line (b plus the following ones).
     let sustained = gB >= L;
-    for (let h = 1; h < C.xcrossSustainFrames && sustained; h++) {
+    for (let h = 1; h < sustain && sustained; h++) {
       const nxt = rows[j + h];
       sustained = nxt !== undefined && nxt.g >= L;
     }
@@ -245,6 +251,9 @@ export function computeFaceOnImpactConsensus(args: {
   hi: number;
   isLeftHanded: boolean;
   signFlipOverride?: number;
+  // Capture rate for xcrossSustain / xcrossAnchorRadius / refineRadius (60fps fallback when absent).
+  // (rollingMedian5's fixed ±2 window is a deferred 1c item.)
+  msPerFrame?: number;
 }): FaceOnImpactConsensus {
   const { frames, isLeftHanded } = args;
   const leadSide = isLeftHanded ? "right" : "left";
@@ -256,6 +265,14 @@ export function computeFaceOnImpactConsensus(args: {
   const hi = clamp(args.hi, 0, last);
   if (lo >= hi) return emptyResult(signFlip, [lo, hi]);
 
+  // 1b: rate-derived frame counts (fall back to the 60fps literals when msPerFrame absent).
+  const mpf = args.msPerFrame;
+  const sustainN = mpf != null ? msToFrames(C.xcrossSustainMs, mpf) : C.xcrossSustainFrames;
+  const anchorRadiusN = mpf != null ? msToFrames(C.xcrossAnchorRadiusMs, mpf) : C.xcrossAnchorRadius;
+  const refineRadiusN = mpf != null ? msToFrames(C.refineRadiusMs, mpf) : C.refineRadius;
+  // rolling-median half-window: 83ms ≈ 5 frames (±2) @ 60fps; rate-derived so smoothing spans a fixed duration.
+  const medHalf = mpf != null ? Math.floor(msToFrames(83, mpf) / 2) : 2;
+
   const leadWrist = toSeries(frames, `${leadSide}Wrist` as JointName);
   const trailWrist = toSeries(frames, `${trailSide}Wrist` as JointName);
   const leadShoulder = toSeries(frames, `${leadSide}Shoulder` as JointName);
@@ -265,7 +282,7 @@ export function computeFaceOnImpactConsensus(args: {
   const trailAnkle = toSeries(frames, `${trailSide}Ankle` as JointName);
   const leftWrist = toSeries(frames, "leftWrist");
   const rightWrist = toSeries(frames, "rightWrist");
-  const leadFootMedX = rollingMedian5(leadAnkle.x);
+  const leadFootMedX = rollingMedian5(leadAnkle.x, medHalf);
 
   // wrist-below-shoulder gate (y grows downward → wrist below shoulder ⇒ wrist.y > shoulder.y)
   const gated = (f: number): boolean =>
@@ -318,8 +335,8 @@ export function computeFaceOnImpactConsensus(args: {
   );
 
   // S1 = xCross — both-ankle-midpoint crossing of the better-confidence wrist.
-  const leadMedX = rollingMedian5(leadAnkle.x);
-  const trailMedX = rollingMedian5(trailAnkle.x);
+  const leadMedX = rollingMedian5(leadAnkle.x, medHalf);
+  const trailMedX = rollingMedian5(trailAnkle.x, medHalf);
   const feetMidX = (f: number) => (leadMedX[f] + trailMedX[f]) / 2;
   const selAt = (f: number): { x: number; conf: number; which: "lead" | "trail" | "none" } => {
     const lP = leadWrist.present[f];
@@ -339,7 +356,7 @@ export function computeFaceOnImpactConsensus(args: {
     const g = Number.isFinite(sel.x) && Number.isFinite(mid) ? signFlip * (sel.x - mid) : NaN;
     rows.push({ frame: f, g, wristConf: sel.conf, selWrist: sel.which });
   }
-  const xc = detectXCross(rows);
+  const xc = detectXCross(rows, C.xcrossLeadOffset, C.xcrossConfMin, sustainN);
 
   // provisional anchor = geometric consensus of the anchor-free signals (footPick/S2/S3).
   const provPicks = [footPick, s2, s3]
@@ -356,7 +373,7 @@ export function computeFaceOnImpactConsensus(args: {
   const provAnchor = provConsensus === null ? null : Math.round(provConsensus);
 
   // S1 = the xCross crossing nearest the provisional anchor within ±radius.
-  const s1Cross = nearestAnchorCrossing(xc.crossings, provAnchor);
+  const s1Cross = nearestAnchorCrossing(xc.crossings, provAnchor, anchorRadiusN);
   const s1: ConsensusSignalPick = {
     name: "S1 xCross",
     frame: s1Cross ? Math.round(s1Cross.sub) : null,
@@ -391,7 +408,7 @@ export function computeFaceOnImpactConsensus(args: {
   let crossConf = NaN;
   if (anchor !== null) {
     for (let b = lo + 1; b <= hi; b++) {
-      if (b < anchor - C.refineRadius || b > anchor + C.refineRadius) continue;
+      if (b < anchor - refineRadiusN || b > anchor + refineRadiusN) continue;
       const a = b - 1;
       const dxA = dxAt(a);
       const dxB = dxAt(b);

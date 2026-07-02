@@ -1,4 +1,5 @@
 import { PoseFrame, PoseSequence } from "../../pose/PoseTypes";
+import { msPerFrameFromFrames, msToFrames } from "./phaseDetectionShared";
 
 export type CameraAngle = "face_on" | "dtl" | "unknown";
 
@@ -178,13 +179,17 @@ export function detectCameraAngle(frame: PoseFrame): CameraAngleResult {
  * runs detectCameraAngle on the median-confidence frame. Returns
  * `unknown` if no early frame meets confidence thresholds.
  */
-const EARLY_WINDOW_FRAMES = 30;
+const EARLY_WINDOW_FRAMES = 30;    // 60fps fallback
+const EARLY_WINDOW_MS = 500;       // 1b: ms sibling of EARLY_WINDOW_FRAMES (30 @ 60fps)
 
 export function detectCameraAngleEarly(sequence: PoseSequence): CameraAngleResult {
   const frames = sequence.frames;
   if (!frames || frames.length === 0) return unknownResult();
 
-  const windowEnd = Math.min(frames.length, EARLY_WINDOW_FRAMES);
+  // 1b: derive the early-window length from capture rate (falls back to the 60fps literal).
+  const msPerFrame = msPerFrameFromFrames(frames);
+  const earlyWindow = msPerFrame > 0 ? msToFrames(EARLY_WINDOW_MS, msPerFrame) : EARLY_WINDOW_FRAMES;
+  const windowEnd = Math.min(frames.length, earlyWindow);
   type Scored = { frame: PoseFrame; conf: number };
   const scored: Scored[] = [];
 

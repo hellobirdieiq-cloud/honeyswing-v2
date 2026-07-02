@@ -19,6 +19,7 @@ import {
   type PhaseRuleDebug,
 } from "./phaseDetection";
 import { detectSwingStart } from "./swingStartDetection";
+import { msPerFrameFromFrames, msToFrames } from "./phaseDetectionShared";
 import { calculateTempo, isTempoTrustworthy, type SwingTempo } from "./tempoAnalysis";
 import { scoreSwing, ScoringBreakdownEntry } from "./scoring";
 import {
@@ -121,14 +122,29 @@ export type AnalysisResult = {
 // rightElbowAngle (swing 77b49def, 35.6° 1-frame delta).
 // Not yet validated vs Dave clinic data. Recalibrate at SCR-CAL.
 export const MIN_USABLE_FRAMES = 3;
+// 1b: ms siblings of the pipeline frame-window literals (all @ 60fps). Live paths derive
+// frame counts from these via msToFrames(ms, msPerFrame); the literals remain the 60fps fallback.
+const MIN_USABLE_MS = 50;          // MIN_USABLE_FRAMES (3)
+const ADDRESS_WINDOW_MS = 167;     // 10-frame address window → span +9
+const PHASE_HALF_WINDOW_MS = 33;   // ±2-frame top/impact window
+const MIN_ANALYZE_MS = 333;        // shouldFallback min capture length (20)
+const IMPACT_EDGE_LO_MS = 83;      // shouldFallback impact-too-early margin (5)
+const IMPACT_EDGE_HI_MS = 100;     // shouldFallback impact-too-late margin (6)
+
+/** Frame count for `ms` at the given rate; falls back to `fallback` when msPerFrame is absent. */
+function framesAt(ms: number, msPerFrame: number | undefined, fallback: number): number {
+  return msPerFrame != null ? msToFrames(ms, msPerFrame) : fallback;
+}
 
 export function computeFrameCountSuppression(
   visibility: VisibilityWeightingResult | undefined,
+  msPerFrame?: number,
 ): string[] {
   if (!visibility) return [];
+  const minUsable = framesAt(MIN_USABLE_MS, msPerFrame, MIN_USABLE_FRAMES);
   const out: string[] = [];
   for (const [key, m] of Object.entries(visibility.metrics)) {
-    if (m.framesUsed < MIN_USABLE_FRAMES) out.push(key);
+    if (m.framesUsed < minUsable) out.push(key);
   }
   return out;
 }
@@ -233,19 +249,24 @@ function computePhaseWindowedAngles(
   frames: PoseFrame[],
   phases: DetectedPhase[],
   addressFrameIdx?: number,
+  // Rate for the address/top/impact measurement windows (falls back to 60fps literals).
+  msPerFrame?: number,
 ): PhaseWindowResult {
   const addressPhase = phases.find(p => p.phase === 'takeaway')!;
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
+  const addrSpan = framesAt(ADDRESS_WINDOW_MS, msPerFrame, 10) - 1; // [idx, idx+span] = 10-frame window
+  const half = framesAt(PHASE_HALF_WINDOW_MS, msPerFrame, 2);       // ±half around top/impact
+
   // Assumes capture starts at address. May need wrist-velocity gate if users start recording mid-backswing.
   const addressFrame = averageFrames(
     frames,
     addressFrameIdx ?? 0,
-    (addressFrameIdx ?? 0) + 9,
+    (addressFrameIdx ?? 0) + addrSpan,
   );
-  const impactFrame = averageFrames(frames, impactPhase.index - 2, impactPhase.index + 2);
-  const topFrame = averageFrames(frames, topPhase.index - 2, topPhase.index + 2);
+  const impactFrame = averageFrames(frames, impactPhase.index - half, impactPhase.index + half);
+  const topFrame = averageFrames(frames, topPhase.index - half, topPhase.index + half);
 
   const addressAngles = calculateGolfAngles(addressFrame);
   const impactAngles = calculateGolfAngles(impactFrame);
@@ -288,7 +309,7 @@ function computePhaseWindowedAngles(
       frame_selection_method: 'phase_windowed',
       address_frame_range: [
         addressFrameIdx ?? 0,
-        Math.min((addressFrameIdx ?? 0) + 9, frames.length - 1),
+        Math.min((addressFrameIdx ?? 0) + addrSpan, frames.length - 1),
       ],
       impact_frame_index: impactPhase.index,
       backswing_peak_frame_index: topPhase.index,
@@ -299,8 +320,10 @@ function computePhaseWindowedAngles(
 function shouldFallback(
   frames: PoseFrame[],
   phases: DetectedPhase[],
+  // Rate for the min-capture-length + impact edge margins (falls back to 60fps literals).
+  msPerFrame?: number,
 ): boolean {
-  if (frames.length < 20) return true;
+  if (frames.length < framesAt(MIN_ANALYZE_MS, msPerFrame, 20)) return true;
   if (phases.length === 0) return true;
   if (phases.every(p => p.source === 'fallback')) return true;
 
@@ -309,7 +332,9 @@ function shouldFallback(
   const impactPhase = phases.find(p => p.phase === 'impact');
   if (!addressPhase || !topPhase || !impactPhase) return true;
 
-  if (impactPhase.index < 5 || impactPhase.index > frames.length - 6) return true;
+  const edgeLo = framesAt(IMPACT_EDGE_LO_MS, msPerFrame, 5);
+  const edgeHi = framesAt(IMPACT_EDGE_HI_MS, msPerFrame, 6);
+  if (impactPhase.index < edgeLo || impactPhase.index > frames.length - edgeHi) return true;
 
   return false;
 }
@@ -372,13 +397,17 @@ function applyVisibilityWeighting(
   phases: DetectedPhase[],
   currentAngles: GolfAngles,
   addressIdx: number = 0,
+  // Rate for the address/top/impact ranges (falls back to 60fps literals).
+  msPerFrame?: number,
 ): { angles: GolfAngles; debug: VisibilityWeightingResult; implausibleDebug: ImplausibleFrameDebug } {
   const topPhase = phases.find(p => p.phase === 'top')!;
   const impactPhase = phases.find(p => p.phase === 'impact')!;
 
-  const addressRange: [number, number] = [addressIdx, Math.min(addressIdx + 9, frames.length - 1)];
-  const impactRange: [number, number] = [impactPhase.index - 2, impactPhase.index + 2];
-  const topRange: [number, number] = [topPhase.index - 2, topPhase.index + 2];
+  const addrSpan = framesAt(ADDRESS_WINDOW_MS, msPerFrame, 10) - 1;
+  const half = framesAt(PHASE_HALF_WINDOW_MS, msPerFrame, 2);
+  const addressRange: [number, number] = [addressIdx, Math.min(addressIdx + addrSpan, frames.length - 1)];
+  const impactRange: [number, number] = [impactPhase.index - half, impactPhase.index + half];
+  const topRange: [number, number] = [topPhase.index - half, topPhase.index + half];
 
   const config: { key: GatedMetricKey; range: [number, number]; extract: (a: GolfAngles) => number | null }[] = [
     { key: 'spineAngle',      range: addressRange, extract: a => a.spineAngle },
@@ -467,14 +496,18 @@ function applyVisibilityWeighting(
 function computeZTrace(
   frames: PoseFrame[],
   phases: DetectedPhase[],
+  // Rate for the address/top/impact sample windows (falls back to 60fps literals).
+  msPerFrame?: number,
 ): ZTraceDebug {
-  const addressRange: [number, number] = [0, Math.min(9, frames.length - 1)];
+  const addrSpan = framesAt(ADDRESS_WINDOW_MS, msPerFrame, 10) - 1;
+  const half = framesAt(PHASE_HALF_WINDOW_MS, msPerFrame, 2);
+  const addressRange: [number, number] = [0, Math.min(addrSpan, frames.length - 1)];
   const topPhase = phases.find(p => p.phase === 'top');
   const impactPhase = phases.find(p => p.phase === 'impact');
   const topRange: [number, number] | null =
-    topPhase ? [topPhase.index - 2, topPhase.index + 2] : null;
+    topPhase ? [topPhase.index - half, topPhase.index + half] : null;
   const impactRange: [number, number] | null =
-    impactPhase ? [impactPhase.index - 2, impactPhase.index + 2] : null;
+    impactPhase ? [impactPhase.index - half, impactPhase.index + half] : null;
 
   const zValues: number[] = [];
   const counts = { address: 0, top: 0, impact: 0 };
@@ -604,6 +637,10 @@ export function analyzePoseSequence(
   }
 
   const trail = buildTrailPoints(canonical);
+  // Pipeline window helpers + detectSwingStart index canonical.frames, so they use the FRAMES-based
+  // rate (may differ from the dispatcher's trail-based msPerFrame when wrists drop out). Feeds
+  // averageFrames windows, min-length guards, and impact edge margins.
+  const msPerFrame = msPerFrameFromFrames(canonical.frames);
   const earlyAngle = detectCameraAngleEarly(canonical);
   const { phases, fallbackGate, ruleDebug } = detectSwingPhasesWithDebug({
     canonical,
@@ -620,6 +657,7 @@ export function analyzePoseSequence(
     { address: phaseAddressIdx, top: phaseTopIdx },
     isLeftHanded,
     earlyAngle.angle,
+    msPerFrame,
   );
   const resolvedAddressIdx =
     addressFrameIdx ?? (
@@ -638,12 +676,12 @@ export function analyzePoseSequence(
   let frameDebug: Omit<FrameSelectionDebug, 'fallback_gate'>;
   let isHeuristicPhases = false;
 
-  if (shouldFallback(canonical.frames, phases)) {
+  if (shouldFallback(canonical.frames, phases, msPerFrame)) {
     const midFrame = canonical.frames[Math.floor(canonical.frames.length / 2)];
     angles = calculateGolfAngles(midFrame);
     frameDebug = { frame_selection_method: 'mid_frame_fallback' };
   } else {
-    const result = computePhaseWindowedAngles(canonical.frames, phases, resolvedAddressIdx);
+    const result = computePhaseWindowedAngles(canonical.frames, phases, resolvedAddressIdx, msPerFrame);
     angles = result.angles;
     frameDebug = result.debug;
     isHeuristicPhases = true;
@@ -654,7 +692,7 @@ export function analyzePoseSequence(
   let visibilityWeightingDebug: VisibilityWeightingResult | undefined;
   let implausibleFrameDebug: ImplausibleFrameDebug | undefined;
   if (isHeuristicPhases) {
-    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles, resolvedAddressIdx);
+    const visWeighting = applyVisibilityWeighting(canonical.frames, phases, angles, resolvedAddressIdx, msPerFrame);
     angles = visWeighting.angles;
     visibilityWeightingDebug = visWeighting.debug;
     implausibleFrameDebug = visWeighting.implausibleDebug;
@@ -701,7 +739,7 @@ export function analyzePoseSequence(
     weights: cameraAngle.weights,
     suppressedMetrics: new Set([
       ...angleGating.suppressed,
-      ...computeFrameCountSuppression(visibilityWeightingDebug),
+      ...computeFrameCountSuppression(visibilityWeightingDebug, msPerFrame),
     ]),
   });
 
@@ -762,7 +800,7 @@ export function analyzePoseSequence(
       angle_gating: angleGating,
       visibility_weighting: visibilityWeightingDebug,
       implausible_frame_filter: implausibleFrameDebug,
-      z_trace: computeZTrace(canonical.frames, phases),
+      z_trace: computeZTrace(canonical.frames, phases, msPerFrame),
       keypoint_veto: untrustedMap,
       keypoint_identity: toIdentityDebug(identity),
       phase_rules: ruleDebug,

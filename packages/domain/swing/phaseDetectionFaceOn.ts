@@ -22,6 +22,7 @@ import {
   findTakeawayOnsetFaceOn,
   msToFrames,
   smoothVelocities,
+  smoothWindow,
   type FaceOnImpactConsensusShadow,
   type FaceOnTakeawayOnset,
   type FaceOnTopXExtreme,
@@ -68,11 +69,12 @@ function computeImpactConsensus(
   preCanonical: PoseSequence | undefined,
   topIdx: number,
   isLeftHanded: boolean,
+  msPerFrame: number,
 ): FaceOnImpactConsensus | null {
   if (!preCanonical) return null;
   // hi is clamped to the array inside computeFaceOnImpactConsensus.
   const hi = topIdx + A.impact.consensus.downswingBudget;
-  return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded });
+  return computeFaceOnImpactConsensus({ frames: preCanonical.frames, lo: topIdx, hi, isLeftHanded, msPerFrame });
 }
 
 const PHASE_LABELS: Record<SwingPhase, string> = {
@@ -132,7 +134,7 @@ function detectFaceOnSwingStart(
   frame: number | null;
   reliability: "high" | "medium" | "low" | null;
 } {
-  if (frames.length < 30) return { frame: null, reliability: null };
+  if (frames.length < msToFrames(A.swingStart.baselineWindowMs, msPerFrame)) return { frame: null, reliability: null };
 
   const avg: (number | null)[] = new Array(frames.length).fill(null);
   for (let i = 1; i < frames.length; i++) {
@@ -144,14 +146,18 @@ function detectFaceOnSwingStart(
   }
 
   // Baseline: mean of the N lowest avg values within the first window frames.
-  const window = Math.min(A.swingStart.baselineWindowFrames, avg.length - 1);
+  const window = Math.min(msToFrames(A.swingStart.baselineWindowMs, msPerFrame), avg.length - 1);
   const baselineCandidates: number[] = [];
   for (let i = 1; i <= window; i++) {
     if (avg[i] != null) baselineCandidates.push(avg[i] as number);
   }
   if (baselineCandidates.length < 5) return { frame: null, reliability: null };
   baselineCandidates.sort((a, b) => a - b);
-  const takeN = Math.min(A.swingStart.baselineLowestN, baselineCandidates.length);
+  // 1c A2: baseline = mean of the calmest FRACTION of the window (baselineLowestN/baselineWindowFrames
+  // = 20/30 ≈ ⅔), rate-independent, clamped to [floor, candidates]. At 60fps window=30 → 20 (unchanged).
+  // EXTERNAL ASSUMPTION — the min-sample floor (10) is unvalidated; chosen to keep the baseline mean
+  // statistically usable on short/poor-tracking windows. Revisit at clinic calibration.
+  const takeN = Math.min(Math.max(Math.round(window * A.swingStart.baselineLowestN / A.swingStart.baselineWindowFrames), 10), baselineCandidates.length);
   let baseSum = 0;
   for (let i = 0; i < takeN; i++) baseSum += baselineCandidates[i];
   const baseline = baseSum / takeN;
@@ -202,7 +208,7 @@ function detectFaceOnSwingStart(
 // X-rise-vs-footRef heuristic, which keyed off the wrong axis for face-on.)
 // ---------------------------------------------------------------------------
 
-const IMPACT_SPEED_LOOKBACK = 3; // frames; 2D leftWrist displacement window
+const IMPACT_SPEED_LOOKBACK_MS = 50; // 2D leftWrist displacement window (3 frames @ 60fps)
 const IMPACT_PEAK_PERCENTILE = 0.95; // robust max (ignores a single noisy spike)
 const IMPACT_BAND_THRESHOLD = 0.9; // band = speed >= threshold * peak
 
@@ -215,9 +221,10 @@ export function detectFaceOnImpact(
   // and 0 when either frame's joint is missing. (Mirrors testLeadWristImpact.leadWristSpeed.)
   const n = frames.length;
   if (n === 0) return { frame: null, reliability: null };
+  const lookback = Math.max(1, msToFrames(IMPACT_SPEED_LOOKBACK_MS, msPerFrame));
   const speed = new Array<number>(n).fill(0);
-  for (let f = IMPACT_SPEED_LOOKBACK; f < n; f++) {
-    const a = frames[f - IMPACT_SPEED_LOOKBACK].joints.leftWrist;
+  for (let f = lookback; f < n; f++) {
+    const a = frames[f - lookback].joints.leftWrist;
     const b = frames[f].joints.leftWrist;
     if (!a || !b) continue;
     const dx = b.x - a.x;
@@ -325,6 +332,8 @@ export function detectFaceOnThumbCrossing(
   topIdx: number,
   followIdx: number,
   isLeftHanded: boolean,
+  // 1b-2: capture rate for the hold window (60fps fallback; the sole caller is a diagnostic script).
+  msPerFrame?: number,
 ): ThumbCrossingResult {
   const cmcName = isLeftHanded ? "rightThumb" : "leftThumb";
   const tipName = isLeftHanded ? "rightThumbTip" : "leftThumbTip";
@@ -353,7 +362,7 @@ export function detectFaceOnThumbCrossing(
 
   // All neg→pos crossings that hold positive thumbHoldFrames consecutive valid frames.
   // Each carries its bounding |dx| amplitude for the teleport-spike guard.
-  const hold = A.impact.thumbHoldFrames;
+  const hold = msPerFrame != null ? msToFrames(A.impact.thumbHoldMs, msPerFrame) : A.impact.thumbHoldFrames;
   const crossings: { cross: number; amp: number }[] = [];
   for (let k = 0; k + 1 < samples.length; k++) {
     const a = samples[k];
@@ -424,14 +433,19 @@ export function selectFaceOnImpact(args: {
   isLeftHanded: boolean;
   hasPreCanonical: boolean;
   isOverride: boolean;
+  // 1b-2: capture rate for the cross-check tolerance (60fps fallback when absent; tests omit it).
+  msPerFrame?: number;
 }): ImpactSelection {
-  const { arcBottomFrame, consensus, isLeftHanded, hasPreCanonical, isOverride } = args;
+  const { arcBottomFrame, consensus, isLeftHanded, hasPreCanonical, isOverride, msPerFrame } = args;
   const impactArcbottom = arcBottomFrame;
   const finalSub = consensus?.final ?? null;
   const finalRounded = finalSub != null ? Math.round(finalSub) : null;
   const impactDelta = finalRounded != null ? finalRounded - impactArcbottom : null;
+  const crossCheckTol = msPerFrame != null
+    ? msToFrames(A.impact.crossCheckThresholdMs, msPerFrame)
+    : A.impact.crossCheckThresholdFrames;
   const impactCrossCheckMismatch =
-    impactDelta != null && Math.abs(impactDelta) > A.impact.crossCheckThresholdFrames;
+    impactDelta != null && Math.abs(impactDelta) > crossCheckTol;
 
   // Arc-bottom fallback — preserves today's graceful behavior; reliability LOW so a low-credibility
   // impact can be suppressed downstream. final/delta still logged for provenance.
@@ -474,6 +488,7 @@ function detectFaceOnTop(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
+  msPerFrame: number,
 ): { frame: number | null; reliability: "high" | "medium" | "low" | null } {
   const totalSpan = impactIdx - swingStartIdx;
   if (totalSpan < 6) return { frame: null, reliability: null };
@@ -500,7 +515,7 @@ function detectFaceOnTop(
     }
   }
 
-  const window = A.top.consensusWindowFrames;
+  const window = msToFrames(A.top.consensusWindowMs, msPerFrame);
   // rightWrist z max within ±window of velMinFi.
   let zMaxFi: number | null = null;
   let zMaxV = -Infinity;
@@ -558,6 +573,7 @@ function detectFaceOnTopXExtreme(
   frames: PoseFrame[],
   swingStartIdx: number,
   impactIdx: number,
+  msPerFrame: number,
 ): FaceOnTopXExtreme {
   const empty: FaceOnTopXExtreme = {
     frame: null,
@@ -611,7 +627,7 @@ function detectFaceOnTopXExtreme(
   // Reliability mirrors detectFaceOnTop's tiering: all 3 present and tightly
   // clustered = high; ≥2 = medium; a single landmark = low.
   const reliability: "high" | "medium" | "low" =
-    picks.length === 3 && spread <= A.top.consensusWindowFrames
+    picks.length === 3 && spread <= msToFrames(A.top.consensusWindowMs, msPerFrame)
       ? "high"
       : picks.length >= 2
         ? "medium"
@@ -643,7 +659,7 @@ function detectFaceOnFinish(
   const lastIdx = frames.length - 1;
   const tsx: (number | null)[] = frames.map((f) => f.joints.rightShoulder?.x ?? null);
 
-  const W = A.finish.rollingWindow;
+  const W = msToFrames(A.finish.rollingWindowMs, msPerFrame);
   const rolling: (number | null)[] = tsx.map((_, i) => {
     const lo = Math.max(0, i - Math.floor(W / 2));
     const hi = Math.min(lastIdx, i + Math.floor(W / 2));
@@ -759,9 +775,9 @@ export function detectFaceOnPhases(input: {
   // to the exact findSetupEndIndex value (always computed → fallback path is
   // byte-identical to today). Both spaces are trail-space.
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
-  const fallbackIdx = findSetupEndIndex(smoothed, trail);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
+  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   reliability.takeaway = "medium";
 
@@ -843,8 +859,8 @@ export function detectFaceOnPhases(input: {
   // (detectFaceOnTop) is retained as a logged shadow only (top_velmin_shadow); it mis-picks
   // over the wider takeaway-anchored window, so it is no longer the top source.
   const topSearchAnchor = takeawayIdx;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
   assumptionsUsed.push("faceOn.top");
   if (topXExtreme.frame == null) {
     return {
@@ -871,7 +887,7 @@ export function detectFaceOnPhases(input: {
   // The consensus window is takeaway/top-anchored — it does NOT depend on finish, so finish can be
   // computed AFTER impact (re-anchored on it below) with no cycle.
   const consensus =
-    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded) : null;
+    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame) : null;
   const impactConsensusShadow = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,
@@ -879,6 +895,7 @@ export function detectFaceOnPhases(input: {
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: input.impactOverride != null,
+    msPerFrame,
   });
   const impactIdx = selection.impactIdx;
   const {
@@ -1108,9 +1125,9 @@ export function detectFaceOnPhasesDebug(input: {
   result.swingStartFrame = swingStart.frame;
 
   const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, 5);
-  const fallbackIdx = findSetupEndIndex(smoothed, trail);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
+  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
   const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
   result.takeawayAddressIdx = takeawayAddressIdx;
   result.addressIdx = takeawayAddressIdx;
@@ -1141,8 +1158,8 @@ export function detectFaceOnPhasesDebug(input: {
   // velocity-min is retained as a logged shadow only.
   const takeawayIdxFrame = trailIdxToFrame(takeawayAddressIdx) ?? takeawayAddressIdx;
   const topSearchAnchor = takeawayIdxFrame;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame);
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
   result.topVelMinShadow = topVelMin.frame;
   result.topXExtreme = topXExtreme;
   result.topIdx = topXExtreme.frame;
@@ -1158,7 +1175,7 @@ export function detectFaceOnPhasesDebug(input: {
 
   // Final impact: xCross CONSENSUS (primary) vs arc-bottom (per-reason fallback) — shared selector.
   // Computed over [topIdx, topIdx+downswingBudget] on preCanonical; mirrors detectFaceOnPhases.
-  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded);
+  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame);
   result.impactConsensus = consensus ? toImpactConsensusShadow(consensus) : null;
   const selection = selectFaceOnImpact({
     arcBottomFrame,
@@ -1166,6 +1183,7 @@ export function detectFaceOnPhasesDebug(input: {
     isLeftHanded,
     hasPreCanonical: input.preCanonical != null,
     isOverride: false,
+    msPerFrame,
   });
   const impactIdx = selection.impactIdx;
   result.impactIdx = impactIdx;
