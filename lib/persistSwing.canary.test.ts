@@ -16,6 +16,7 @@ const angles: GolfAngles = {
   rightKneeAngle: 155,
   hipSpreadDelta: 12,
   shoulderTilt: -5,
+  spineDrift: 0.04,
 };
 
 const tempo: SwingTempo = {
@@ -37,7 +38,7 @@ const phases: DetectedPhase[] = [
   {
     phase: 'takeaway',
     label: 'Takeaway',
-    point: { x: 0.5, y: 0.7, timestamp: 0 },
+    point: { x: 0.5, y: 0.7, timestamp: 0, leadX: 0.52, leadY: 0.71, trailX: 0.48, trailY: 0.69 },
     index: 0,
     timestamp: 0,
     source: 'heuristic',

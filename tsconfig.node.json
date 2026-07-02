@@ -1,0 +1,18 @@
+{
+  // Typecheck perimeter for node-executed code: the hand-rolled lib test
+  // suites (run via tsx by scripts/run-tests.mjs) and the scripts/ toolkit.
+  // Kept separate from tsconfig.json so node globals ("types": ["node"])
+  // stay out of the app runtime graph.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "lib/**/*.test.ts",
+    "scripts/**/*.ts"
+  ],
+  // Must override the inherited exclude from tsconfig.json, which excludes
+  // lib/**/*.test.ts (those tests belong to THIS config, not the app graph).
+  "exclude": []
+}

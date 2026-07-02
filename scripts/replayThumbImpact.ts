@@ -8,7 +8,7 @@
  *             → canonical (mirror) + preCanonical (unmirrored) → detectFaceOnPhases
  *
  * Per-swing output:
- *   { swing_id, handedness, impact_old, impact_new, impact_source, impact_thumb,
+ *   { swing_id, handedness, impact_old, impact_new, impact_source, impact_consensus_final,
  *     impact_arcbottom, impact_delta, mismatch_flag, finish_old, finish_new,
  *     fallback_reason|null, gate|null, coverage }
  *
@@ -131,7 +131,7 @@ type Row = {
   impact_old: number | null;
   impact_new: number | null;
   impact_source: string | null;
-  impact_thumb: number | null;
+  impact_consensus_final: number | null;
   impact_arcbottom: number | null;
   impact_delta: number | null;
   mismatch_flag: boolean | null;
@@ -184,7 +184,7 @@ async function main() {
     if (e2 || !rtmw || rtmw.length === 0) {
       rows.push({
         swing_id: r.id, handedness, impact_old: impactOld, impact_new: null,
-        impact_source: null, impact_thumb: null, impact_arcbottom: null, impact_delta: null,
+        impact_source: null, impact_consensus_final: null, impact_arcbottom: null, impact_delta: null,
         mismatch_flag: null, finish_old: finishOld, finish_new: null,
         fallback_reason: null, gate: "pose_full_empty", coverage: null,
       });
@@ -215,7 +215,7 @@ async function main() {
       impact_old: impactOld,
       impact_new: impactNew,
       impact_source: rd.impact_source ?? null,
-      impact_thumb: rd.impact_thumb ?? null,
+      impact_consensus_final: rd.impact_consensus_final ?? null,
       impact_arcbottom: rd.impact_arcbottom ?? null,
       impact_delta: rd.impact_delta ?? null,
       mismatch_flag: rd.impact_cross_check_mismatch ?? null,
@@ -237,7 +237,7 @@ async function main() {
   console.log("-".repeat(170));
   for (const x of rows) {
     console.log(
-      `${p(x.swing_id.slice(0, 8), 9)}| ${p(x.handedness, 5)}| ${pl(x.impact_old, 7)} | ${pl(x.impact_new, 7)} | ${p(x.impact_source, 13)}| ${pl(x.impact_thumb, 7)} | ${pl(x.impact_arcbottom, 6)} | ${pl(x.impact_delta, 6)} | ${p(x.mismatch_flag, 5)}| ${pl(x.finish_old, 7)} | ${pl(x.finish_new, 7)} | ${p(x.fallback_reason, 15)}| ${p(x.gate, 18)}| ${pl(x.coverage != null ? x.coverage.toFixed(2) : null, 4)}`,
+      `${p(x.swing_id.slice(0, 8), 9)}| ${p(x.handedness, 5)}| ${pl(x.impact_old, 7)} | ${pl(x.impact_new, 7)} | ${p(x.impact_source, 13)}| ${pl(x.impact_consensus_final, 7)} | ${pl(x.impact_arcbottom, 6)} | ${pl(x.impact_delta, 6)} | ${p(x.mismatch_flag, 5)}| ${pl(x.finish_old, 7)} | ${pl(x.finish_new, 7)} | ${p(x.fallback_reason, 15)}| ${p(x.gate, 18)}| ${pl(x.coverage != null ? x.coverage.toFixed(2) : null, 4)}`,
     );
   }
 
@@ -258,7 +258,7 @@ async function main() {
     assert(
       "81f0b197 impact_new ≈ 137.5 via thumb_crossing",
       ref.impact_source === "thumb_crossing" && ref.impact_new != null && Math.abs(ref.impact_new - gt) <= 1.0,
-      `impact_new=${ref.impact_new} thumb=${ref.impact_thumb} source=${ref.impact_source} (gt=${gt})`,
+      `impact_new=${ref.impact_new} consensus=${ref.impact_consensus_final} source=${ref.impact_source} (gt=${gt})`,
     );
   } else assert("81f0b197 present", false);
 
@@ -269,7 +269,7 @@ async function main() {
     assert(
       "dec6edd1 impact_new = 120 via thumb_crossing (low-y first)",
       ref2.impact_source === "thumb_crossing" && ref2.impact_new != null && Math.abs(ref2.impact_new - gt2) <= 1.0,
-      `impact_new=${ref2.impact_new} thumb=${ref2.impact_thumb} source=${ref2.impact_source} (gt=${gt2})`,
+      `impact_new=${ref2.impact_new} consensus=${ref2.impact_consensus_final} source=${ref2.impact_source} (gt=${gt2})`,
     );
   } else assert("dec6edd1 present", false);
 

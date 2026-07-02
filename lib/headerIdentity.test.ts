@@ -29,7 +29,7 @@ function assert(condition: boolean, label: string): void {
 // ---------------------------------------------------------------------------
 
 function profile(id: string, name: string): PlayerProfile {
-  return { id, name, isLeftHanded: false };
+  return { id, name, isLeftHanded: false, createdAt: 0 };
 }
 
 // Only player_profile_id is read by the helper; cast a minimal stub.

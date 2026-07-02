@@ -15,7 +15,8 @@
  *   COLLAPSE f72e056b-bbc7-4f65-9765-9e5b01dd8e0d  (190 frames, teleports in f60+)
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../lib/database.types";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -98,7 +99,7 @@ function teleportSpikes(frames: PoseFrame[], minFrame: number): number {
 }
 
 async function loadFrames(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient<Database>,
   id: string,
 ): Promise<PoseFrame[]> {
   const { data, error } = await sb
@@ -128,7 +129,7 @@ async function main(): Promise<void> {
     console.error("[veto-validate] Missing EXPO_PUBLIC_SUPABASE_URL or key in .env");
     process.exit(1);
   }
-  const sb = createClient(url, key, {
+  const sb = createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 

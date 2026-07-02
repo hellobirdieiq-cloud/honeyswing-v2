@@ -138,6 +138,14 @@ function sampleSwingRecord(): SwingRecord {
     video_storage_path: null,
     video_uploaded_at: null,
     swing_debug: { grip_cloud: { overall: 'solid', analysis_failed: false } },
+    camera_angle_valid: true,
+    player_profile_id: null,
+    angles: null,
+    tempo: null,
+    phases: null,
+    trail_points: null,
+    metric_confidences: null,
+    category_scores: null,
   };
 }
 
@@ -146,9 +154,9 @@ function sampleSwingRecord(): SwingRecord {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  // Test 1: SwingRecord shape — 21 keys from R5 default projection
+  // Test 1: SwingRecord shape — 29 keys from SWING_RECORD_COLUMNS projection
   {
-    group('1. SwingRecord shape matches R5 default projection (21 keys)');
+    group('1. SwingRecord shape matches SWING_RECORD_COLUMNS projection (29 keys)');
     const record = sampleSwingRecord();
     const keys = Object.keys(record).sort();
     const expectedKeys = [
@@ -173,8 +181,16 @@ async function main(): Promise<void> {
       'video_storage_path',
       'video_uploaded_at',
       'swing_debug',
+      'camera_angle_valid',
+      'player_profile_id',
+      'angles',
+      'tempo',
+      'phases',
+      'trail_points',
+      'metric_confidences',
+      'category_scores',
     ].sort();
-    assertEq(keys.length, 21, 'SwingRecord has 21 keys');
+    assertEq(keys.length, 29, 'SwingRecord has 29 keys');
     assertEq(
       JSON.stringify(keys),
       JSON.stringify(expectedKeys),

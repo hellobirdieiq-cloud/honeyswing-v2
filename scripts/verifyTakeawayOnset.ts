@@ -21,7 +21,8 @@
  * Usage: npx --yes tsx scripts/verifyTakeawayOnset.ts [swingId8=6623e3e8]
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../lib/database.types";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -117,7 +118,7 @@ const trailIdxToFrame = (
 };
 
 async function fetchPoseFull(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient<Database>,
   id: string,
 ): Promise<Rtmw133Frame[] | null> {
   const { data, error } = await sb.from("swings").select("pose_full").eq("id", id).maybeSingle();
@@ -147,7 +148,7 @@ async function main() {
     console.error("[verifyTakeawayOnset] Missing Supabase URL/key in .env");
     process.exit(1);
   }
-  const sb = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const sb = createClient<Database>(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 
   const { data: list, error: e1 } = await sb
     .from("swings")

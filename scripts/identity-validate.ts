@@ -29,7 +29,8 @@
  *      the FrameSelectionDebug object, analysisPipeline.ts:104).
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../lib/database.types";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,7 +93,7 @@ function toSequence(frames: PoseFrame[]): PoseSequence {
 }
 
 async function loadFrames(
-  sb: ReturnType<typeof createClient>,
+  sb: SupabaseClient<Database>,
   id: string,
 ): Promise<PoseFrame[]> {
   const { data, error } = await sb
@@ -126,7 +127,7 @@ async function main(): Promise<void> {
     console.error("[identity-validate] Missing EXPO_PUBLIC_SUPABASE_URL or key in .env");
     process.exit(1);
   }
-  const sb = createClient(url, key, {
+  const sb = createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
