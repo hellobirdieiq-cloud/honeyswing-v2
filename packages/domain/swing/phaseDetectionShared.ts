@@ -364,6 +364,9 @@ export function findSetupEndIndex(
   msPerFrame?: number,
 ): number {
   const gate = medianGateWindow(msPerFrame);
+  // 1c: "drop 1 each end" scaled to the rate-derived window (keeps the 6/8 ratio) and clamped so a
+  // small (low-fps) gate can't index past `window`. At 60fps gate=8 → required=6 (unchanged).
+  const required = Math.max(1, Math.min(gate - 1, Math.round((gate * MEDIAN_GATE_REQUIRED) / MEDIAN_GATE_WINDOW)));
   if (points.length < gate + 1) {
     return findSetupEndIndexStillness(smoothed, points, msPerFrame);
   }
@@ -376,9 +379,9 @@ export function findSetupEndIndex(
       window.push(points[j].x - points[j - 1].x);
     }
     window.sort((a, b) => a - b);
-    // Drop sorted[0] and sorted[gate-1]; require sorted[1..MEDIAN_GATE_REQUIRED] all > 0.
+    // Drop sorted[0] and sorted[gate-1]; require sorted[1..required] all > 0.
     let allPositive = true;
-    for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
+    for (let k = 1; k <= required; k++) {
       if (window[k] <= 0) { allPositive = false; break; }
     }
     if (allPositive) {
@@ -525,6 +528,7 @@ export function findTakeawayOnsetFaceOn(
   msPerFrame?: number,
 ): FaceOnTakeawayOnset {
   const gate = medianGateWindow(msPerFrame);
+  const required = Math.max(1, Math.min(gate - 1, Math.round((gate * MEDIAN_GATE_REQUIRED) / MEDIAN_GATE_WINDOW)));
   const reversalRunMax = msPerFrame != null ? Math.max(1, msToFrames(SUSTAINED_REVERSAL_MS, msPerFrame)) : SUSTAINED_REVERSAL_FRAMES;
   const nullResult = (
     fallbackReason: FaceOnTakeawayOnset["fallbackReason"],
@@ -568,7 +572,7 @@ export function findTakeawayOnsetFaceOn(
       }
       window.sort((a, b) => a - b);
       let allPositive = true;
-      for (let k = 1; k <= MEDIAN_GATE_REQUIRED; k++) {
+      for (let k = 1; k <= required; k++) {
         if (window[k] <= 0) { allPositive = false; break; }
       }
       if (allPositive) windowStarts.push(i - gate);
