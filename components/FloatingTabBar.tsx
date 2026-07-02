@@ -73,9 +73,9 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
       )}
 
       <View style={styles.pillBar}>
-        {LEFT_PILLS.map(renderPill)}
+        <View style={styles.sideGroup}>{LEFT_PILLS.map(renderPill)}</View>
         <View style={styles.centerSpacer} />
-        {RIGHT_PILLS.map(renderPill)}
+        <View style={styles.sideGroup}>{RIGHT_PILLS.map(renderPill)}</View>
       </View>
 
       <TouchableOpacity
@@ -134,8 +134,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  sideGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // Must stay wider than the 80pt center FAB so pills clear it on both sides.
   centerSpacer: {
-    width: 76,
+    width: 88,
   },
   centerButton: {
     position: 'absolute',
