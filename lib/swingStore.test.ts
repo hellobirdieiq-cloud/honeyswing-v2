@@ -14,6 +14,7 @@
 import {
   getSwingById,
   getGripHistory,
+  SWING_RECORD_COLUMNS,
   type SwingRecord,
   type GripHistoryRecord,
   type SwingStoreAdapter,
@@ -154,43 +155,15 @@ function sampleSwingRecord(): SwingRecord {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  // Test 1: SwingRecord shape — 29 keys from SWING_RECORD_COLUMNS projection
+  // Test 1: SwingRecord shape — keys derived from SWING_RECORD_COLUMNS projection
   {
-    group('1. SwingRecord shape matches SWING_RECORD_COLUMNS projection (29 keys)');
+    group('1. SwingRecord shape matches SWING_RECORD_COLUMNS projection');
     const record = sampleSwingRecord();
     const keys = Object.keys(record).sort();
-    const expectedKeys = [
-      'id',
-      'user_id',
-      'created_at',
-      'score',
-      'honey_boom',
-      'frame_count',
-      'duration_ms',
-      'pose_success_rate',
-      'capture_validity',
-      'phase_source',
-      'failure_reason',
-      'backswing_ms',
-      'downswing_ms',
-      'tempo_ratio',
-      'impact_frame_index',
-      'app_version',
-      'coach_name',
-      'analysis_version',
-      'video_storage_path',
-      'video_uploaded_at',
-      'swing_debug',
-      'camera_angle_valid',
-      'player_profile_id',
-      'angles',
-      'tempo',
-      'phases',
-      'trail_points',
-      'metric_confidences',
-      'category_scores',
-    ].sort();
-    assertEq(keys.length, 29, 'SwingRecord has 29 keys');
+    const expectedKeys = SWING_RECORD_COLUMNS.split(',')
+      .map((col) => col.trim())
+      .sort();
+    assertEq(keys.length, expectedKeys.length, `SwingRecord has ${expectedKeys.length} keys`);
     assertEq(
       JSON.stringify(keys),
       JSON.stringify(expectedKeys),

@@ -398,6 +398,8 @@ export async function getSwingHistory(
 // Test-only exports
 // ---------------------------------------------------------------------------
 
+export { SWING_RECORD_COLUMNS };
+
 export function __setAdapterForTesting(a: SwingStoreAdapter): void {
   adapter = a;
 }
