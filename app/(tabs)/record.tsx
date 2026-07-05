@@ -31,6 +31,7 @@ import {
   ensureLocalPrimaryProfile,
   type PlayerProfile,
 } from '../../lib/playerProfiles';
+import { pushProfilesOnce } from '../../lib/playerProfilesSync';
 import { supabase, getUserId } from '../../lib/supabase';
 import {
   registerShutter,
@@ -135,6 +136,9 @@ export default function RecordTab() {
     // already exists.
     await ensureLocalPrimaryProfile(fetchOnboardingName);
     const all = await getProfiles();
+    // One-shot server backfill of kid profiles (coach pivot) — runs here because
+    // record's bootstrap is post-Clerk-hydration; retro-labels historical swings.
+    pushProfilesOnce(all).catch((err) => console.error('[HoneySwing]', err));
     const primary = await getPrimaryProfile();
     setProfiles(all);
     setPrimaryId(primary?.id ?? null);

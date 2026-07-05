@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
 import { clearCurrentSwingMotion } from './swingMotionStore';
 import { applyAgeTier, getAgeTier, type AgeTier } from './ageTier';
+import { pushProfiles, deleteRemoteProfile } from './playerProfilesSync';
 
 export type PlayerProfile = {
   id: string;
@@ -41,6 +42,10 @@ export async function getProfiles(): Promise<PlayerProfile[]> {
 export async function saveProfiles(profiles: PlayerProfile[]): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEYS.playerProfiles, JSON.stringify(profiles));
+    // Fire-and-forget server mirror (coach pivot). pushProfiles no-ops when
+    // signed out and skips payload-identical saves (nickname/isPrimary aren't
+    // synced), so per-keystroke saves cost no network.
+    pushProfiles(profiles).catch((err) => console.error('[HoneySwing]', err));
   } catch (err) {
     console.error('[HoneySwing]', err);
   }
@@ -101,6 +106,8 @@ export async function deleteProfile(id: string): Promise<void> {
     remaining[0] = { ...remaining[0], isPrimary: true };
   }
   await saveProfiles(remaining);
+  // Upsert can't remove the deleted row; the saveProfiles push covers survivors.
+  deleteRemoteProfile(id).catch((err) => console.error('[HoneySwing]', err));
   const promoted = remaining.find((p) => p.isPrimary);
   if (deletedWasPrimary && promoted?.ageTier) {
     await applyAgeTier(promoted.ageTier);
