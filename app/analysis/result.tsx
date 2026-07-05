@@ -108,14 +108,63 @@ export default function ResultScreen() {
   const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
   const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
 
+  // Score count-up. Animates from the currently displayed value to the target
+  // (not from 0) so a retarget doesn't visibly reset, holds the last value
+  // while the swing is still resolving (analysis null), and carries a watchdog
+  // that snaps to the final score even if the rAF chain dies — a lost frame
+  // callback used to freeze the number mid-count forever.
+  const finalScore = analysis?.score ?? 0;
+  const hasAnalysis = analysis !== null;
+  const [displayedScore, setDisplayedScore] = useState(0);
+  const displayedScoreRef = useRef(0);
+  const finalScoreRef = useRef(finalScore);
+  finalScoreRef.current = finalScore;
+  useEffect(() => {
+    if (!hasAnalysis) return; // swing still resolving — hold the last value
+    if (finalScore <= 0) {
+      // Genuinely zero/failed score — must show 0, never a stale number.
+      displayedScoreRef.current = 0;
+      setDisplayedScore(0);
+      return;
+    }
+    const from = displayedScoreRef.current;
+    if (from === finalScore) return;
+    let raf: number;
+    const start = Date.now();
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - start) / 800);
+      const value = Math.round(from + (finalScore - from) * (1 - Math.pow(1 - p, 3)));
+      displayedScoreRef.current = value;
+      setDisplayedScore(value);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const watchdog = setTimeout(() => {
+      displayedScoreRef.current = finalScore;
+      setDisplayedScore(finalScore);
+    }, 850);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(watchdog);
+    };
+  }, [finalScore, hasAnalysis]);
+
   const scrollRef = useRef<ScrollView>(null);
   const [videoSectionY, setVideoSectionY] = useState<number | null>(null);
+  // Auto-scroll to the video (product behavior since the redesign), tamed:
+  // one-shot (layout shifts don't re-arm a second scroll), never hijacks a
+  // user who already scrolled, and skipped while the count-up hasn't settled
+  // so it can't take a still-counting score off-screen.
+  const autoScrolledRef = useRef(false);
+  const userScrolledRef = useRef(false);
   useEffect(() => {
-    if (videoSectionY == null) return;
-    const t = setTimeout(
-      () => scrollRef.current?.scrollTo({ y: videoSectionY, animated: true }),
-      2000,
-    );
+    if (videoSectionY == null || autoScrolledRef.current) return;
+    const t = setTimeout(() => {
+      if (autoScrolledRef.current || userScrolledRef.current) return;
+      if (displayedScoreRef.current !== finalScoreRef.current) return;
+      autoScrolledRef.current = true;
+      scrollRef.current?.scrollTo({ y: videoSectionY, animated: true });
+    }, 2000);
     return () => clearTimeout(t);
   }, [videoSectionY]);
 
@@ -152,24 +201,6 @@ export default function ResultScreen() {
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
 
   const { scoreColor, tempoLabelText, coachingCueText } = deriveTempoDisplay(tempo);
-
-  const finalScore = analysis?.score ?? 0;
-  const [displayedScore, setDisplayedScore] = useState(0);
-  useEffect(() => {
-    if (finalScore <= 0) {
-      setDisplayedScore(0);
-      return;
-    }
-    let raf: number;
-    const start = Date.now();
-    const tick = () => {
-      const p = Math.min(1, (Date.now() - start) / 800);
-      setDisplayedScore(Math.round(finalScore * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [finalScore]);
 
   // Task 7: frequency-limited coaching tips + Task 8: positive reinforcement
   const { processedTips, positiveResult } = useMemo<{
@@ -285,7 +316,11 @@ export default function ResultScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.container}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.container}
+        onScrollBeginDrag={() => { userScrolledRef.current = true; }}
+      >
         {!effectiveMotion && !analysis ? (
           framesLoading ? (
             <ActivityIndicator color={GOLD} style={{ marginTop: 40 }} />
