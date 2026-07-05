@@ -137,6 +137,6 @@ export async function getPrimaryProfile(): Promise<PlayerProfile | null> {
 }
 
 export function getDisplayName(p: PlayerProfile): string {
-  if (p.nickname && p.nickname.trim() !== '') return p.nickname;
+  if (p.nickname && p.nickname.trim() !== '') return p.nickname.slice(0, 7);
   return p.name.slice(0, 7);
 }

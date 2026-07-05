@@ -211,8 +211,27 @@ export default function SettingsScreen() {
     );
   }
 
+  async function handleAddPlayer() {
+    const trimmed = newPlayerName.trim();
+    if (trimmed === '') return; // return-key path has no disabled guard
+    if (profiles.some((q) => q.name.trim().toLowerCase() === trimmed.toLowerCase())) {
+      Alert.alert('Name already exists', 'Each player needs a unique name.');
+      return;
+    }
+    try {
+      await addProfile(trimmed, newPlayerIsLeft);
+      await refreshProfiles();
+      setNewPlayerName('');
+      setNewPlayerIsLeft(false);
+    } catch (err) { console.error('[HoneySwing]', err); }
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+      automaticallyAdjustKeyboardInsets
+    >
       <Text style={styles.title}>Settings</Text>
 
       <View style={styles.accountSection}>
@@ -343,7 +362,9 @@ export default function SettingsScreen() {
                   onPress={() => {
                     Alert.alert(
                       `Delete ${p.name}?`,
-                      '',
+                      p.isPrimary && profiles.length > 1
+                        ? 'Their swings stay in History under "All". Another player will become Active.'
+                        : 'Their swings stay in History under "All".',
                       [
                         { text: 'Cancel', style: 'cancel' },
                         {
@@ -376,8 +397,10 @@ export default function SettingsScreen() {
                         setProfiles(updated);
                         saveProfiles(updated).catch((err) => console.error('[HoneySwing]', err));
                       }}
-                      placeholder="Nickname (required)"
+                      placeholder="Nickname (required, max 7)"
                       placeholderTextColor="#666"
+                      maxLength={7}
+                      returnKeyType="done"
                       style={{
                         backgroundColor: '#1a1a1a',
                         color: '#fff',
@@ -427,6 +450,8 @@ export default function SettingsScreen() {
             onChangeText={setNewPlayerName}
             placeholder="Player name"
             placeholderTextColor="#666"
+            returnKeyType="done"
+            onSubmitEditing={handleAddPlayer}
             style={{ backgroundColor: '#1a1a1a', color: '#fff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 }}
           />
           <View style={[styles.toggleRow, { marginTop: 8 }]}>
@@ -447,14 +472,7 @@ export default function SettingsScreen() {
           </View>
           <TouchableOpacity
             disabled={newPlayerName.trim() === ''}
-            onPress={async () => {
-              try {
-                await addProfile(newPlayerName, newPlayerIsLeft);
-                await refreshProfiles();
-                setNewPlayerName('');
-                setNewPlayerIsLeft(false);
-              } catch (err) { console.error('[HoneySwing]', err); }
-            }}
+            onPress={handleAddPlayer}
             style={{ marginTop: 10, backgroundColor: newPlayerName.trim() === '' ? '#333' : GOLD, paddingVertical: 12, borderRadius: 8, alignItems: 'center', opacity: newPlayerName.trim() === '' ? 0.5 : 1 }}
           >
             <Text style={{ color: newPlayerName.trim() === '' ? '#666' : '#1A0E00', fontSize: 15, fontWeight: '600' }}>Add</Text>
