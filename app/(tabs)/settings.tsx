@@ -30,6 +30,13 @@ const AGE_TIER_LABELS: Record<AgeTier, string> = {
   adult: 'Adult (18+)',
 };
 
+const AGE_TIER_SHORT: Record<AgeTier, string> = {
+  junior: '6-8',
+  youth: '9-12',
+  teen: '13-17',
+  adult: '18+',
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, isLoaded, isSignedIn } = useUser();
@@ -42,6 +49,7 @@ export default function SettingsScreen() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerIsLeft, setNewPlayerIsLeft] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // On-focus hydration + hydrated states — see useSettingsData.ts.
   const {
@@ -292,37 +300,19 @@ export default function SettingsScreen() {
       )}
 
       <View style={styles.handednessSection}>
-        <Text style={styles.coachLabel}>Player age</Text>
-        <View style={styles.ageTierRow}>
-          {(Object.entries(AGE_TIER_LABELS) as [AgeTier, string][]).map(([tier, label]) => (
-            <TouchableOpacity
-              key={tier}
-              style={[styles.ageTierOption, ageTier === tier && styles.optionSelected]}
-              onPress={() => {
-                setAgeTierState(tier);
-                applyAgeTier(tier).catch((err) => console.error('[HoneySwing]', err));
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.ageTierText, ageTier === tier && styles.optionTextSelected]}>
-                {label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      <View style={styles.handednessSection}>
         <Text style={styles.coachLabel}>Players</Text>
         {profiles.map((p) => {
           const needsNickname = p.name.length > 7;
           const nicknameEmpty = !p.nickname || p.nickname.trim() === '';
+          const isEditing = editingId === p.id;
+          const effectiveTier = p.ageTier ?? ageTier;
           return (
             <View key={p.id}>
               <TouchableOpacity
                 onPress={async () => {
                   try {
                     await setPrimaryProfile(p.id);
+                    if (p.ageTier) setAgeTierState(p.ageTier);
                     await refreshProfiles();
                   } catch (err) { console.error('[HoneySwing]', err); }
                 }}
@@ -332,10 +322,23 @@ export default function SettingsScreen() {
                 <Text style={{ color: GOLD, marginRight: 8, fontSize: 15, width: 12 }}>
                   {p.isPrimary ? '●' : ' '}
                 </Text>
-                <Text style={{ flex: 1, color: '#fff', fontSize: 15 }}>{p.name}</Text>
-                <Text style={{ color: '#999', marginRight: 12, fontSize: 13 }}>
-                  {p.isLeftHanded ? 'Left-handed' : 'Right-handed'}
+                <Text style={{ flex: 1, color: '#fff', fontSize: 15 }} numberOfLines={1}>
+                  {p.name}
+                  {p.isPrimary && (
+                    <Text style={{ color: GOLD, fontSize: 12, fontWeight: '600' }}>  Active</Text>
+                  )}
                 </Text>
+                <Text style={{ color: '#999', marginRight: 12, fontSize: 13 }}>
+                  {AGE_TIER_SHORT[effectiveTier]} · {p.isLeftHanded ? 'LH' : 'RH'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setEditingId(isEditing ? null : p.id)}
+                  hitSlop={10}
+                  style={{ marginRight: 12 }}
+                >
+                  {/* gold ✎ = required nickname missing */}
+                  <Text style={{ color: needsNickname && nicknameEmpty ? GOLD : '#999', fontSize: 16 }}>✎</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => {
                     Alert.alert(
@@ -361,31 +364,59 @@ export default function SettingsScreen() {
                   <Text style={{ color: '#999', fontSize: 18 }}>×</Text>
                 </TouchableOpacity>
               </TouchableOpacity>
-              {needsNickname && (
-                <TextInput
-                  value={p.nickname ?? ''}
-                  onChangeText={(text) => {
-                    const updated = profiles.map((q) =>
-                      q.id === p.id ? { ...q, nickname: text } : q,
-                    );
-                    setProfiles(updated);
-                    saveProfiles(updated).catch((err) => console.error('[HoneySwing]', err));
-                  }}
-                  placeholder="Nickname (required)"
-                  placeholderTextColor="#666"
-                  style={{
-                    backgroundColor: '#1a1a1a',
-                    color: '#fff',
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    fontSize: 14,
-                    marginBottom: 8,
-                    marginLeft: 20,
-                    borderWidth: 1,
-                    borderColor: nicknameEmpty ? GOLD : 'transparent',
-                  }}
-                />
+              {isEditing && (
+                <View style={styles.editPanel}>
+                  {needsNickname && (
+                    <TextInput
+                      value={p.nickname ?? ''}
+                      onChangeText={(text) => {
+                        const updated = profiles.map((q) =>
+                          q.id === p.id ? { ...q, nickname: text } : q,
+                        );
+                        setProfiles(updated);
+                        saveProfiles(updated).catch((err) => console.error('[HoneySwing]', err));
+                      }}
+                      placeholder="Nickname (required)"
+                      placeholderTextColor="#666"
+                      style={{
+                        backgroundColor: '#1a1a1a',
+                        color: '#fff',
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        fontSize: 14,
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: nicknameEmpty ? GOLD : 'transparent',
+                      }}
+                    />
+                  )}
+                  <Text style={styles.editPanelLabel}>Age</Text>
+                  <View style={styles.ageTierRow}>
+                    {(Object.entries(AGE_TIER_LABELS) as [AgeTier, string][]).map(([tier, label]) => (
+                      <TouchableOpacity
+                        key={tier}
+                        style={[styles.ageTierOption, effectiveTier === tier && styles.optionSelected]}
+                        onPress={() => {
+                          const updated = profiles.map((q) =>
+                            q.id === p.id ? { ...q, ageTier: tier } : q,
+                          );
+                          setProfiles(updated);
+                          saveProfiles(updated).catch((err) => console.error('[HoneySwing]', err));
+                          if (p.isPrimary) {
+                            setAgeTierState(tier);
+                            applyAgeTier(tier).catch((err) => console.error('[HoneySwing]', err));
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.ageTierText, effectiveTier === tier && styles.optionTextSelected]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               )}
             </View>
           );
@@ -506,23 +537,26 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={handleDelete}
-          activeOpacity={0.8}
-          disabled={deleting}
-        >
-          {deleting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.deleteText}>Delete My Account</Text>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.deleteHint}>
-          This will permanently remove your profile and all swing data.
-        </Text>
-      </View>
+      {isSignedIn && (
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.deleteLink}
+            onPress={handleDelete}
+            activeOpacity={0.7}
+            disabled={deleting}
+            hitSlop={8}
+          >
+            {deleting ? (
+              <ActivityIndicator color="#CC2222" size="small" />
+            ) : (
+              <Text style={styles.deleteLinkText}>Delete My Account</Text>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.deleteHint}>
+            This will permanently remove your profile and all swing data.
+          </Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={styles.updateButton}
@@ -597,6 +631,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#111',
     padding: 24,
     paddingTop: 80,
+    // Clear the absolute-positioned FloatingTabBar pill (64) + record FAB overhang.
+    paddingBottom: 140,
   },
   title: {
     color: GOLD,
@@ -731,16 +767,26 @@ const styles = StyleSheet.create({
     marginTop: 'auto',
     marginBottom: 60,
   },
-  deleteButton: {
-    backgroundColor: '#CC2222',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+  deleteLink: {
+    alignSelf: 'center',
+    paddingVertical: 4,
   },
-  deleteText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
+  deleteLinkText: {
+    color: '#CC2222',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  editPanel: {
+    marginLeft: 20,
+    marginBottom: 8,
+  },
+  editPanelLabel: {
+    color: '#666',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 8,
   },
   deleteHint: {
     color: '#666',

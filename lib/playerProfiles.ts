@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
 import { clearCurrentSwingMotion } from './swingMotionStore';
+import { applyAgeTier, getAgeTier, type AgeTier } from './ageTier';
 
 export type PlayerProfile = {
   id: string;
@@ -9,6 +10,10 @@ export type PlayerProfile = {
   createdAt: number;
   isPrimary?: boolean;
   nickname?: string;
+  // Per-player age tier. Optional only for type-compat with old stored rows;
+  // addProfile stamps it and getProfiles backfills legacy rows, so runtime
+  // profiles always carry one.
+  ageTier?: AgeTier;
 };
 
 // POST-CLINIC TODO: sync profiles to Supabase when signed in
@@ -18,7 +23,16 @@ export async function getProfiles(): Promise<PlayerProfile[]> {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.playerProfiles);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as PlayerProfile[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    let profiles = parsed as PlayerProfile[];
+    // One-time migration: stamp age-less legacy profiles with the current global
+    // tier (their effective tier today) so the active-player mirror never drifts.
+    if (profiles.some((p) => p.ageTier === undefined)) {
+      const tier = await getAgeTier();
+      profiles = profiles.map((p) => (p.ageTier === undefined ? { ...p, ageTier: tier } : p));
+      await saveProfiles(profiles);
+    }
+    return profiles;
   } catch {
     return [];
   }
@@ -44,6 +58,9 @@ export async function addProfile(name: string, isLeftHanded: boolean): Promise<P
     // The first profile created becomes primary so swings always have a kid to
     // attribute to (getPrimaryProfile never returns null once a profile exists).
     isPrimary: existing.length === 0,
+    // Default the new player's tier to the current global so no profile is ever
+    // age-less (mirror-drift guard); editable per-player in Settings.
+    ageTier: await getAgeTier(),
   };
   await saveProfiles([...existing, profile]);
   return profile;
@@ -84,12 +101,24 @@ export async function deleteProfile(id: string): Promise<void> {
     remaining[0] = { ...remaining[0], isPrimary: true };
   }
   await saveProfiles(remaining);
+  const promoted = remaining.find((p) => p.isPrimary);
+  if (deletedWasPrimary && promoted?.ageTier) {
+    await applyAgeTier(promoted.ageTier);
+  }
 }
 
 export async function setPrimaryProfile(id: string): Promise<void> {
   const existing = await getProfiles();
   const updated = existing.map((p) => ({ ...p, isPrimary: p.id === id }));
   await saveProfiles(updated);
+  // Keep the global age-tier mirror (honeyswing:ageTier key + sync cache +
+  // tip-frequency limiter) pointed at the active player, so downstream readers
+  // (persistSwing, computeFocus, VisualCoachCard, sessionAccumulator) stay
+  // unchanged. Profiles without an ageTier inherit whatever the mirror holds.
+  const newPrimary = updated.find((p) => p.id === id);
+  if (newPrimary?.ageTier) {
+    await applyAgeTier(newPrimary.ageTier);
+  }
   // Invalidate the in-memory "current swing" singleton on every profile switch.
   // It survives navigation (module-level, not zustand/context) and the viewer
   // (app/analysis/result.tsx) renders it whenever isLiveSwing is true — so a
