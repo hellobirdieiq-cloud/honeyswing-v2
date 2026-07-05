@@ -165,6 +165,44 @@ export type Database = {
         }
         Relationships: []
       }
+      player_profiles: {
+        Row: {
+          age_tier: string | null
+          created_at: string
+          display_name: string
+          id: string
+          is_left_handed: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age_tier?: string | null
+          created_at?: string
+          display_name: string
+          id: string
+          is_left_handed?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          age_tier?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_left_handed?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           age: number | null
