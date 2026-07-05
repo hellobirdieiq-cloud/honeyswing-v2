@@ -9,10 +9,6 @@ import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
 import { CAPTURE_FPS } from './cameraFormat';
 import { IMU_BATCH_SEQ_LOOKBACK_MS } from './watchImuConstants';
-import { getCurrentClinicSession } from './clinic/clinicSessionStore';
-import { upsertSwingRecord } from './clinic/swingRecordStore';
-import { updateBandsForSwing } from './clinic/personalBandOrchestrator';
-import type { SwingRecord } from '../packages/domain/clinic/SwingRecord';
 import type { CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getCoachCode } from './coachCode';
 import { getActiveProfileHandedness } from './handedness';
@@ -30,9 +26,6 @@ import {
   buildWatchImuDebug,
   calcPoseSuccessRate,
   extractPhaseSource,
-  buildMetricSnapshotFromAnalysis,
-  buildPhaseTagsFromAnalysis,
-  buildSpineAngleSeries,
   calcFpsEstimate,
   enrichFramesWithVelocity,
   type WatchImuPersist,
@@ -231,30 +224,10 @@ export async function persistSwing(
   const swingId = data?.id ?? null;
 
   // SCR-PERSIST-ALL-SWINGS: stub rows skip downstream side effects.
-  // The row exists in DB for analytics, but clinic store / event bus /
-  // session counter are reserved for real swings (frames.length > 0).
+  // The row exists in DB for analytics, but event bus / session counter are
+  // reserved for real swings (frames.length > 0).
   if (frames.length === 0) return swingId;
 
-  if (swingId) {
-    const session = getCurrentClinicSession();
-    const baseRecord: SwingRecord = {
-      id: swingId,
-      recordedAt: Date.now(),
-      metrics: buildMetricSnapshotFromAnalysis(analysis),
-      phaseTags: buildPhaseTagsFromAnalysis(analysis, frames.length),
-      spineAngleSeries: buildSpineAngleSeries(frames),
-    };
-    const clinicRecord: SwingRecord = session
-      ? {
-          ...baseRecord,
-          kidId: session.kidId,
-          sessionId: session.id,
-          clinicNumber: session.clinicNumber,
-        }
-      : baseRecord;
-    upsertSwingRecord(clinicRecord);
-    updateBandsForSwing(clinicRecord);
-  }
   if (swingId) {
     emitEvent('swing.recorded', {
       swingId,

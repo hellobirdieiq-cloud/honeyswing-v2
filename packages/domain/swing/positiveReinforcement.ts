@@ -209,9 +209,8 @@ class PositiveReinforcementEngine {
    * Reset session state. Called on app foreground by the AppState 'active'
    * listener in app/_layout.tsx, alongside tipFrequencyLimiter.reset().
    */
-  // TODO(clinic): also call reset() on per-kid session boundary — i.e., from the kid-switcher /
-  // "next student" action in the future clinic store — so per-kid praise/improvement tracking
-  // does not leak across kids.
+  // Note: reset() is NOT called on player switches, so praise/improvement
+  // tracking can leak across kids within one app session.
   reset(): void {
     this.recentGeneralIndices = [];
     this.recentImprovementIndices = [];

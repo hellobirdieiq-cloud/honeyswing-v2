@@ -279,8 +279,6 @@ export async function getSwingMotionFrames(
     // matching the keypoint_veto pattern). Apply the pure, idempotent
     // lower-body identity correction at read time so replay/gallery render
     // corrected legs — including rows persisted before the pass existed.
-    // Clinic's raw-signal surface is unaffected: lib/clinic/fetchMotionFrames.ts
-    // has its own direct query and does not route through here.
     return frames ? correctLowerBodyIdentity(frames).frames : null;
   } catch {
     return null;

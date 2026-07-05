@@ -21,8 +21,8 @@ import {
 import type {
   MetricSnapshot,
   PhaseTagRange,
-} from '../clinic/SwingRecord';
-import type { PhaseTag } from '../clinic/enums';
+  PhaseTag,
+} from './phaseTags';
 import { isGoodFrame } from './captureValidity';
 
 export type InsertFailClass =

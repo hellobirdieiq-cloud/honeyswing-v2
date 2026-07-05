@@ -21,7 +21,6 @@ import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
-import { clinicSessionActive } from '@/lib/clinic/clinicSessionStore';
 import { GOLD } from '../../lib/colors';
 import {
   getProfiles,
@@ -364,10 +363,8 @@ export default function RecordTab() {
     let mounted = true;
     screenOpenedAt.current = Date.now();
 
-    if (!clinicSessionActive()) {
-      clearCurrentSwingMotion();
-      clearCurrentSwingAnalysis();
-    }
+    clearCurrentSwingMotion();
+    clearCurrentSwingAnalysis();
 
     async function setupScreen() {
       const limitStatus = await checkSwingLimit();

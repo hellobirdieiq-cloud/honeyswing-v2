@@ -231,10 +231,9 @@ class SessionAccumulatorImpl {
     return null;
   }
 
-  // TODO(clinic): call reset() on per-kid session boundary — i.e., from the kid-switcher /
-  // "next student" action in the future clinic store. Doc-comment at top of file claims
-  // reset happens "on AppState background >5 min", but no such listener exists in the
-  // codebase today; the only current callers are tests. Wire from the clinic store when built.
+  // Doc-comment at top of file claims reset happens "on AppState background
+  // >5 min", but no such listener exists in the codebase today; the only
+  // current callers are tests.
   reset(): void {
     this._swingCount = 0;
     this._metrics.clear();
