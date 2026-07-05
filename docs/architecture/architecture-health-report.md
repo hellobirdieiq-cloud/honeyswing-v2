@@ -568,3 +568,128 @@ working directory and re-run. Baselines used: lint 36 (matched), god-files 9
 reliability.impact clarification (Axis 5, no scoring change), in-report
 baselines, fresh-data re-ranking. No production code was modified during
 scoring or revision.*
+
+---
+
+## Rev 3 — post-coach-pivot delta (2026-07-04)
+
+**The 795/1000 score above predates the coach pivot and is no longer the
+number for this tree.** Between rev 2 and this delta, four coach-pivot
+commits landed on main (`5c720c2..b758584`, net +1,099/−7,384 lines: clinic
+removed entirely, coach view + `player_profiles` sync + attribution RLS
+added). This section records what was re-verified against HEAD `b758584` on
+2026-07-04 — it corrects the frozen baselines and the findings ledger
+without rewriting the axis scores, which remain honest 2026-07-02
+measurements.
+
+### Frozen baselines — corrected (4 of 6 were stale)
+
+| Baseline | Rev 2 (2026-07-02) | Measured 2026-07-04 |
+|---|---|---|
+| Lint | 36 warnings | **10** (0 errors, 10 warnings) — re-run live |
+| God-files (>600, non-test) | 9 | **6** — Tab1LiveView.tsx (904) and cue-block.tsx (695) deleted with clinic; SwingSkeletonCanvas.tsx decomposed 605→538. Remaining: phaseDetectionFaceOn.ts 1236, outbox.ts 998, settings.tsx **836** (grew from 772), analysisPipeline.ts 814, record.tsx 698, phaseDetectionShared.ts 673 |
+| Orphans | 7 | **4** — the 3 `packages/domain/clinic/*` orphans deleted with clinic; GripHistoryRow.tsx, VisualCoachCard.tsx, and the 2 hand adapters remain |
+| Cycles | 5 | **7** — madge@8 re-run live. The 5 domain cycles are unchanged (dispatcher↔DTL/FaceOn/Legacy, dispatcher→cameraAngle→shared→dispatcher, watchImu↔clockAlign). **2 NEW cycles in lib/, introduced by the coach pivot:** `playerProfiles → playerProfilesSync → playerProfiles` and `playerProfiles → playerProfilesSync → playerProfilesSyncCore → playerProfiles`. Both back-edges are `import type` (`playerProfilesSync.ts:12`, `playerProfilesSyncCore.ts:12`); the runtime edge is `playerProfiles.ts:5`. Same type-erased mitigation class as the domain 5 — no runtime init-order risk — but the first cycles outside `packages/domain/swing` and outside Axis 8's rev 2 census |
+| Tests | 50 suites / 49 green (§7: 54/53/1) | **54 / 53 / 1** — re-run live. Composition changed: −2 clinic suites (cueEfficacyScorer, personalBandCalculator), +2 coach suites (lib/coachData.test.ts, lib/playerProfilesSync.test.ts). Only red = parked phaseDetectionDTL |
+
+### Doc defect in rev 2 (recorded as a finding in its own right)
+
+- **Rev 2 is internally inconsistent: §7 vs the Axis 6/7 score tables.**
+  §7 records that the safety-net project (commits 6f66c6a…b8454e9) closed the
+  typecheck perimeter, fixed runner discovery, and moved the test baseline to
+  54/53/1 — yet the Axis 7 analysis still deducts −38 for the open perimeter,
+  Axis 6 still deducts for the missing sibling suites and the `.tsx`
+  blind spot, and the frozen-baselines block still records 50/49 tests. The
+  score table and §7 describe two different repo states. Any Phase 3 re-score
+  must re-measure axes 6 and 7 from scratch rather than carrying rev 2's
+  deductions forward.
+
+### Findings ledger — resolved since rev 2
+
+- **#1/#2/#3 (typecheck perimeter; Axis 7 −38): CLOSED.** `tsconfig.node.json`
+  now loads `lib/**/*.test.ts` + `scripts/**/*.ts`; `typecheck` /
+  `typecheck:node` / `typecheck:all` npm scripts exist; both configs exit 0.
+- **#4 (missing sibling suites; part of Axis 6 −32): 3 of 4 closed** —
+  tempoAnalysis, angles, phaseDetectionShared suites exist. Only
+  phaseDetectionLegacy remains, deliberately blocked on the freeze decision
+  (finding #7).
+- **#6 (calibration copies in coach-mode; Axis 4 −20): RESOLVED BY
+  DELETION** — `app/clinic/coach-mode/signalCompute.ts` removed with the
+  pivot. `app/clinic/` now holds only `_layout.tsx` + `imu-debug.tsx` (kept
+  pending the watch-IMU decision).
+- **#8 (runner discovers only `.test.ts`): FIXED** — `run-tests.mjs:31`
+  matches `.test.ts` and `.test.tsx`.
+
+### Findings ledger — still true (re-verified, current file:line)
+
+- **#7** legacy freeze still prose-only — `phaseDetectionLegacy.ts:107-108`
+  constants present; faceOn impact tunables at `phaseDetectionFaceOn.ts:211-213`.
+- **#9** single upward type-only import `swingRowBuilders.ts:9` + models-JSON
+  escape `cocoWholebody.ts:1`; still no allowlist; zero react/react-native/
+  expo imports under `packages/`.
+- **#12** `@supabase/supabase-js` still in devDependencies, runtime-imported
+  by `lib/persistSwing.ts` / `lib/supabase.ts`.
+- **#14** `category_scores` still write-only — written at
+  `persistSwing.ts:127`, zero value consumers.
+- **#15** `reliability.impact` still has zero consumers — written at
+  `phaseDetectionFaceOn.ts:909` and `phaseDetectionDTL.ts:412`.
+- **#16** tipFrequency still stateful/clock-coupled (`Date.now()` at
+  223, 318, 346, 385, 492); `positiveReinforcement.ts` `Math.random()` moved
+  to :299. personalBandCalculator's 3 ambient hits are GONE (file deleted
+  with clinic) — Axis 2's non-test ambient-read census shrinks accordingly.
+- **#20** vanished-feature effects still execute in `app/analysis/result.tsx`
+  but are now gated behind `isOwnSwing` (`result.tsx:86,257,283,306`);
+  gripCloud moved to `useSwingSource.ts:48,141`.
+- **#19** expo-doctor: **NOT RE-MEASURED** (network-gated command, not run
+  this pass); rev 2's "2 failed checks / 9 packages behind" status is
+  unconfirmed either way.
+
+### Stale claims corrected
+
+- **Axis 1(d)** — "UI imports exactly three domain modules" is no longer
+  true. Exact census (re-grepped 2026-07-04, non-test app/ + components/):
+  **9 files import 10 distinct `packages/domain/swing` modules.**
+
+  | Importer | Modules |
+  |---|---|
+  | `app/_layout.tsx:14-15` | tipFrequency, positiveReinforcement |
+  | `app/onboarding.tsx:19` | tipFrequency |
+  | `app/analysis/result.tsx:13,18,19,22,23,26` | phaseDetection (type-only), tipFrequency, confidenceScore, positiveReinforcement, tempoDisplay |
+  | `app/analysis/useSwingSource.ts:23,24-27,29` | captureValidity, analysisPipeline, tempoDisplay |
+  | `app/coach/index.tsx:25` (NEW, coach pivot) | scoring |
+  | `components/VisualCoachCard.tsx:5-10` | angles (type-only), captureValidity, scoring, tipFrequency, metricDefinitions |
+  | `components/SwingHistoryList.tsx:6-9` | scoring |
+  | `components/SwingArtCard.tsx:5` | phaseDetection (type-only) |
+  | `components/SwingSkeletonCanvas.tsx:5` | phaseDetection (type-only) |
+
+  Distinct modules: tipFrequency, positiveReinforcement, captureValidity,
+  tempoDisplay, phaseDetection, confidenceScore, analysisPipeline, scoring,
+  angles, metricDefinitions. Still zero imports of detector internals
+  (phaseDetectionFaceOn/DTL/Legacy/Shared) — but rev 2's "exactly three
+  public product-logic modules" framing is dead.
+
+### Unscored surfaces — scope any Phase 3 re-score must add
+
+The coach pivot added ~1,100 lines the rubric has never seen:
+
+- **Coach view**: `app/coach/index.tsx` (307 lines, roster + feed),
+  `app/coach/_layout.tsx`.
+- **Player-profile sync**: `lib/playerProfilesSync.ts` + pure
+  `lib/playerProfilesSyncCore.ts` (+ suite), `lib/playerProfiles.ts`.
+- **Coach data / attribution**: `lib/coachData.ts` + pure
+  `lib/coachDataCore.ts` (+ suite).
+- **Data contract**: `player_profiles` table (`database.types.ts:168`),
+  `swings.player_profile_id` attribution column, attribution/storage RLS
+  migration (+70 SQL). Axis 5's column census and RLS reasoning do not cover
+  any of this.
+- **Domain**: `packages/domain/swing/phaseTags.ts` (relocated shared types;
+  internal-only importer).
+- **Dependency graph**: the 2 new lib/ cycles recorded in the baselines
+  table above — Axis 8's rev 2 claim "all cycles inside
+  packages/domain/swing" no longer holds.
+
+*Rev 3 provenance: lint, tsc (both configs), the full test suite, madge@8
+(cycles), and the UI→domain import census were re-run/re-measured live
+2026-07-04; god-file, orphan, tsconfig-perimeter, and dependency-class facts
+re-measured from the tree. NOT RE-MEASURED: expo-doctor (network-gated,
+reason at finding #19). No production code was modified.*
