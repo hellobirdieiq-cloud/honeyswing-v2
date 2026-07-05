@@ -8,7 +8,7 @@ import { styles } from './resultStyles';
 import { computeFocus, saveFocus } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
-import { getUser, supabase } from '../../lib/supabase';
+import { getUser, getUserId, supabase } from '../../lib/supabase';
 import { GOLD } from '../../lib/colors';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import { getActiveProfileHandedness } from '../../lib/handedness';
@@ -58,6 +58,7 @@ export default function ResultScreen() {
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
 
   // Swing-data resolution (live store vs history fetch vs reconstruction) —
   // see useSwingSource.ts. gripCloud also lives there (vanished feature, kept).
@@ -72,6 +73,18 @@ export default function ResultScreen() {
     partialReason,
     videoUri,
   } = useSwingSource(swingId, isLeftHanded);
+
+  useEffect(() => {
+    getUserId().then(setViewerUserId).catch((err) => console.error('[HoneySwing]', err));
+  }, []);
+
+  // Coach pivot: a coach can open another account's swing via swingId (RLS
+  // grant). The viewer-side effects below (session accumulator, insight
+  // persistence, Today's Focus) must only run for the viewer's OWN swings —
+  // otherwise a coach's session stats/home focus absorb the kid's swing.
+  // Live swings are always own; history swings match on user_id.
+  const isOwnSwing =
+    isLiveSwing || (!!swingRecord && !!viewerUserId && swingRecord.user_id === viewerUserId);
 
   // Video/skeleton clock subsystem (player, signed-URL + one-retry, speed,
   // playhead, single seek path) — see useSwingVideoClock.ts.
@@ -237,13 +250,15 @@ export default function ResultScreen() {
     return { processedTips: tips, positiveResult: posResult };
   }, [analysis]);
 
-  // Task 14: Session accumulator — feed swing data once per swing
+  // Task 14: Session accumulator — feed swing data once per swing.
+  // isOwnSwing: never absorb a coach-granted foreign swing into the viewer's
+  // session stats.
   useEffect(() => {
-    if (!analysis || swingAddedRef.current) return;
+    if (!analysis || !isOwnSwing || swingAddedRef.current) return;
     swingAddedRef.current = true;
     const firedMetricKeys = processedTips.map(t => t.metricKey);
     sessionAccumulator.addSwing(analysis, firedMetricKeys);
-  }, [analysis, processedTips]);
+  }, [analysis, processedTips, isOwnSwing]);
 
   const sessionInsight = useMemo<SessionInsight | null>(() => {
     if (!analysis) return null;
@@ -260,9 +275,12 @@ export default function ResultScreen() {
     return insight;
   }, [analysis, processedTips]);
 
-  // Persist session insight to the swing row (atomic JSONB merge — no read-modify-write race)
+  // Persist session insight to the swing row (atomic JSONB merge — no read-modify-write race).
+  // isOwnSwing: a coach viewing a kid's swing must not attempt this write (it
+  // would be RLS-blocked — merge_swing_debug is SECURITY INVOKER — but don't
+  // even try; the insight derives from the viewer's own session, not this swing).
   useEffect(() => {
-    if (!swingId || !sessionInsight) return;
+    if (!swingId || !sessionInsight || !isOwnSwing) return;
     supabase
       .rpc('merge_swing_debug', {
         swing_id: swingId,
@@ -273,7 +291,7 @@ export default function ResultScreen() {
           console.error('[HoneySwing] session_insight_shown update error:', error.message);
         }
       });
-  }, [swingId, sessionInsight]);
+  }, [swingId, sessionInsight, isOwnSwing]);
 
   // Metro log for verification before tip UI exists
   useEffect(() => {
@@ -282,12 +300,13 @@ export default function ResultScreen() {
     }
   }, [processedTips]);
 
-  // Persist the weakest metric as "Today's Focus" for the home screen
+  // Persist the weakest metric as "Today's Focus" for the home screen.
+  // isOwnSwing: a coach's device must not derive its focus from a kid's swing.
   useEffect(() => {
-    if (!angles) return;
+    if (!angles || !isOwnSwing) return;
     const focus = computeFocus(angles, getCachedAgeTier(), Date.now());
     if (focus) saveFocus(focus).catch((err) => console.error('[HoneySwing]', err));
-  }, [angles]);
+  }, [angles, isOwnSwing]);
 
   // Header identity: the viewed swing's OWN attribution governs (not the current
   // primary). Live swing belongs to the current primary, so its pre-load fallback

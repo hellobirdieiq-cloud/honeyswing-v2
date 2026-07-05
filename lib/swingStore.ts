@@ -119,7 +119,9 @@ const GRIP_HISTORY_COLUMNS =
   'grip_overall:swing_debug->grip_cloud->>overall, ' +
   'grip_failed:swing_debug->grip_cloud->>analysis_failed';
 
-const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id, is_favorite, frame_count';
+// Exported for lib/coachData.ts, which fetches the same compact projection for
+// coach-granted swings (mirror-image scoping: .neq instead of .eq on user_id).
+export const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id, is_favorite, frame_count';
 
 type SupabaseError = { message: string };
 type SupabaseResult<T> = { data: T; error: SupabaseError | null };

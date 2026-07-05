@@ -310,10 +310,10 @@ export default function SettingsScreen() {
           <Text style={styles.coachLabel}>Coach Mode</Text>
           <TouchableOpacity
             style={styles.coachModeButton}
-            onPress={() => router.push('/clinic/preflight' as Href)}
+            onPress={() => router.push('/coach' as Href)}
             activeOpacity={0.7}
           >
-            <Text style={styles.coachModeText}>Start Coach Mode</Text>
+            <Text style={styles.coachModeText}>View My Players</Text>
           </TouchableOpacity>
         </View>
       )}
