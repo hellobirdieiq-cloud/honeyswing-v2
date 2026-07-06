@@ -10,6 +10,17 @@ import type { WatchImuPersist } from './swingRowBuilders';
 
 export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
+/**
+ * True while the post-capture pipeline is still running from the user's point of
+ * view: 'processing' (extraction + analysis) AND 'complete' (persist + navigation
+ * dwell — tryNavigate awaits persistSwing before pushing the result screen).
+ * Single definition shared by the record screen's brand overlay and the tab bar's
+ * analyzing flag so the two indicators can't drift apart.
+ */
+export function isAnalyzingPhase(phase: CapturePhase): boolean {
+  return phase === 'processing' || phase === 'complete';
+}
+
 export type NavigationBlockReason = 'phase' | 'analysis' | 'video' | 'navigated' | null;
 
 /**

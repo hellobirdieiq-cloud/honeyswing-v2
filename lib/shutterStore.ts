@@ -10,7 +10,7 @@
 let shutterHandler: (() => void) | null = null;
 let stopHandler: (() => void) | null = null;
 let isRecording = false;
-let isProcessing = false;
+let isAnalyzing = false;
 
 const listeners = new Set<() => void>();
 
@@ -50,11 +50,13 @@ export function setRecording(value: boolean): void {
   listeners.forEach((l) => l());
 }
 
-// ─── Processing boolean (single writer: record.tsx phase-sync effect) ────────
+// ─── Analyzing boolean (single writer: record.tsx phase-sync effect) ─────────
+// True through BOTH the 'processing' and 'complete' capture phases — i.e. until
+// the result navigation fires — matching isAnalyzingPhase in captureFlow.ts.
 
-export function setProcessing(value: boolean): void {
-  if (isProcessing === value) return;
-  isProcessing = value;
+export function setAnalyzing(value: boolean): void {
+  if (isAnalyzing === value) return;
+  isAnalyzing = value;
   listeners.forEach((l) => l());
 }
 
@@ -71,6 +73,6 @@ export function getRecordingSnapshot(): boolean {
   return isRecording;
 }
 
-export function getProcessingSnapshot(): boolean {
-  return isProcessing;
+export function getAnalyzingSnapshot(): boolean {
+  return isAnalyzing;
 }

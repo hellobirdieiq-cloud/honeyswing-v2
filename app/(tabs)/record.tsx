@@ -38,8 +38,9 @@ import {
   registerStop,
   clearStop,
   setRecording,
-  setProcessing,
+  setAnalyzing,
 } from '../../lib/shutterStore';
+import { isAnalyzingPhase } from '@/packages/domain/swing/captureFlow';
 import { styles } from './recordStyles';
 
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
@@ -293,38 +294,44 @@ export default function RecordTab() {
     }, [])
   );
 
-  // Single writer of the tab bar's isRecording/isProcessing booleans — kept in
-  // lockstep with the capturePhase source of truth.
+  // Single writer of the tab bar's isRecording/isAnalyzing booleans — kept in
+  // lockstep with the capturePhase source of truth. Analyzing spans 'processing'
+  // AND 'complete' (isAnalyzingPhase) so the button/spinner hold through the
+  // persist + navigation dwell, matching the brand overlay.
   const MIN_PROCESSING_MS = 400;
   useEffect(() => {
     setRecording(capturePhase === 'capturing');
 
-    if (capturePhase === 'processing') {
+    if (isAnalyzingPhase(capturePhase)) {
       if (processingClearTimerRef.current) {
         clearTimeout(processingClearTimerRef.current);
         processingClearTimerRef.current = null;
       }
-      processingShownAtRef.current = Date.now();
-      setProcessing(true);
+      // Stamp only on entry — the processing→complete transition must not
+      // restart the min-display window.
+      if (processingShownAtRef.current == null) {
+        processingShownAtRef.current = Date.now();
+      }
+      setAnalyzing(true);
       return;
     }
 
-    // Leaving processing — hold the spinner for the remainder of MIN_PROCESSING_MS
-    // so a near-instant processing→complete (failure path) doesn't flash it.
+    // Leaving analyzing — hold the spinner for the remainder of MIN_PROCESSING_MS
+    // so a near-instant transition (e.g. to 'weak') doesn't flash it.
     const shownAt = processingShownAtRef.current;
     if (shownAt == null) {
-      setProcessing(false);
+      setAnalyzing(false);
       return;
     }
     const remaining = MIN_PROCESSING_MS - (Date.now() - shownAt);
     if (remaining <= 0) {
-      setProcessing(false);
+      setAnalyzing(false);
       processingShownAtRef.current = null;
       return;
     }
     if (processingClearTimerRef.current) clearTimeout(processingClearTimerRef.current);
     processingClearTimerRef.current = setTimeout(() => {
-      setProcessing(false);
+      setAnalyzing(false);
       processingClearTimerRef.current = null;
       processingShownAtRef.current = null;
     }, remaining);
@@ -348,7 +355,7 @@ export default function RecordTab() {
         clearShutter();
         clearStop();
         setRecording(false);
-        setProcessing(false);
+        setAnalyzing(false);
         if (processingClearTimerRef.current) {
           clearTimeout(processingClearTimerRef.current);
           processingClearTimerRef.current = null;
@@ -421,7 +428,7 @@ export default function RecordTab() {
   // the clip is captured: extraction runs off the saved file, so the live feed
   // is pure waste during processing. See handleCaptureFailure and finalizeCapture
   // in useSwingCapture.ts (processing-phase transitions).
-  const isProcessing = capturePhase === 'processing';
+  const isCameraPausedPhase = capturePhase === 'processing';
   const isCountdown = capturePhase === 'countdown';
   const isWeak = capturePhase === 'weak';
   const isError = capturePhase === 'error';
@@ -429,7 +436,7 @@ export default function RecordTab() {
   // Branded post-capture overlay: cover the camera for the whole processing→complete
   // wait so the live-feed flash (camera toggling isActive) never shows. Excludes
   // 'weak'/'error' so the retry path keeps the live preview.
-  const showBrandOverlay = capturePhase === 'processing' || capturePhase === 'complete';
+  const showBrandOverlay = isAnalyzingPhase(capturePhase);
   const brandIconSize = Math.min(screenW * 0.4, 200);
 
   return (
@@ -447,7 +454,7 @@ export default function RecordTab() {
             style={StyleSheet.absoluteFill}
             resizeMode="cover"
             device={device}
-            isActive={isCameraActive && !isProcessing}
+            isActive={isCameraActive && !isCameraPausedPhase}
             animatedProps={animatedCameraProps}
             format={format}
             fps={targetFps}

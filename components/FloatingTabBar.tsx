@@ -8,7 +8,7 @@ import {
   fireStop,
   subscribe,
   getRecordingSnapshot,
-  getProcessingSnapshot,
+  getAnalyzingSnapshot,
 } from '../lib/shutterStore';
 
 const INACTIVE = '#8A8A8E';
@@ -20,7 +20,7 @@ const RIGHT_PILLS = ['gallery', 'settings'];
 
 export default function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   const isRecording = useSyncExternalStore(subscribe, getRecordingSnapshot);
-  const isProcessing = useSyncExternalStore(subscribe, getProcessingSnapshot);
+  const isAnalyzing = useSyncExternalStore(subscribe, getAnalyzingSnapshot);
   const activeName = state.routes[state.index]?.name;
   const paddingBottom = Math.max(insets.bottom, 12);
 
@@ -57,7 +57,7 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
   }
 
   const onCenterPress = () => {
-    if (isProcessing) return; // inert during analysis — spinner is showing
+    if (isAnalyzing) return; // inert during analysis — spinner is showing
     if (activeName === 'record') {
       if (isRecording) fireStop();
       else fireShutter();
@@ -68,10 +68,6 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
 
   return (
     <View style={[styles.wrap, { paddingBottom }]} pointerEvents="box-none">
-      {isProcessing && (
-        <Text style={styles.processingCaption}>Analyzing swing…</Text>
-      )}
-
       <View style={styles.pillBar}>
         <View style={styles.sideGroup}>{LEFT_PILLS.map(renderPill)}</View>
         <View style={styles.centerSpacer} />
@@ -81,14 +77,14 @@ export default function FloatingTabBar({ state, descriptors, navigation, insets 
       <TouchableOpacity
         style={[styles.centerButton, { bottom: paddingBottom + 24 }]}
         onPress={onCenterPress}
-        disabled={isProcessing}
+        disabled={isAnalyzing}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel={
-          isProcessing ? 'Analyzing swing' : isRecording ? 'Stop recording' : 'Record swing'
+          isAnalyzing ? 'Analyzing swing' : isRecording ? 'Stop recording' : 'Record swing'
         }
       >
-        {isProcessing ? (
+        {isAnalyzing ? (
           <ActivityIndicator color="#fff" />
         ) : isRecording ? (
           <View style={styles.stopSquare} />
@@ -165,14 +161,5 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 6,
     backgroundColor: '#fff',
-  },
-  processingCaption: {
-    color: '#C8C8CE',
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    // Clears the elevated center button (which rises above the pill bar) plus
-    // its drop shadow, so the caption never clips against the button.
-    marginBottom: 72,
   },
 });
