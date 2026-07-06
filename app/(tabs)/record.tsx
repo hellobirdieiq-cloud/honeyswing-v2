@@ -475,6 +475,7 @@ export default function RecordTab() {
             <FaceOnSetupOverlay
               height={containerH}
               mirrored={!!activeProfile?.isLeftHanded}
+              ageTier={activeProfile?.ageTier}
             />
           )}
           <LiveSkeleton

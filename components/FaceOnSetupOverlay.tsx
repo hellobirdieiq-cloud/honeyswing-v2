@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Image, StyleSheet } from 'react-native';
+import { View, Image, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { AgeTier } from '@/lib/ageTier';
+import { GUIDE_HEIGHT_FRACTION_BY_TIER } from './faceOnGuideSizing';
 
 // Asset intrinsic aspect (323×657 ≈ 0.4916 w/h). Width is derived from height so
 // the guide fits without distortion; resizeMode="contain" is a belt-and-suspenders
@@ -9,11 +11,8 @@ const GUIDE_ASPECT = 323 / 657;
 
 // Render translucency for the setup guide. Named constant so it's a one-line
 // on-device tune. 0 = invisible, 1 = opaque.
-const GUIDE_OPACITY = 0.5;
-
-// Guide height as a fraction of the camera-preview height (containerH). 0.57 ≈
-// 70% of the prior full-height build. One-line tunable, like GUIDE_OPACITY.
-const GUIDE_HEIGHT_FRACTION = 0.57;
+// EXTERNAL ASSUMPTION — untuned, pending on-device calibration (was 0.5).
+const GUIDE_OPACITY = 0.35;
 
 // Bottom anchor: keep the clubhead (bottom edge of the asset) clear above the
 // FloatingTabBar. Its center record button is the tallest element, reaching
@@ -33,13 +32,19 @@ const BOTTOM_GAP = 16;
 export default function FaceOnSetupOverlay({
   height,
   mirrored,
+  ageTier,
 }: {
   height: number;
   mirrored: boolean;
+  // Active player's age tier. Optional only for type-compat with
+  // PlayerProfile.ageTier — addProfile stamps it and getProfiles backfills
+  // legacy rows, so runtime callers always pass one; undefined falls back to
+  // the adult (pre-tier) size.
+  ageTier?: AgeTier;
 }) {
   const insets = useSafeAreaInsets(); // hook before the early return (rules of hooks)
   if (height <= 0) return null;
-  const guideHeight = height * GUIDE_HEIGHT_FRACTION;
+  const guideHeight = height * GUIDE_HEIGHT_FRACTION_BY_TIER[ageTier ?? 'adult'];
   const bottomOffset = insets.bottom + CONTROL_BAR_HEIGHT + BOTTOM_GAP;
   return (
     <View style={[styles.container, { paddingBottom: bottomOffset }]} pointerEvents="none">
@@ -51,6 +56,7 @@ export default function FaceOnSetupOverlay({
         ]}
         resizeMode="contain"
       />
+      <Text style={styles.caption}>Stand so your whole body is on screen</Text>
     </View>
   );
 }
@@ -63,5 +69,14 @@ const styles = StyleSheet.create({
   },
   mirrored: {
     transform: [{ scaleX: -1 }], // lefty flip — unchanged
+  },
+  caption: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.75)',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowRadius: 4,
+    textAlign: 'center',
   },
 });
