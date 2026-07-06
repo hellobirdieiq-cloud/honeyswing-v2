@@ -93,6 +93,7 @@ export default function ResultScreen() {
     player,
     effectiveVideoUri,
     isPlaying,
+    isPlayerReady,
     videoIdx,
     speed,
     setSpeed,
@@ -502,7 +503,7 @@ export default function ResultScreen() {
             <View style={styles.phaseChipsRow}>
               {PHASE_CHIPS.map((entry) => {
                 if (entry.phase === 'full_swing') {
-                  const enabled = !!player && !!effectiveVideoUri;
+                  const enabled = !!player && !!effectiveVideoUri && isPlayerReady;
                   return (
                     <TouchableOpacity
                       key={entry.phase}
@@ -525,7 +526,8 @@ export default function ResultScreen() {
                   );
                 }
                 const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
-                const enabled = !!phaseEntry && !!player && !!effectiveVideoUri && firstFrameTimestamp != null;
+                const enabled =
+                  !!phaseEntry && !!player && !!effectiveVideoUri && isPlayerReady && firstFrameTimestamp != null;
                 return (
                   <TouchableOpacity
                     key={entry.phase}

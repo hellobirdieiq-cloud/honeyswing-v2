@@ -67,6 +67,25 @@ export function useSwingVideoClock(args: {
     return () => sub.remove();
   }, [player]);
 
+  // Seek readiness for the phase-chip gates: expo-video silently drops
+  // pause()/currentTime/play() until the native item reaches readyToPlay, so a
+  // non-null player object does NOT mean the player can seek. Initialized from
+  // player.status because this listener attaches after creation and can miss
+  // the transition; useVideoPlayer recreates the player on source change,
+  // which re-runs this effect and re-baselines the flag.
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
+  useEffect(() => {
+    if (!player) {
+      setIsPlayerReady(false);
+      return;
+    }
+    setIsPlayerReady(player.status === 'readyToPlay');
+    const sub = player.addListener('statusChange', (payload) => {
+      setIsPlayerReady(payload.status === 'readyToPlay');
+    });
+    return () => sub.remove();
+  }, [player]);
+
   // Remote-playback failure path: one silent re-sign (expired URL / transient
   // network), then surrender to skeleton-only (remoteVideoUrl → null collapses
   // every video gate). Local-file playback (videoUri set) is never touched.
@@ -131,7 +150,9 @@ export function useSwingVideoClock(args: {
   // THE one seek path for every phase-chip surface (canvas row + video-section
   // row). Divergent chip behavior was the original sync bug — keep it single.
   const seekToFrame = useCallback((index: number) => {
-    if (!player) return;
+    // Not-ready guard covers the surfaces without a chip gate (skeleton-only
+    // canvas row) — a seek before readyToPlay would be silently dropped anyway.
+    if (!player || !isPlayerReady) return;
     player.pause();
     player.currentTime = Math.max(0, (index * msPerFrame) / 1000);
     // Sync skeleton immediately — timeUpdate is not reliably emitted while
@@ -143,7 +164,7 @@ export function useSwingVideoClock(args: {
       if (!isMountedRef.current) return;
       player.play();
     }, 100);
-  }, [player, msPerFrame, frameCount]);
+  }, [player, isPlayerReady, msPerFrame, frameCount]);
 
   // Resolve the uploaded video into a signed URL ONCE per record load —
   // historical views only. Local videoUri (live swing) wins; storage_path
@@ -163,6 +184,7 @@ export function useSwingVideoClock(args: {
     player,
     effectiveVideoUri,
     isPlaying,
+    isPlayerReady,
     videoIdx,
     speed,
     setSpeed,
