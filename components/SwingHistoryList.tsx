@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getSwingHistory, type SwingHistoryRecord } from '../lib/swingStore';
 import { getUserId } from '../lib/supabase';
+import { deleteSwing } from '../lib/deleteSwing';
 import {
   scoreTempoTrafficLight,
   TEMPO_BAND_COLORS,
@@ -38,6 +41,34 @@ export default function SwingHistoryList() {
       setProfiles(ps);
       setProfileMap(Object.fromEntries(ps.map((p) => [p.id, getDisplayName(p)])));
     }).catch((err) => console.error('[HoneySwing]', err));
+  }, []);
+
+  const handleDeleteRequest = useCallback((swingId: string) => {
+    Alert.alert(
+      'Delete swing?',
+      'This removes the swing and its video permanently.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const ok = await deleteSwing(swingId);
+              if (ok) {
+                setState((prev) =>
+                  prev.kind === 'ready'
+                    ? { kind: 'ready', rows: prev.rows.filter((r) => r.id !== swingId) }
+                    : prev,
+                );
+              } else {
+                Alert.alert('Delete failed', 'Could not delete the swing. Please try again.');
+              }
+            })();
+          },
+        },
+      ],
+    );
   }, []);
 
   useFocusEffect(
@@ -89,7 +120,9 @@ export default function SwingHistoryList() {
   const showTabs = profiles.length >= 2;
 
   return (
-    <View style={{ flex: 1 }}>
+    // Local root view (app root has none — record.tsx does the same): required
+    // ancestor for the row Swipeables.
+    <GestureHandlerRootView style={{ flex: 1 }}>
       {showTabs && (
         <ScrollView
           horizontal
@@ -121,11 +154,16 @@ export default function SwingHistoryList() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <SwingRow item={item} profileMap={profileMap} isIndividualTab={isIndividualTab} />
+            <SwingRow
+              item={item}
+              profileMap={profileMap}
+              isIndividualTab={isIndividualTab}
+              onDeleteRequest={handleDeleteRequest}
+            />
           )}
         />
       )}
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -145,10 +183,12 @@ function SwingRow({
   item,
   profileMap,
   isIndividualTab,
+  onDeleteRequest,
 }: {
   item: SwingHistoryRecord;
   profileMap: Record<string, string>;
   isIndividualTab: boolean;
+  onDeleteRequest: (swingId: string) => void;
 }) {
   const router = useRouter();
   const hasTempo = item.tempo_ratio != null && Number.isFinite(item.tempo_ratio);
@@ -167,20 +207,38 @@ function SwingRow({
     playerLabel && !isIndividualTab ? `${playerLabel} · ${ratioText}` : ratioText;
 
   return (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={() => router.push({ pathname: '/analysis/result', params: { swingId: item.id } })}
-      activeOpacity={0.7}
-    >
-      <View style={[styles.dot, { backgroundColor: dotColor }]} />
-      {showScore && (
-        <Text style={[styles.rowScore, { color: scoreColor }]}>{item.score}</Text>
+    <ReanimatedSwipeable
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      renderRightActions={(_progress, _translation, methods) => (
+        <TouchableOpacity
+          style={styles.deleteAction}
+          activeOpacity={0.7}
+          onPress={() => {
+            methods.close();
+            onDeleteRequest(item.id);
+          }}
+        >
+          <Text style={styles.deleteActionText}>Delete</Text>
+        </TouchableOpacity>
       )}
-      <View style={styles.rowText}>
-        <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
-        <Text style={styles.rowRatio}>{secondLine}</Text>
-      </View>
-    </TouchableOpacity>
+    >
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => router.push({ pathname: '/analysis/result', params: { swingId: item.id } })}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.dot, { backgroundColor: dotColor }]} />
+        {showScore && (
+          <Text style={[styles.rowScore, { color: scoreColor }]}>{item.score}</Text>
+        )}
+        <View style={styles.rowText}>
+          <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
+          <Text style={styles.rowRatio}>{secondLine}</Text>
+        </View>
+      </TouchableOpacity>
+    </ReanimatedSwipeable>
   );
 }
 
@@ -223,6 +281,21 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 13,
     marginTop: 2,
+  },
+  // marginBottom matches styles.row so the revealed button tracks row height.
+  deleteAction: {
+    backgroundColor: '#CC3333',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 88,
+    marginBottom: 10,
+    marginLeft: 8,
+  },
+  deleteActionText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   emptyWrap: {
     marginTop: 24,

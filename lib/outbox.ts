@@ -719,6 +719,21 @@ export async function abandonPending(entryIds: string[]): Promise<void> {
   }
 }
 
+/**
+ * Per-swing delete support: drop every entry reconciled to this swingId so a
+ * queued video/pose entry can't re-upload after the row + storage object are
+ * deleted (the re-upload's 0-row UPDATE would burn zeroRowAttempts and
+ * dead-letter as 'zero_rows'). Same contract as abandonPending: dir + payload
+ * removed, NO dead-letter, NO telemetry — intentional deletion, not a failure.
+ * Entries still pending (swingId null) are left alone: they belong to a
+ * capture that hasn't reconciled and are the orphan sweep's job.
+ */
+export async function purgeOutboxEntriesForSwing(swingId: string): Promise<void> {
+  const entries = await listEntries();
+  const ids = entries.filter((e) => e.swingId === swingId).map((e) => e.id);
+  await abandonPending(ids);
+}
+
 // ---------------------------------------------------------------------------
 // Drain (single in-flight lock — mirrors eventBus isDraining/drainPromise)
 // ---------------------------------------------------------------------------
