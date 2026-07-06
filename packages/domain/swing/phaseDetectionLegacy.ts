@@ -4,6 +4,12 @@
  * the prior `phaseDetection.ts` so swings that were classified as
  * `unknown` by the camera-angle pre-detector get exactly the same result
  * they would have gotten before the angle-aware split.
+ *
+ * TODO(legacy-disposition): live backup path only — reached when the early
+ * camera-angle pre-detector returns "unknown" (confidence-degraded captures).
+ * Fresh production phase_source / ruleDebug.detector data will decide whether
+ * this detector is kept, retired, or fully characterized. Until then: smoke
+ * coverage only (phaseDetection.test.ts T11); do not pin internal constants.
  */
 
 import type {

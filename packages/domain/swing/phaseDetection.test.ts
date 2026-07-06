@@ -5,12 +5,13 @@
  */
 
 import {
+  detectSwingPhasesWithDebug,
   findSetupEndIndex,
   findSetupEndIndexStillness,
   type SwingTrailPoint,
 } from './phaseDetection';
 import { findTakeawayOnsetFaceOn } from './phaseDetectionShared';
-import { createEmptyJoints, type PoseFrame } from '../../pose/PoseTypes';
+import { createEmptyJoints, type PoseFrame, type PoseSequence } from '../../pose/PoseTypes';
 
 let passed = 0;
 let failed = 0;
@@ -341,6 +342,73 @@ group('T10. Late onset (past 0.6 cap) → null with candidate telemetry');
   assert(!r.fired, 'T10: did not fire');
   assert(r.candidateTrailIdx !== null && r.candidateTrailIdx! > 59, `T10: candidate reported past cap (got ${r.candidateTrailIdx})`);
   assertClose(r.lockedBodyHeight, BH, 1e-9, 'T10: lockedBodyHeight reported on fallback');
+}
+
+// ---------------------------------------------------------------------------
+// T11 — Legacy fallback route smoke test (angle "unknown" → detectLegacyPhases)
+//
+// Legacy is a live backup path (fires only when the early camera-angle
+// pre-detector returns "unknown", i.e. confidence-degraded captures). This
+// deliberately asserts ONLY the dispatcher contract — no crash, legacy
+// routing, 5 phases in canonical order, non-decreasing indices/timestamps —
+// never legacy's exact frame choices or internal constants.
+//
+// TODO(legacy-disposition): fresh production phase_source data (per-swing
+// 'heuristic'/'fallback'/'mixed'/'none' + ruleDebug.detector) will decide
+// whether the legacy detector is kept as-is, retired, or fully characterized.
+// Do not expand this suite until that call is made.
+// ---------------------------------------------------------------------------
+group('T11. Legacy fallback route (angle=unknown) — no crash, ordered phases');
+{
+  const N = 90;
+  const trail: SwingTrailPoint[] = [];
+  for (let i = 0; i < N; i++) {
+    // Address hold → backswing arc up → downswing → follow-through: enough
+    // shape that the heuristic path can run; assertions hold either way.
+    let x: number, y: number;
+    if (i < 20) { x = 0.5; y = 0.7; }
+    else if (i < 50) { x = 0.5 + (i - 20) * 0.006; y = 0.7 - (i - 20) * 0.012; }
+    else if (i < 62) { x = 0.68 - (i - 50) * 0.018; y = 0.34 + (i - 50) * 0.03; }
+    else { x = 0.464 - (i - 62) * 0.006; y = 0.7 - (i - 62) * 0.01; }
+    trail.push(makePoint(x, y, i));
+  }
+  const canonical: PoseSequence = {
+    frames: makeBodyFrames(N),
+    source: 'test-synthetic',
+    metadata: { fps: 120, durationMs: N * FRAME_DT_MS },
+  };
+
+  let crashed = false;
+  let result: ReturnType<typeof detectSwingPhasesWithDebug> | null = null;
+  try {
+    result = detectSwingPhasesWithDebug({ canonical, trail, angle: 'unknown' });
+  } catch {
+    crashed = true;
+  }
+  assert(!crashed, 'T11: unknown-angle dispatch does not throw');
+  assertEq(result!.ruleDebug.detector, 'legacy', 'T11: routed to legacy detector');
+
+  const phases = result!.phases;
+  assertEq(phases.length, 5, 'T11: returns 5 phases');
+  assertEq(
+    phases.map((p) => p.phase).join(','),
+    'takeaway,top,downswing,impact,follow_through',
+    'T11: phases in canonical order',
+  );
+  let ordered = true;
+  for (let i = 1; i < phases.length; i++) {
+    if (phases[i].index < phases[i - 1].index) ordered = false;
+    if (phases[i].timestamp < phases[i - 1].timestamp) ordered = false;
+  }
+  assert(ordered, 'T11: phase indices and timestamps are non-decreasing');
+  assert(
+    phases.every((p) => p.source === 'heuristic' || p.source === 'fallback'),
+    'T11: every phase source is heuristic|fallback',
+  );
+  assert(
+    phases.every((p) => p.index >= 0 && p.index < N),
+    'T11: every phase index within trail bounds',
+  );
 }
 
 // ---------------------------------------------------------------------------
