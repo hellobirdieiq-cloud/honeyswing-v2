@@ -11,6 +11,14 @@ import type { WatchImuPersist } from './swingRowBuilders';
 export type CapturePhase = 'idle' | 'countdown' | 'capturing' | 'processing' | 'complete' | 'error' | 'weak';
 
 /**
+ * What ended the recording: the 4s capture-window timer or a manual stop tap.
+ * Persisted into swing_debug.stop_origin. A row with NEITHER value (null) means
+ * the recording ended without finalizeCapture — e.g. native truncation when the
+ * camera deactivated mid-recording (tab blur / backgrounding).
+ */
+export type StopOrigin = 'window_timer' | 'manual';
+
+/**
  * True while the post-capture pipeline is still running from the user's point of
  * view: 'processing' (extraction + analysis) AND 'complete' (persist + navigation
  * dwell — tryNavigate awaits persistSwing before pushing the result screen).

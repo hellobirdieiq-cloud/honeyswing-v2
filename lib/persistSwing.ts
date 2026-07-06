@@ -30,6 +30,7 @@ import {
   enrichFramesWithVelocity,
   type WatchImuPersist,
 } from '@/packages/domain/swing/swingRowBuilders';
+import type { StopOrigin } from '@/packages/domain/swing/captureFlow';
 
 export type { WatchImuPersist };
 
@@ -57,6 +58,7 @@ export async function persistSwing(
   extractionTotalMs?: number | null,
   watchImu?: WatchImuPersist | null,
   isLeftHandedOverride?: boolean,
+  stopOrigin?: StopOrigin | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -155,6 +157,11 @@ export async function persistSwing(
       video_duration_ms: videoDurationMs ?? null,
       video_frame_count: videoFrameCount ?? null,
       extraction_total_ms: extractionTotalMs ?? null,
+      // What ended the recording ('window_timer' | 'manual'). Null = the native
+      // layer ended it without finalizeCapture (camera deactivation mid-record) —
+      // exactly the truncation signature this field exists to diagnose. Discarded
+      // sub-minimum fragments produce no row at all (dev log only).
+      stop_origin: stopOrigin ?? null,
       capture_frame_stats: captureFrameStats ?? null,
       watch_imu: watchImuDebug,
       // seq→swing mapping for IMU batch late-join; imu_only marks an orphan IMU record.

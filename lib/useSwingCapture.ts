@@ -24,7 +24,9 @@ import {
   computeNavigationBlockReason,
   evaluateWatchAutoStart,
   type CapturePhase,
+  type StopOrigin,
 } from '@/packages/domain/swing/captureFlow';
+import { VALID_MIN_MS } from '@/packages/domain/swing/captureValidity';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -107,6 +109,14 @@ export function useSwingCapture({
   const activeProfileSnapshotRef = useRef<ActiveProfileSnapshot | null>(null);
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
+  // What ended THIS capture's recording (window timer vs manual stop) — persisted
+  // into swing_debug.stop_origin. Null until finalizeCapture runs; stays null for
+  // recordings the native layer ended on its own (camera deactivation).
+  const stopOriginRef = useRef<StopOrigin | null>(null);
+  // Set when a manual stop lands before VALID_MIN_MS of recording: the clip is a
+  // fragment — processRecordedVideo discards it (no analysis, no persist) and
+  // returns the phase to idle.
+  const discardRequestedRef = useRef(false);
   // Watch-IMU alignment inputs threaded from beginRecording → persist.
   const recordIntentAtRef = useRef<number | null>(null);
   const captureOriginRef = useRef<'watch' | 'phone'>('phone');
@@ -234,9 +244,19 @@ export function useSwingCapture({
     });
   }
 
-  async function finalizeCapture() {
+  async function finalizeCapture(origin: StopOrigin) {
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
+
+    stopOriginRef.current = origin;
+    // A manual stop below VALID_MIN_MS can only be a fragment (no classifiable
+    // swing fits in it) — discard the clip instead of analyzing it. Elapsed
+    // wall-clock since startRecording slightly overestimates clip length
+    // (camera start latency), which only errs toward analyzing, never toward
+    // discarding a keepable clip. Window-timer stops always analyze.
+    const startedAt = recordingStartedAtRef.current;
+    discardRequestedRef.current =
+      origin === 'manual' && startedAt != null && Date.now() - startedAt < VALID_MIN_MS;
 
     clearTimers();
     stopTiltCapture();
@@ -254,11 +274,25 @@ export function useSwingCapture({
     // 1500ms gives ~3x headroom. Not measured.
     recordingStopFallbackTimerRef.current = setTimeout(() => {
       console.log('[KPI] stop-fallback-fired', Date.now());
+      if (discardRequestedRef.current) {
+        // Sub-minimum manual stop: the fragment is discarded wholesale — even
+        // the never-finished fallback persists nothing. Just return to idle.
+        discardRequestedRef.current = false;
+        updateCapturePhase('idle');
+        return;
+      }
       handleCaptureFailure('recording-stop-fallback');
     }, 1500);
   }
 
   function beginRecording(opts?: { origin?: 'watch' | 'phone' }) {
+    // Every entry path starts with a clean timer slate. The phone entries
+    // (startInstantCapture/startCountdownCapture) already clear before calling;
+    // this covers the watch auto-start path, which previously could inherit a
+    // still-armed capture-window timer from a prior non-finalized recording and
+    // fire finalizeCapture mid-capture.
+    clearTimers();
+
     // Sample the active profile at button-press and hard-block if none is set —
     // a swing must never be recorded (and later persisted) without a kid to
     // attribute it to. Handedness comes from the same snapshot, so analysis and
@@ -293,6 +327,8 @@ export function useSwingCapture({
     navigatedRef.current = false;
     isFinalizingRef.current = false;
     videoOutboxEntryIdRef.current = null;
+    stopOriginRef.current = null;
+    discardRequestedRef.current = false;
     resetCaptureFrameStats();
     onBeginRecording();
 
@@ -326,6 +362,8 @@ export function useSwingCapture({
       recordIntentAtRef,
       captureOriginRef,
       recordingStopFallbackTimerRef,
+      stopOriginRef,
+      discardRequestedRef,
       watch,
       targetFps,
       updateCapturePhase,
@@ -348,7 +386,7 @@ export function useSwingCapture({
     goPlayer.play();
 
     captureTimeoutRef.current = setTimeout(() => {
-      finalizeCapture().catch(err => console.error('[finalizeCapture] timeout error:', err));
+      finalizeCapture('window_timer').catch(err => console.error('[finalizeCapture] timeout error:', err));
     }, CAPTURE_WINDOW_MS);
   }
 

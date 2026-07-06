@@ -7,12 +7,14 @@
 import {
   isGoodFrame,
   classifyCapture,
+  VALID_MIN_MS,
   VALID_MIN_FRAMES,
   VALID_MIN_POSE_RATE,
   PARTIAL_MIN_FRAMES,
   PARTIAL_MIN_POSE_RATE,
   JOINT_CONFIDENCE_THRESHOLD,
 } from './captureValidity';
+import { msToFrames } from './phaseDetectionShared';
 import type { PoseFrame, JointName } from '../../pose/PoseTypes';
 import { createEmptyJoints } from '../../pose/PoseTypes';
 
@@ -66,6 +68,11 @@ function makeFrame(confidentKeyJointCount: number, confidence = 0.9, timestampMs
 
 const MS_60FPS = 1000 / 60;
 const MS_120FPS = 1000 / 120;
+
+// Frame counts representing VALID_MIN_MS of coverage at each rate — derived
+// exactly as classifyCapture derives its floor (msToFrames on the spacing).
+const VALID_FRAMES_60 = msToFrames(VALID_MIN_MS, MS_60FPS);   // 72 @ 1200ms
+const VALID_FRAMES_120 = msToFrames(VALID_MIN_MS, MS_120FPS); // 144 @ 1200ms
 
 function makeFrameArray(totalCount: number, goodCount: number, spacingMs = MS_60FPS): PoseFrame[] {
   const frames: PoseFrame[] = [];
@@ -136,9 +143,9 @@ assertEq(isGoodFrame(makeFrame(0)), false, 'A6: no key joints → false');
 // Section B — classifyCapture
 // ---------------------------------------------------------------------------
 
-group('B1. Valid: VALID_MIN_FRAMES, 100% good');
+group('B1. Valid: exactly VALID_MIN_MS of coverage @60fps, 100% good');
 {
-  const frames = makeFrameArray(VALID_MIN_FRAMES, VALID_MIN_FRAMES);
+  const frames = makeFrameArray(VALID_FRAMES_60, VALID_FRAMES_60);
   const result = classifyCapture(frames);
   assertEq(result.validity, 'valid', 'validity = valid');
   assertEq(result.reason, null, 'reason = null');
@@ -146,19 +153,23 @@ group('B1. Valid: VALID_MIN_FRAMES, 100% good');
 
 group('B2. Valid: many frames, above VALID_MIN_POSE_RATE');
 {
-  // 60 frames, 50 good → rate = 50/60 ≈ 0.833
-  const frames = makeFrameArray(60, 50);
+  // 120 frames (≥ the 72-frame floor @60fps), 100 good → rate ≈ 0.833
+  const frames = makeFrameArray(120, 100);
   const result = classifyCapture(frames);
   assertEq(result.validity, 'valid', 'validity = valid');
 }
 
-group('B3. Valid boundary: exactly VALID_MIN_FRAMES, exactly VALID_MIN_POSE_RATE');
+group('B3. Valid boundaries: frame floor and exact VALID_MIN_POSE_RATE');
 {
-  // 30 frames, need rate = 0.70 → 21 good (21/30 = 0.70)
-  const frames = makeFrameArray(30, 21);
-  const result = classifyCapture(frames);
-  assertEq(result.validity, 'valid', 'validity = valid at exact boundary');
-  assertEq(result.reason, null, 'reason = null');
+  // One frame below the VALID_MIN_MS floor → partial
+  const oneBelow = classifyCapture(
+    makeFrameArray(VALID_FRAMES_60 - 1, VALID_FRAMES_60 - 1),
+  );
+  assertEq(oneBelow.validity, 'partial', 'one frame below the floor → partial');
+  // Rate boundary: 80 frames (≥ floor), 56 good → exactly 0.70
+  const atRate = classifyCapture(makeFrameArray(80, 56));
+  assertEq(atRate.validity, 'valid', 'validity = valid at exact pose-rate boundary (56/80 = 0.70)');
+  assertEq(atRate.reason, null, 'reason = null');
 }
 
 group('B4. Partial (few frames): between PARTIAL and VALID min frames');
@@ -170,10 +181,10 @@ group('B4. Partial (few frames): between PARTIAL and VALID min frames');
   assertEq(result.reason, 'Try a slower, fuller swing next time.', 'reason mentions slower swing');
 }
 
-group('B5. Partial (low quality): >= VALID_MIN_FRAMES, rate between thresholds');
+group('B5. Partial (low quality): >= the valid frame floor, rate between thresholds');
 {
-  // 30 frames, 15 good → rate = 0.50 (between 0.40 and 0.70)
-  const frames = makeFrameArray(30, 15);
+  // 80 frames (≥ the 72-frame floor @60fps), 40 good → rate = 0.50 (between 0.40 and 0.70)
+  const frames = makeFrameArray(80, 40);
   const result = classifyCapture(frames);
   assertEq(result.validity, 'partial', 'validity = partial');
   assertEq(result.reason, 'Step back a bit so we can see you better.', 'reason mentions step back');
@@ -249,10 +260,10 @@ group('B13. poseSuccessRate = goodFrameCount / frameCount');
 // Section C — rate independence (1c A3: gates are ms of coverage, not frames)
 // ---------------------------------------------------------------------------
 
-group('C1. 120fps valid: same 500ms coverage as 30 frames @60fps needs 60 frames');
+group('C1. 120fps valid: VALID_MIN_MS of coverage needs twice the frames of 60fps');
 {
-  const result = classifyCapture(makeFrameArray(60, 60, MS_120FPS));
-  assertEq(result.validity, 'valid', 'validity = valid (60 frames @120fps = 500ms)');
+  const result = classifyCapture(makeFrameArray(VALID_FRAMES_120, VALID_FRAMES_120, MS_120FPS));
+  assertEq(result.validity, 'valid', `validity = valid (${VALID_FRAMES_120} frames @120fps = ${VALID_MIN_MS}ms)`);
 }
 
 group('C2. 120fps partial: 30 frames is only 250ms of coverage');
@@ -271,9 +282,9 @@ group('C3. 120fps invalid: below the 250ms partial floor');
 
 group('C4. Rate independence: same physical coverage classifies identically');
 {
-  const at60 = classifyCapture(makeFrameArray(30, 30, MS_60FPS));
-  const at120 = classifyCapture(makeFrameArray(60, 60, MS_120FPS));
-  assertEq(at60.validity, at120.validity, '500ms of good frames → valid at both rates');
+  const at60 = classifyCapture(makeFrameArray(VALID_FRAMES_60, VALID_FRAMES_60, MS_60FPS));
+  const at120 = classifyCapture(makeFrameArray(VALID_FRAMES_120, VALID_FRAMES_120, MS_120FPS));
+  assertEq(at60.validity, at120.validity, `${VALID_MIN_MS}ms of good frames → same verdict at both rates`);
 }
 
 group('C5. Degenerate timestamps (all 0) fall back to 60fps frame counts');
@@ -282,6 +293,14 @@ group('C5. Degenerate timestamps (all 0) fall back to 60fps frame counts');
   assertEq(classifyCapture(zeroTs(VALID_MIN_FRAMES)).validity, 'valid', '30 zero-ts frames → valid (fallback)');
   assertEq(classifyCapture(zeroTs(PARTIAL_MIN_FRAMES)).validity, 'partial', '15 zero-ts frames → partial (fallback)');
   assertEq(classifyCapture(zeroTs(PARTIAL_MIN_FRAMES - 1)).validity, 'invalid', '14 zero-ts frames → invalid (fallback)');
+}
+
+group('C6. Regression: truncated 792ms fragment @120fps is not valid (swing 591af5b8)');
+{
+  // 96 frames at 8.33ms spacing = 792ms — a manually-truncated clip that the
+  // old 500ms floor stamped 'valid'. Above the 250ms partial floor → partial.
+  const result = classifyCapture(makeFrameArray(96, 96, MS_120FPS));
+  assertEq(result.validity, 'partial', 'validity = partial (792ms < VALID_MIN_MS)');
 }
 
 // ---------------------------------------------------------------------------

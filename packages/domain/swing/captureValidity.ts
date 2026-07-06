@@ -4,7 +4,11 @@ import { msPerFrameFromFrames, msToFrames } from './phaseDetectionShared';
 // ── Tunable thresholds (single source of truth) ──────────────────────
 // 1c A3: the classification gates are physical capture coverage in ms,
 // not frame counts — the old 30/15 frame values were 60fps-only.
-export const VALID_MIN_MS = 500;
+// EXTERNAL ASSUMPTION — 1200ms minimum for 'valid' is uncalibrated: real kid
+// swings observed at 2300-3300ms; a truncated 792ms fragment previously passed
+// the old 500ms floor as 'valid'. 1200ms rejects fragments while leaving
+// headroom below the shortest observed real swing. Revisit against corpus.
+export const VALID_MIN_MS = 1200;
 export const PARTIAL_MIN_MS = 250;
 // 60fps frame-count fallbacks, used only when frame timestamps are
 // degenerate (span 0 → msPerFrameFromFrames returns 0).

@@ -47,6 +47,7 @@ import {
   planDriftEvent,
   planOutboxReconcile,
   type CapturePhase,
+  type StopOrigin,
 } from '@/packages/domain/swing/captureFlow';
 
 /**
@@ -83,6 +84,9 @@ export interface CaptureProcessingContext {
   recordIntentAtRef: MutableRefObject<number | null>;
   captureOriginRef: MutableRefObject<'watch' | 'phone'>;
   recordingStopFallbackTimerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>;
+  // Written in finalizeCapture (after context build) — refs as refs, like the above.
+  stopOriginRef: MutableRefObject<StopOrigin | null>;
+  discardRequestedRef: MutableRefObject<boolean>;
   watch: WatchCaptureApi;
   targetFps: number | undefined;
   updateCapturePhase: (phase: CapturePhase) => void;
@@ -110,6 +114,8 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     recordIntentAtRef,
     captureOriginRef,
     recordingStopFallbackTimerRef,
+    stopOriginRef,
+    discardRequestedRef,
     watch,
     targetFps,
     updateCapturePhase,
@@ -121,6 +127,21 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     clearTimeout(recordingStopFallbackTimerRef.current);
     recordingStopFallbackTimerRef.current = null;
   }
+
+  // Sub-minimum manual stop (< VALID_MIN_MS of recording): the clip is a
+  // fragment — discard it silently. No extraction, no analysis, no persist,
+  // no outbox entry; the phase returns to idle for the next attempt.
+  // Telemetry limitation: discarded fragments therefore leave no swing row,
+  // so swing_debug.stop_origin never records them — this dev log is the only trace.
+  if (discardRequestedRef.current) {
+    discardRequestedRef.current = false;
+    console.log('[HoneySwing] sub-minimum manual stop — fragment discarded', {
+      videoDurationMs: Math.round(video.duration * 1000),
+    });
+    updateCapturePhase('idle');
+    return;
+  }
+
   videoUriRef.current = video.path;
   updateCapturePhase('processing');
 
@@ -281,6 +302,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       result.extractionTotalMs ?? null,
       buildWatchImuPersistPayload(watchReadings, watchSummary, watchAlignment, watchSeq),
       activeProfileSnapshotRef.current?.isLeftHanded,
+      stopOriginRef.current,
     ).then((swingId) => {
       if (swingId) {
         setCurrentSwingId(swingId);

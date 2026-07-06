@@ -350,7 +350,7 @@ export default function RecordTab() {
         if (captureModeRef.current === 'countdown') startCountdownRef.current();
         else startInstantRef.current();
       });
-      registerStop(() => { finalizeRef.current(); });
+      registerStop(() => { finalizeRef.current('manual'); });
       return () => {
         clearShutter();
         clearStop();
