@@ -11,6 +11,11 @@ export type ExtractResult = {
   videoDurationMs?: number | null;
   videoFrameCount?: number | null;
   extractionTotalMs?: number | null;
+  extractionBreakdown?: {
+    decode_ms: number | null;
+    inference_ms: number | null;
+    metadata_probe_ms: number | null;
+  } | null;
 };
 
 /**
@@ -57,6 +62,11 @@ export async function extractPoseFromVideo(
   const measuredCaptureFps = rtmwFrames[0]?.captureFps ?? null;
   const measuredVideoDurationMs = rtmwFrames[0]?.videoDurationMs ?? null;
   const measuredVideoFrameCount = rtmwFrames[0]?.videoFrameCount ?? null;
+  const extractionBreakdown = {
+    decode_ms: rtmwFrames[0]?.decodeTotalMs ?? null,
+    inference_ms: rtmwFrames[0]?.inferenceTotalMs ?? null,
+    metadata_probe_ms: rtmwFrames[0]?.metadataProbeMs ?? null,
+  };
   // Sum per-frame extractionMs. Refuse to silently undercount: if any
   // frame is missing or non-finite, the whole-swing total is null (same
   // failure rule as the measured-fps trio above).
@@ -78,6 +88,7 @@ export async function extractPoseFromVideo(
       videoDurationMs: measuredVideoDurationMs,
       videoFrameCount: measuredVideoFrameCount,
       extractionTotalMs,
+      extractionBreakdown,
     };
   }
 
@@ -92,6 +103,7 @@ export async function extractPoseFromVideo(
       videoDurationMs: measuredVideoDurationMs,
       videoFrameCount: measuredVideoFrameCount,
       extractionTotalMs,
+      extractionBreakdown,
     };
   }
 
@@ -125,5 +137,6 @@ export async function extractPoseFromVideo(
     videoDurationMs: measuredVideoDurationMs,
     videoFrameCount: measuredVideoFrameCount,
     extractionTotalMs,
+    extractionBreakdown,
   };
 }

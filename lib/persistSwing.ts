@@ -59,6 +59,12 @@ export async function persistSwing(
   watchImu?: WatchImuPersist | null,
   isLeftHandedOverride?: boolean,
   stopOrigin?: StopOrigin | null,
+  extractionBreakdown?: {
+    decode_ms: number | null;
+    inference_ms: number | null;
+    metadata_probe_ms: number | null;
+  } | null,
+  pipelineMs?: Record<string, number | null> | null,
 ): Promise<string | null> {
   const durationMs =
     frames.length > 1
@@ -157,6 +163,8 @@ export async function persistSwing(
       video_duration_ms: videoDurationMs ?? null,
       video_frame_count: videoFrameCount ?? null,
       extraction_total_ms: extractionTotalMs ?? null,
+      extraction_breakdown: extractionBreakdown ?? null,
+      pipeline_ms: pipelineMs ?? null,
       // What ended the recording ('window_timer' | 'manual'). Null = the native
       // layer ended it without finalizeCapture (camera deactivation mid-record) —
       // exactly the truncation signature this field exists to diagnose. Discarded
@@ -173,6 +181,7 @@ export async function persistSwing(
   let data: { id: string } | null = null;
   let insertError: PostgrestError | null = null;
   let thrown: unknown = null;
+  const tInsert = Date.now();
   try {
     const res = await supabase.from('swings').insert(row).select('id').single();
     data = res.data;
@@ -227,6 +236,7 @@ export async function persistSwing(
   }
 
   console.log('[HoneySwing] Swing persisted, frames:', frames.length);
+  console.log('[KPI] insert-ms', Date.now() - tInsert);
 
   const swingId = data?.id ?? null;
 

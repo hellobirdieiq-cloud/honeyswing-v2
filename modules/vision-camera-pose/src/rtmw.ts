@@ -17,6 +17,9 @@ export type RtmwFrame = {
   captureFps?: number | null;
   videoDurationMs?: number | null;
   videoFrameCount?: number | null;
+  decodeTotalMs?: number | null;
+  inferenceTotalMs?: number | null;
+  metadataProbeMs?: number | null;
 };
 
 export type BoundingBox = {

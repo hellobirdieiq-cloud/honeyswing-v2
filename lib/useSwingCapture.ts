@@ -178,6 +178,9 @@ export function useSwingCapture({
       onSwingPersisted?.(swingId);
       return;
     }
+    if (recordIntentAtRef.current != null) {
+      console.log('[KPI] intent-to-result-ms', Date.now() - recordIntentAtRef.current);
+    }
     router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
   }
 

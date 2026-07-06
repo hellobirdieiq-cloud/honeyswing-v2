@@ -172,6 +172,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     // ~60s < 90s. Revisit if clip length grows. Not a measured ceiling; unverified on-device at
     // decimation 2 until the 120fps test swing logs extractionMs.
     const EXTRACTION_TIMEOUT_MS = 90000;
+    const tExtract = Date.now();
     const result = await Promise.race([
       extractPoseFromVideo(
         video.path,
@@ -185,6 +186,9 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
         setTimeout(() => rej(new Error('extraction-timeout')), EXTRACTION_TIMEOUT_MS),
       ),
     ]);
+    // Wall time incl. native bridge + body-confirm; the body-confirm share is
+    // derivable as extract_wall_ms − extraction_total_ms − metadata_probe_ms.
+    const extractWallMs = Date.now() - tExtract;
 
     extractionMs = result.rtmw.reduce((acc, f) => acc + (f.extractionMs ?? 0), 0);
 
@@ -219,6 +223,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     };
     // Pull the paired-watch IMU blob now (post-extraction = maximal time for
     // the transfer to land). Empty [] when toggle OFF / no watch / stale.
+    const tWatch = Date.now();
     const watchReadings = await watch.getReadings();
     const watchSummary = watch.getSummary();
     const watchSeq = watch.getCurrentSeq();
@@ -230,6 +235,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
             captureOrigin: captureOriginRef.current,
           })
         : null;
+    const watchFetchMs = Date.now() - tWatch;
 
     const t0 = Date.now();
     const analysis = analyzePoseSequence(
@@ -244,9 +250,10 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
 
     const fallbackGateReason = deriveFallbackGateReason(analysis.swing_debug);
 
-    console.log('[HoneySwing] extractionMs', extractionMs, 'analysisMs', analysisMs);
+    console.log('[HoneySwing] extractionMs', extractionMs, 'analysisMs', analysisMs, 'extractWallMs', extractWallMs);
 
     // Grip estimation — preserves the previous contract for persistSwing's nativeGripResult.
+    const tGrip = Date.now();
     let nativeGripResult: Record<string, unknown>[] | null = null;
     try {
       const addressPhase = analysis.phases?.find((p) => p.phase === 'takeaway');
@@ -270,6 +277,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     } finally {
       try { await releaseGripBuffer(); } catch {}
     }
+    const gripMs = Date.now() - tGrip;
 
     setCurrentSwingMotion({
       frames: correctedFrames,
@@ -283,6 +291,14 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     const baseClassification = classifyCapture(poseFrames);
     const classification = deriveClassification(baseClassification, fallbackGateReason);
     const captureFrameStats = getCaptureFrameStats();
+    const pipelineMs = {
+      extract_wall_ms: extractWallMs,
+      analysis_ms: analysisMs,
+      watch_fetch_ms: watchFetchMs,
+      grip_ms: gripMs,
+      intent_to_persist_ms:
+        recordIntentAtRef.current != null ? Date.now() - recordIntentAtRef.current : null,
+    };
     swingIdPromiseRef.current = persistSwing(
       poseFrames, // RAW by design — persisted motion_frames are the debug source of truth
       analysis,
@@ -303,6 +319,8 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       buildWatchImuPersistPayload(watchReadings, watchSummary, watchAlignment, watchSeq),
       activeProfileSnapshotRef.current?.isLeftHanded,
       stopOriginRef.current,
+      result.extractionBreakdown ?? null,
+      pipelineMs,
     ).then((swingId) => {
       if (swingId) {
         setCurrentSwingId(swingId);

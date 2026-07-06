@@ -71,6 +71,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
       let captureFpsValue: Any
       let videoDurationMsValue: Any
       let videoFrameCountValue: Any
+      var metadataProbeMs: Double = 0
       if let track = asset.tracks(withMediaType: .video).first {
         captureFpsValue = NSNumber(value: track.nominalFrameRate)
 
@@ -81,6 +82,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
           videoDurationMsValue = NSNumber(value: seconds * 1000.0)
         }
 
+        let tProbe = DispatchTime.now().uptimeNanoseconds
         var frameCountResult: Any = NSNull()
         do {
           let reader = try AVAssetReader(asset: asset)
@@ -100,6 +102,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
         } catch {
           // initializer threw — keep NSNull
         }
+        metadataProbeMs = Double(DispatchTime.now().uptimeNanoseconds - tProbe) / 1_000_000.0
         videoFrameCountValue = frameCountResult
       } else {
         captureFpsValue = NSNull()
@@ -170,6 +173,12 @@ class HoneyRtmwOneShotPlugin: NSObject {
       // frames (first measured from reader-start); the sum still equals the
       // total extraction wall time persisted as extraction_total_ms.
       var prevEmitNanos = DispatchTime.now().uptimeNanoseconds
+      // Aggregate split of each frame's extractionMs: decode = cursor advance/
+      // decode + CI transform + createCGImage + crop + resize + NCHW build;
+      // inference = CoreML prediction + SimCC decode. Sum of the two runs a
+      // small residual below extraction_total_ms (dict-append/loop overhead).
+      var decodeTotalMs = 0.0
+      var inferenceTotalMs = 0.0
 
       for ts in timestamps {
         // Per-iteration autoreleasepool: drain CoreImage/CoreVideo/CoreML
@@ -179,6 +188,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
         // Returns Bool: a bare `return` inside the pool closure would exit only
         // the closure, so each reject path returns false and we abort after.
         let ok = autoreleasepool { () -> Bool in
+          let tIter = DispatchTime.now().uptimeNanoseconds
           let tsMs = ts.doubleValue
 
           // D1b: advance the forward cursor until current PTS >= target.
@@ -272,6 +282,9 @@ class HoneyRtmwOneShotPlugin: NSObject {
             return false
           }
 
+          let tInfer = DispatchTime.now().uptimeNanoseconds
+          decodeTotalMs += Double(tInfer - tIter) / 1_000_000.0
+
           do {
             let provider = try MLDictionaryFeatureProvider(dictionary: ["image": inputArray])
             let output = try mlModel.prediction(from: provider)
@@ -285,6 +298,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
 
             let keypoints = Self.decodeSimCC(simccX: simccX, simccY: simccY,
                                              origWidth: origWidth, origHeight: origHeight)
+            inferenceTotalMs += Double(DispatchTime.now().uptimeNanoseconds - tInfer) / 1_000_000.0
             let nowNanos = DispatchTime.now().uptimeNanoseconds
             let extractionMs = Double(nowNanos - prevEmitNanos) / 1_000_000.0
             prevEmitNanos = nowNanos
@@ -319,6 +333,14 @@ class HoneyRtmwOneShotPlugin: NSObject {
           reject("reader_failed", "AVAssetReader failed mid-stream: \(reader.error?.localizedDescription ?? "unknown")", nil)
         }
         return
+      }
+
+      // Loop totals ride on frames[0], matching the captureFps/videoDurationMs
+      // piggyback pattern JS reads via rtmwFrames[0].
+      if !frames.isEmpty {
+        frames[0]["decodeTotalMs"] = decodeTotalMs
+        frames[0]["inferenceTotalMs"] = inferenceTotalMs
+        frames[0]["metadataProbeMs"] = metadataProbeMs
       }
 
       DispatchQueue.main.async { resolve(frames) }
