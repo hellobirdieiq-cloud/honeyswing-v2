@@ -407,9 +407,9 @@ export function detectFaceOnThumbCrossing(
   };
 }
 
-// Impact selection: thumb crossing (primary, RH) vs arc-bottom (fallback), with the
-// per-swing cross-check. Shared by detectFaceOnPhases and detectFaceOnPhasesDebug so
-// the two paths can never drift. Returns the chosen frame + full provenance.
+// Impact selection: xCross consensus (primary, both handedness) vs arc-bottom (fallback),
+// with the per-swing cross-check. Shared by detectFaceOnPhases and detectFaceOnPhasesDebug
+// so the two paths can never drift. Returns the chosen frame + full provenance.
 type ImpactSelection = {
   impactIdx: number;
   impactSource: "consensus" | "arc_bottom";
@@ -423,7 +423,8 @@ type ImpactSelection = {
 
 // PR2 cutover — the ported xCross CONSENSUS (faceOnImpactConsensus) is now the PRIMARY face-on
 // impact. Arc-bottom is the per-reason FALLBACK only; it never wins when the consensus resolves.
-// Precedence: override → LH (unvalidated sign path) → no pre-canonical → consensus-null → CONSENSUS.
+// Precedence: override → no pre-canonical → consensus-null → CONSENSUS (both handedness —
+// the LH gate was removed once the signFlip=-1 path validated).
 // The arc-bottom↔consensus cross-check is a FLAG (downgrade), never a rejection — the consensus is
 // validated and is trusted when it resolves. Every fallback carries reliability.impact = "low" so
 // downstream can suppress a confident score (see the convergence ticket).

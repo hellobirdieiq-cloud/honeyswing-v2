@@ -19,7 +19,8 @@
  *                         within ±refineRadius of round(consensus)
  *   FINAL               = thumb sub-frame if it qualifies, else consensus, else null
  *
- * SHADOW ONLY in this PR — nothing here feeds the live impactIdx yet.
+ * LIVE (PR2 cutover) — the consensus FINAL is the primary face-on impact for both handedness;
+ * see selectFaceOnImpact (phaseDetectionFaceOn.ts).
  */
 
 import type { JointName, PoseFrame } from "../../pose/PoseTypes";

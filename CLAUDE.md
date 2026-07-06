@@ -20,23 +20,23 @@ npx expo run:ios
 
 ## Architecture
 
-HoneySwing is a golf swing analysis app. It captures pose data from the camera in real-time, then runs biomechanical analysis to score the swing. All processing is on-device.
+HoneySwing is a golf swing analysis app. It records a video of the swing, extracts pose data from the recording post-hoc with a native RTMW model, then runs biomechanical analysis to score the swing. All processing is on-device.
 
 ### Three-Layer Package Structure
 
-**Pose Abstraction** (`packages/pose/`) — Provider-based pose detection with a swappable backend interface (`PoseProvider`). Currently uses MLKitProvider wrapping MediaPipe Pose Landmarker (BlazePose GHUM Full). Key types: `PoseFrame`, `PoseSequence`, `JointName` (33 joints emitted to JS), `NormalizedJoint` (coordinates normalized 0-1).
+**Pose Layer** (`packages/pose/`) — Core pose types (`PoseTypes.ts`: `PoseFrame`, `PoseSequence`, `JointName`, `NormalizedJoint` with coordinates normalized 0-1) plus the RTMW backend (`rtmw/`): `Rtmw133Frame` (133-point COCO-WholeBody keypoints) and `rtmwAdapter` which converts RTMW output to `PoseFrame`.
 
-**Domain Logic** (`packages/domain/swing/`) — Pure TypeScript swing analysis, no UI or native dependencies. The pipeline (`analysisPipeline.ts`) orchestrates: angle calculation → trail extraction → phase detection → tempo analysis (with sanity checks) → scoring. Entry point: `analyzePoseSequence(sequence)` for live pose data.
+**Domain Logic** (`packages/domain/swing/`) — Pure TypeScript swing analysis, no UI or native dependencies. The pipeline (`analysisPipeline.ts`) orchestrates: angle calculation → trail extraction → phase detection → tempo analysis (with sanity checks) → scoring. Entry point: `analyzePoseSequence(sequence)` for extracted pose data.
 
-**UI Layer** (`app/`) — Expo Router screens. Record tab captures poses via Vision Camera frame processor worklet (max 180 frames, 4s capture window). Results screen shows score, Visual Coach (color-coded skeleton with worst-metric highlight), tempo rating, and "Record Again" CTA. Captures are classified as valid / partial / invalid before showing results.
+**UI Layer** (`app/`) — Expo Router screens. Record tab records a plain video clip via Vision Camera `startRecording` (H.265, 4s capture window, 1200ms validity floor) — there is NO frame processor on the record camera; pose is extracted from the recording after it finishes. Results screen shows score, Visual Coach (color-coded skeleton with worst-metric highlight), tempo rating, and "Record Again" CTA. Captures are classified as valid / partial / invalid before showing results.
 
 ### Native Module
 
-`ios/HoneyVisionCameraPosePlugin.swift` — Vision Camera frame processor plugin (`honeyPoseDetect`). Uses MediaPipe `PoseLandmarker` with the Full model to detect 33 body landmarks, maps all 33 to JS via worklets. Image orientation handled via CIContext render (landscape → portrait).
+`ios/honeyswing/HoneyRTMWModule.swift` — native RTMW pose extraction (CoreML `rtmw_l_256x192.mlpackage`), invoked post-capture via `extractRtmw` (`modules/vision-camera-pose/src`, wired through `lib/extractPoseFromVideo.ts`). Extracts 133 COCO-WholeBody keypoints per frame from the recorded video. Separate MediaPipe **hand** frame processors (`HoneyVisionCameraHandPlugin.swift`) serve only the grip-capture screen (`app/grip/capture.tsx`) — that is the sole remaining live frame-processor path.
 
 ### State Flow
 
-Record screen → `swingMotionStore` (in-memory store in `lib/`) → `captureValidity` classifies capture → Analysis result screen. The store holds `PoseFrame[]` from capture and `AnalysisResult` from the pipeline. No persistence — state is lost on app restart.
+Record screen → `startRecording` → `processRecordedVideo` (`lib/captureProcessing.ts`) → `extractPoseFromVideo` (native RTMW) → `swingMotionStore` (in-memory store in `lib/`) → `captureValidity` classifies capture → Analysis result screen. The store holds `PoseFrame[]` from capture and `AnalysisResult` from the pipeline. Swings persist to Supabase (`lib/persistSwing.ts`, `lib/persistPoseFull.ts`) through a durable outbox (`lib/outbox.ts`); history is browsable in the History tab. Prod rows are written with `analysis_version: 'v2'`.
 
 DB timestamp strings are parsed only via `lib/datetime.ts` `parseDbTimestamp`; never `new Date()` on a column value (offset-less strings would be read as device-local and shift the instant).
 
@@ -51,7 +51,7 @@ DB timestamp strings are parsed only via `lib/datetime.ts` `parseDbTimestamp`; n
 
 - Expo 54 / React Native 0.81.5 / React 19 (new architecture enabled)
 - TypeScript 5.9 strict mode, path alias `@/*` maps to repo root
-- react-native-vision-camera 4.7.3 + react-native-worklets-core 1.6.3
-- MediaPipe Pose Landmarker (BlazePose GHUM Full) for iOS pose detection
+- react-native-vision-camera 4.7.3 (video recording on the record screen; frame processor only on the grip/hand screen) + react-native-worklets-core 1.6.3
+- RTMW (133-point COCO-WholeBody, CoreML) for post-hoc iOS pose extraction; MediaPipe Hands for grip capture
 - react-native-svg for skeleton overlays
 - iOS deployment target: 16.0

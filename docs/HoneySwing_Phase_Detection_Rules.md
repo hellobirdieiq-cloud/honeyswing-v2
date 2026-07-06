@@ -297,41 +297,36 @@ else:
 
 ## Face-On Phase 4 — Impact
 
-**Primary signal:** Lead-thumb-line **last** negative→positive zero crossing of `dx = thumbTip.x − thumbCMC.x` within `[top, follow_through]` — `detectFaceOnThumbCrossing` (`packages/domain/swing/phaseDetectionFaceOn.ts`).
-**Fallback signal:** Speed-banded lead-wrist (`leftWrist`) Y-arc-bottom — `detectFaceOnImpact` (`phaseDetectionFaceOn.ts:152-194`).
-**Status:** SHIPPED. Primary read in **pre-canonical (unmirrored, normalized)** space — the same x-sign space the rule was validated in; the canonical mirror would negate `dx` for RH.
+**Primary signal:** xCross CONSENSUS — a geometric consensus anchor refined by a sub-frame thumb crossing — `computeFaceOnImpactConsensus` (`packages/domain/swing/faceOnImpactConsensus.ts`), selected in `selectFaceOnImpact` (`phaseDetectionFaceOn.ts`). Ported from the validated viewer prototype (`impactRule.ts`, 6/6 on verified RH swings, avg|Δ| 0.43 frames, max 1.0).
+**Fallback signal:** Speed-banded lead-wrist (`leftWrist`) Y-arc-bottom — `detectFaceOnImpact` (`phaseDetectionFaceOn.ts`).
+**Status:** SHIPPED + LIVE for **both handedness** (DB-verified 2026-07-05: lefty swings c0b3febe / 9316f27b persist `impact_source: 'consensus'`, `analysis_version: 'v2'`). Runs in **pre-canonical (unmirrored, normalized)** space — the same x-sign space the rule was validated in; the canonical mirror would negate the x-signs. LH negates them explicitly via `signFlip = -1`; the LH gate was removed once the sign path validated.
 
 ```
-// Constants — EXTERNAL ASSUMPTION (EXTERNAL_ASSUMPTIONS.faceOn.impact, phaseDetectionShared.ts)
-thumbConfMin              = 0.4   // skip a frame if either thumb joint conf < this
-thumbHoldFrames           = 2     // crossing must hold +ve this many consecutive VALID frames
-thumbMinValidCoverage     = 0.5   // fraction of window frames passing conf, else fall back
-crossCheckThresholdFrames = 6     // |thumb − arcBottom| above this sets the mismatch flag
-
-// Lead hand by handedness (RH calibrated; LH flips the sign):
-//   RH → leftThumb (CMC, COCO idx 92) & leftThumbTip (idx 95)
-//   LH → rightThumb (idx 113) & rightThumbTip (idx 116), dx negated
-dx[f] = signFlip × (thumbTip.x[f] − thumbCMC.x[f])     // signFlip = -1 for LH, else +1
-
-// Build VALID samples over [top, follow_through]; skip frames where either joint
-// conf < thumbConfMin (conf-skipped frames are NOT samples — the hold/crossing run on
-// consecutive valid samples and span gaps; interpolation uses true frame indices).
-// Collect every neg→pos crossing that holds +ve for thumbHoldFrames consecutive valid
-// samples (tail-of-window: accept if no further sample). Take the LAST crossing —
-// an early transition-wobble crossing right after 'top' confounds the first (81f0b197
-// first = 112.5 wrong; last = 137.5 vs ground truth 137.6).
-impact = sub-frame linear interpolation at the LAST qualifying crossing
+// Pipeline (faceOnImpactConsensus.ts; constants under EXTERNAL_ASSUMPTIONS.faceOn.impact.consensus)
+footPick / S2 / S3  — anchor-free geometric signals over [lo,hi] (gated wrist-below-shoulder)
+                      S2 = arm-vertical, S3 = wrist-lowest, footPick = wrist-over-foot (seed only)
+provAnchor          = round(median(available{footPick, S2, S3}))
+S1 = xCross         = sustained neg→pos crossing of g = signFlip·(betterConfWristX − feetMidX),
+                      nearest provAnchor within ±radius
+consensus           = median/avg over available{S1, S2, S3}
+thumb refine        = sustained neg→pos crossing of dx = signFlip·(thumbTipX − thumbBaseX)
+                      within ±refineRadius of round(consensus)
+FINAL               = thumb sub-frame if it qualifies, else consensus, else null
 ```
 
-**Selection precedence (`detectFaceOnPhases`):**
-1. **Test override** (`impactOverride`, testLeadWristImpact seam) → arc-bottom, bypass thumb.
-2. **Left-handed → arc-bottom** + `impact_fallback_reason: "lh_ungated"`. The LH thumb mapping is built but **gated OFF** — it is UNVALIDATED (no LH ground truth).
-3. **RH thumb crossing** when a qualifying crossing exists and window coverage ≥ `thumbMinValidCoverage` → PRIMARY (`reliability.impact = "high"`).
-4. Otherwise **arc-bottom fallback** with `impact_fallback_reason` ∈ `no_precanonical | invalid_window | no_crossing | low_coverage`.
+> The earlier standalone LAST-crossing thumb detector (`detectFaceOnThumbCrossing`) no longer feeds the live impact. Ordinal crossing selection was shown to pick post-impact noise on real swings (dec6edd1: LAST-crossing picked post-impact noise, forcing the arc-bottom fallback = 117; the true crossing was 119.5 — 2nd of 4 — against viewer ground truth 120); the consensus's thumb-refine instead selects the crossing **nearest the consensus anchor**.
 
-The window `[top, follow_through]` uses the **provisional arc-bottom** impact to bound `detectFaceOnTop`/`detectFaceOnFinish`; the thumb crossing then becomes the final impact. A swing with no detectable `top` exits earlier via the `top_search_bounds` gate (→ mid-frame fallback), so the thumb window is always valid when reached.
+**Selection precedence (`selectFaceOnImpact`, `phaseDetectionFaceOn.ts`):**
+1. **Test override** (`impactOverride`, testLeadWristImpact seam) → arc-bottom, `impact_fallback_reason: "override"`.
+2. **No pre-canonical frames / consensus not computed** → arc-bottom, `"no_precanonical"`.
+3. **Consensus resolved to null** (0 geometric signals available) → arc-bottom, `"no_signals"`.
+4. Otherwise **CONSENSUS** — PRIMARY for RH **and** LH (`impact_source: "consensus"`, `reliability.impact = "high"`, downgraded to `"medium"` on a cross-check mismatch). Every arc-bottom fallback carries `reliability.impact = "low"`.
 
-**Cross-check (never silently trusts either):** `swing_debug.phase_rules` records `impact_source`, `impact_thumb`, `impact_arcbottom`, `impact_delta`, and `impact_cross_check_mismatch` (= `|delta| > crossCheckThresholdFrames`) on every swing. A thumb-primary read with a mismatch is **kept** but downgraded to `reliability.impact = "medium"`.
+`impact_fallback_reason: "lh_ungated"` is **DEPRECATED** — no longer produced since the LH gate was removed (last persisted `lh_ungated` rows 2026-06-23); the union member survives only for historical rows (`phaseDetectionShared.ts`).
+
+The consensus window is takeaway/top-anchored; the **provisional arc-bottom** impact still bounds `detectFaceOnTop`/`detectFaceOnFinish`, and the consensus FINAL then becomes the final impact. A swing with no detectable `top` exits earlier via the `top_search_bounds` gate (→ mid-frame fallback).
+
+**Cross-check (never silently trusts either):** `swing_debug.phase_rules` records `impact_source`, `impact_consensus_final`, `impact_arcbottom`, `impact_delta`, and `impact_cross_check_mismatch` (= `|delta| >` rate-derived threshold, `crossCheckThresholdMs`) on every swing. A consensus-primary read with a mismatch is **kept** but downgraded to `reliability.impact = "medium"`. Full consensus provenance (s1/s2/s3, provAnchor, thumb-refine, signFlip) is logged under `impact_consensus`.
 
 ### Fallback detector — speed-banded lead-wrist arc-bottom
 
@@ -347,7 +342,7 @@ floor    = IMPACT_BAND_THRESHOLD * peak
 impact   = argmax_f { leftWrist.y[f] : speed[f] >= floor }   // arc bottom in high-speed band
 ```
 
-**KNOWN BIAS (why it is now the fallback, not primary):** fires at the lead-wrist **arc-bottom**, which precedes true contact — measured **3.6 frames early (~60 ms at 60 fps)** on swing 81f0b197 (ground truth 137.6 vs detected 134). A fixed lag constant was **considered and REJECTED**: lag varies with swing speed. The thumb crossing supersedes it as primary (81f0b197: 137.5 vs 137.6).
+**KNOWN BIAS (why it is now the fallback, not primary):** fires at the lead-wrist **arc-bottom**, which precedes true contact — measured **3.6 frames early (~60 ms at 60 fps)** on swing 81f0b197 (ground truth 137.6 vs detected 134). A fixed lag constant was **considered and REJECTED**: lag varies with swing speed. The consensus supersedes it as primary (81f0b197: 137.5 vs 137.6).
 
 ### Rejected alternatives
 
