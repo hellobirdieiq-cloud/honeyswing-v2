@@ -250,7 +250,12 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       try { await releaseGripBuffer(); } catch {}
     }
 
-    setCurrentSwingMotion({ frames: correctedFrames, recordedAt: Date.now(), source: 'live-camera' });
+    setCurrentSwingMotion({
+      frames: correctedFrames,
+      recordedAt: Date.now(),
+      source: 'live-camera',
+      isLeftHanded: isLeftHandedRef.current,
+    });
     setCurrentSwingAnalysis(analysis);
     updateCapturePhase('complete');
 

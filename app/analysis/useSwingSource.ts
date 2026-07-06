@@ -109,11 +109,15 @@ export function useSwingSource(swingId: string | undefined, isLeftHanded: boolea
   }, [effectiveMotion]);
 
   const fallbackAnalysis: AnalysisResult | null = useMemo(() => {
-    if (isLeftHanded === null) return null;
+    // Capture-time handedness stamped on the live motion wins; the
+    // current-profile value is only the fallback for un-stamped data (F3 —
+    // the two diverge after a profile switch).
+    const effectiveHandedness = motion?.isLeftHanded ?? isLeftHanded;
+    if (effectiveHandedness === null) return null;
     if (!isLiveSwing) return null;
     if (!sequence || classification?.validity === 'invalid' || storedAnalysis) return null;
-    return analyzePoseSequence(sequence, isLeftHanded);
-  }, [sequence, classification, storedAnalysis, isLiveSwing, isLeftHanded]);
+    return analyzePoseSequence(sequence, effectiveHandedness);
+  }, [sequence, classification, storedAnalysis, isLiveSwing, isLeftHanded, motion]);
 
   const reconstructedAnalysis: AnalysisResult | null = useMemo(
     () => (swingRecord && !isLiveSwing ? reconstructAnalysisFromRecord(swingRecord) : null),
@@ -137,7 +141,10 @@ export function useSwingSource(swingId: string | undefined, isLeftHanded: boolea
     classification,
     analysis,
     partialReason,
-    videoUri,
+    // The in-memory capture file describes the LIVE swing only. A history view
+    // must never inherit it (it's the previous capture's video — possibly
+    // another kid's); null routes useSwingVideoClock to the signed-URL path.
+    videoUri: isLiveSwing ? videoUri : null,
     gripCloud,
   };
 }

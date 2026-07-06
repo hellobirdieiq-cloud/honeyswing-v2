@@ -8,6 +8,10 @@ export type LiveSwingMotionData = {
   frames: PoseFrame[];
   recordedAt: number;
   source: 'live-camera';
+  // Handedness the capture was analyzed with. The result screen's fallback
+  // re-analysis must use this, not the profile that is primary at view time —
+  // they diverge after a profile switch (F3).
+  isLeftHanded: boolean;
 };
 
 let currentMotion: LiveSwingMotionData | null = null;
