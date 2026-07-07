@@ -13,7 +13,7 @@ import {
 } from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
-import { getUser, getUserId, supabase } from '../../lib/supabase';
+import { getUser, supabase } from '../../lib/supabase';
 import { GOLD } from '../../lib/colors';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import { getActiveProfileHandedness } from '../../lib/handedness';
@@ -76,7 +76,6 @@ export default function ResultScreen() {
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
-  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
 
   // Swing-data resolution (live store vs history fetch vs reconstruction) —
   // see useSwingSource.ts. gripCloud also lives there (vanished feature, kept).
@@ -92,17 +91,13 @@ export default function ResultScreen() {
     videoUri,
   } = useSwingSource(effectiveSwingId, isLeftHanded);
 
-  useEffect(() => {
-    getUserId().then(setViewerUserId).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
-
-  // Coach pivot: a coach can open another account's swing via swingId (RLS
-  // grant). The viewer-side effects below (session accumulator, insight
-  // persistence, Today's Focus) must only run for the viewer's OWN swings —
-  // otherwise a coach's session stats/home focus absorb the kid's swing.
-  // Live swings are always own; history swings match on user_id.
-  const isOwnSwing =
-    isLiveSwing || (!!swingRecord && !!viewerUserId && swingRecord.user_id === viewerUserId);
+  // The viewer-side effects below (session accumulator, insight persistence,
+  // Today's Focus) must run ONLY for a LIVE just-captured swing — never when
+  // opening one from history. isLiveSwing is the correct gate: it also
+  // subsumes the coach case (a coach opening another account's swing is never
+  // live), so the previous isOwnSwing/viewerUserId ownership check is gone.
+  // Gating on ownership alone let your OWN history re-pollute Today's Focus /
+  // session stats and re-write session_insight onto the old row.
 
   // Video/skeleton clock subsystem (player, signed-URL + one-retry, speed,
   // playhead, single seek path) — see useSwingVideoClock.ts.
@@ -270,14 +265,14 @@ export default function ResultScreen() {
   }, [analysis]);
 
   // Task 14: Session accumulator — feed swing data once per swing.
-  // isOwnSwing: never absorb a coach-granted foreign swing into the viewer's
-  // session stats.
+  // isLiveSwing: only a live capture feeds session stats; a history view
+  // (even your own) must not re-inflate the accumulator.
   useEffect(() => {
-    if (!analysis || !isOwnSwing || swingAddedRef.current) return;
+    if (!analysis || !isLiveSwing || swingAddedRef.current) return;
     swingAddedRef.current = true;
     const firedMetricKeys = processedTips.map(t => t.metricKey);
     sessionAccumulator.addSwing(analysis, firedMetricKeys);
-  }, [analysis, processedTips, isOwnSwing]);
+  }, [analysis, processedTips, isLiveSwing]);
 
   const sessionInsight = useMemo<SessionInsight | null>(() => {
     if (!analysis) return null;
@@ -295,11 +290,11 @@ export default function ResultScreen() {
   }, [analysis, processedTips]);
 
   // Persist session insight to the swing row (atomic JSONB merge — no read-modify-write race).
-  // isOwnSwing: a coach viewing a kid's swing must not attempt this write (it
-  // would be RLS-blocked — merge_swing_debug is SECURITY INVOKER — but don't
-  // even try; the insight derives from the viewer's own session, not this swing).
+  // isLiveSwing: only write onto the row we just captured. Opening a history
+  // swing must never re-stamp session_insight_shown onto an old row (the
+  // insight derives from the current live session, not that swing).
   useEffect(() => {
-    if (!effectiveSwingId || !sessionInsight || !isOwnSwing) return;
+    if (!effectiveSwingId || !sessionInsight || !isLiveSwing) return;
     supabase
       .rpc('merge_swing_debug', {
         swing_id: effectiveSwingId,
@@ -310,7 +305,7 @@ export default function ResultScreen() {
           console.error('[HoneySwing] session_insight_shown update error:', error.message);
         }
       });
-  }, [effectiveSwingId, sessionInsight, isOwnSwing]);
+  }, [effectiveSwingId, sessionInsight, isLiveSwing]);
 
   // Metro log for verification before tip UI exists
   useEffect(() => {
@@ -320,12 +315,13 @@ export default function ResultScreen() {
   }, [processedTips]);
 
   // Persist the weakest metric as "Today's Focus" for the home screen.
-  // isOwnSwing: a coach's device must not derive its focus from a kid's swing.
+  // isLiveSwing: Today's Focus reflects the latest LIVE swing only — opening
+  // history (yours or a kid's) must not overwrite it with a stale swing.
   useEffect(() => {
-    if (!angles || !isOwnSwing) return;
+    if (!angles || !isLiveSwing) return;
     const focus = computeFocus(angles, getCachedAgeTier(), Date.now());
     if (focus) saveFocus(focus).catch((err) => console.error('[HoneySwing]', err));
-  }, [angles, isOwnSwing]);
+  }, [angles, isLiveSwing]);
 
   // Header identity: the viewed swing's OWN attribution governs (not the current
   // primary). Live swing belongs to the current primary, so its pre-load fallback
@@ -517,7 +513,11 @@ export default function ResultScreen() {
               )
             ) : null}
 
-            {/* 3. Phase chips */}
+            {/* 3. Phase chips — video mode only. In no-video mode the
+                self-clocked SwingSkeletonCanvas renders its OWN tappable chip
+                row (onPhaseSeek), so this row would duplicate it, permanently
+                disabled (every chip needs player+video to enable). */}
+            {hasVideo && (
             <View style={styles.phaseChipsRow}>
               {PHASE_CHIPS.map((entry) => {
                 if (entry.phase === 'full_swing') {
@@ -571,6 +571,7 @@ export default function ResultScreen() {
                 );
               })}
             </View>
+            )}
 
             {/* 4. Swing Art */}
             {classification?.validity === 'valid' && effectiveMotion && (
