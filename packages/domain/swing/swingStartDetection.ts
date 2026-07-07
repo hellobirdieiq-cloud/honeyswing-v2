@@ -147,36 +147,29 @@ function detectStartDTL(
       noses.push(noseXOf(frames[F + i]));
     }
 
+    // Consistency spans ALL startWin in-window deltas (derived from the rate),
+    // not a hardcoded [0..2] slice: at startWin=2 (≤~48fps) the old slice read
+    // deltas[2]=undefined and was unsatisfiable; at startWin=6 (120fps) it
+    // checked only half the window.
+    const allSameSign = (deltas: number[]): boolean =>
+      sign(deltas[0]) !== 0 && deltas.every((d) => sign(d) === sign(deltas[0]));
+
     let spinePass = false;
     if (spines.every((v): v is number => v != null)) {
       const deltas = spines.map(v => v - addrSpine);
-      const head = deltas[0];
-      const consistent =
-        sign(deltas[0]) !== 0 &&
-        sign(deltas[0]) === sign(deltas[1]) &&
-        sign(deltas[1]) === sign(deltas[2]);
-      spinePass = Math.abs(head) > SPINE_DELTA_MIN_DEG && consistent;
+      spinePass = Math.abs(deltas[0]) > SPINE_DELTA_MIN_DEG && allSameSign(deltas);
     }
 
     let kneePass = false;
     if (knees.every((v): v is number => v != null)) {
       const deltas = knees.map(v => v - addrKnee);
-      const head = deltas[0];
-      const consistent =
-        sign(deltas[0]) !== 0 &&
-        sign(deltas[0]) === sign(deltas[1]) &&
-        sign(deltas[1]) === sign(deltas[2]);
-      kneePass = Math.abs(head) > KNEE_DELTA_MIN_DEG && consistent;
+      kneePass = Math.abs(deltas[0]) > KNEE_DELTA_MIN_DEG && allSameSign(deltas);
     }
 
     let headPass = false;
     if (noses.every((v): v is number => v != null)) {
       const deltas = noses.map(v => v - addrNose);
-      const consistent =
-        sign(deltas[0]) !== 0 &&
-        sign(deltas[0]) === sign(deltas[1]) &&
-        sign(deltas[1]) === sign(deltas[2]);
-      headPass = consistent;
+      headPass = allSameSign(deltas);
     }
 
     const passes = (spinePass ? 1 : 0) + (kneePass ? 1 : 0) + (headPass ? 1 : 0);

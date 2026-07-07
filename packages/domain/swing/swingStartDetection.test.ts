@@ -149,6 +149,65 @@ group('T3. Front camera → LOW stub mirroring phases.address');
 }
 
 // ---------------------------------------------------------------------------
+// T4 — D3 regression, low fps (~48fps → startWin=2): consistency check derived
+// from the rate window. Pre-fix, the hardcoded deltas[2] read was undefined at
+// startWin=2, making detection structurally unsatisfiable → always LOW.
+// ---------------------------------------------------------------------------
+group('T4. D3 low-fps (~48fps, startWin=2) — start detection is satisfiable');
+{
+  const MS_48FPS = 21; // ≈47.6fps → startWin = max(1, round(50/21)) = 2
+  const N = 50;
+  const frames: PoseFrame[] = [];
+  for (let i = 0; i < N; i++) {
+    if (i <= 28) {
+      frames.push(makeFrame(i, STABLE));
+    } else {
+      frames.push(makeFrame(i, MOTION, 0.515 + (i - 29) * 0.010));
+    }
+  }
+  // top=45 → eStart = 45 - round(333/21)=16 → 29 (motion) fails, E=28 is address.
+  const result = detectSwingStart(frames, { address: 0, top: 45 }, false, 'dtl', MS_48FPS);
+
+  assertEq(result.trueAddressFrame, 28, 'T4: trueAddressFrame at the last stable frame');
+  assertEq(result.trueSwingStartFrame, 29, 'T4: swing start detected at first motion frame');
+  assertEq(result.reliability, 'HIGH', 'T4: reliability HIGH (pre-fix this was always LOW at ≤~48fps)');
+}
+
+// ---------------------------------------------------------------------------
+// T5 — D3 at 120fps (startWin=6): the FULL window must be consistent. Pre-fix
+// only deltas[0..2] were checked, so 3 consistent frames followed by reversal
+// slipped through; now the whole 6-frame window gates detection.
+// ---------------------------------------------------------------------------
+group('T5. D3 120fps (startWin=6) — full-window consistency');
+{
+  const MS_120FPS = 1000 / 120; // startWin = round(50/8.33) = 6
+  const N = 110;
+
+  // 5a: genuinely consistent motion → detected.
+  const consistent: PoseFrame[] = [];
+  for (let i = 0; i < N; i++) {
+    if (i <= 59) consistent.push(makeFrame(i, STABLE));
+    else consistent.push(makeFrame(i, MOTION, 0.515 + (i - 60) * 0.010));
+  }
+  // top=100 → eStart = 100 - round(333/8.33)=40 → 60 (motion) fails, E=59 is address.
+  const r1 = detectSwingStart(consistent, { address: 0, top: 100 }, false, 'dtl', MS_120FPS);
+  assertEq(r1.trueAddressFrame, 59, 'T5a: trueAddressFrame at the last stable frame');
+  assertEq(r1.trueSwingStartFrame, 60, 'T5a: consistent 6-frame motion detected');
+  assertEq(r1.reliability, 'HIGH', 'T5a: reliability HIGH for sustained motion');
+
+  // 5b: only 3 consistent frames then oscillation — pre-fix (deltas[0..2] only)
+  // this DETECTED at F=60; the full-window check must reject every window.
+  const jittery: PoseFrame[] = [];
+  for (let i = 0; i < N; i++) {
+    if (i <= 59) jittery.push(makeFrame(i, STABLE));
+    else if (i <= 62) jittery.push(makeFrame(i, MOTION, 0.515 + (i - 60) * 0.010));
+    else jittery.push(i % 2 === 0 ? makeFrame(i, STABLE) : makeFrame(i, MOTION, 0.52));
+  }
+  const r2 = detectSwingStart(jittery, { address: 0, top: 100 }, false, 'dtl', MS_120FPS);
+  assertEq(r2.reliability, 'LOW', 'T5b: 3-frame blip + oscillation is NOT a swing start at 120fps');
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 console.log(`\n${'═'.repeat(55)}`);
