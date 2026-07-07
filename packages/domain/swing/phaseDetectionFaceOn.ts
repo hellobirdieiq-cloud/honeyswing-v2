@@ -718,6 +718,262 @@ function detectFaceOnFinish(
 }
 
 // ---------------------------------------------------------------------------
+// Shared sequence core — single source of truth for BOTH entry points
+// (efficiency-audit Fix 8). detectFaceOnPhases (gated production) and
+// detectFaceOnPhasesDebug (scripts harness) previously hand-mirrored ~160
+// lines that had to be kept in lockstep by hand; both now run THIS sequence
+// and only format its state. The two REAL behavioral divergences are explicit
+// flags instead of drifting copies:
+//   - impactOverride: production-only test seam (scripts/testLeadWristImpact);
+//     the Debug entry never passes it, matching the old Debug body.
+//   - salvageTrailMiss: on the trail-timestamp invariant breach production
+//     THROWS (captureProcessing catches it as dev telemetry) while the Debug
+//     harness substitutes the trail-space index so corpus scripts keep
+//     producing rows for breach-y swings.
+// The sequence, gate order, reliability/assumption mutation order, and
+// short-circuit points are byte-identical to the pre-refactor production body
+// (locked by phaseDetectionFaceOn.test.ts + the corpus-replay byte-diff).
+// ---------------------------------------------------------------------------
+
+/** Which gate stopped the sequence — distinguishes the two temporal_inversion
+ * sites because their production ruleDebug shapes differ (trigger_a omits the
+ * top fields; the ladder includes them). */
+type FaceOnGateStage =
+  | "points"
+  | "impact_search"
+  | "top_search"
+  | "trigger_a"
+  | "ladder"
+  | "bunched";
+
+type FaceOnTakeawayTelemetry = {
+  takeaway_path: "body_scaled" | "fallback_gate";
+  takeaway_locked_body_height: number | null;
+  takeaway_body_scaled_frame: number | null;
+  takeaway_fallback_idx: number | null;
+  takeaway_travel_bh: number | null;
+  takeaway_fallback_reason: FaceOnTakeawayOnset["fallbackReason"];
+};
+
+type FaceOnSequenceState = {
+  gate: FallbackGate | null;
+  gateStage: FaceOnGateStage | null;
+  swingStart: { frame: number | null; reliability: "high" | "medium" | "low" | null };
+  /** TRAIL-space; null only when the points gate fired before any compute. */
+  takeawayAddressIdx: number | null;
+  takeawayTelemetry: FaceOnTakeawayTelemetry | null;
+  /** Frame-space takeaway (salvaged from trail-space in salvageTrailMiss mode). */
+  takeawayIdx: number | null;
+  arcBottomFrame: number | null;
+  topVelMinShadow: number | null;
+  topXExtreme: FaceOnTopXExtreme | null;
+  topIdx: number | null;
+  consensusShadow: FaceOnImpactConsensusShadow | null;
+  selection: ImpactSelection | null;
+  impactIdx: number | null;
+  finish: { frame: number; reliability: "high" | "medium" | "low" } | null;
+  downswingIdx: number | null;
+  triggerA: { fired: boolean; condition: string };
+  triggerB: { fired: boolean; offendingPair: string | null };
+  reliability: PhaseRuleReliability;
+  assumptionsUsed: string[];
+};
+
+function runFaceOnPhaseSequence(input: {
+  canonical: PoseSequence;
+  trail: SwingTrailPoint[];
+  msPerFrame: number;
+  preCanonical?: PoseSequence;
+  isLeftHanded: boolean;
+  impactOverride?: number;
+  salvageTrailMiss: boolean;
+}): FaceOnSequenceState {
+  const { canonical, trail, msPerFrame } = input;
+  const frames = canonical.frames;
+
+  const state: FaceOnSequenceState = {
+    gate: null,
+    gateStage: null,
+    swingStart: { frame: null, reliability: null },
+    takeawayAddressIdx: null,
+    takeawayTelemetry: null,
+    takeawayIdx: null,
+    arcBottomFrame: null,
+    topVelMinShadow: null,
+    topXExtreme: null,
+    topIdx: null,
+    consensusShadow: null,
+    selection: null,
+    impactIdx: null,
+    finish: null,
+    downswingIdx: null,
+    triggerA: { fired: false, condition: "n/a (missing indices)" },
+    triggerB: { fired: false, offendingPair: null },
+    reliability: emptyReliability(),
+    assumptionsUsed: [],
+  };
+  const gate = (g: FallbackGate, stage: FaceOnGateStage): FaceOnSequenceState => {
+    state.gate = g;
+    state.gateStage = stage;
+    return state;
+  };
+
+  if (trail.length < 6) {
+    return gate("points_too_short", "points");
+  }
+
+  // Phase 0 — swing_start
+  state.swingStart = detectFaceOnSwingStart(frames, msPerFrame);
+  state.reliability.swing_start = state.swingStart.reliability;
+  state.assumptionsUsed.push("faceOn.swingStart");
+
+  // Phase 2 — takeaway address candidate. Body-scaled, reversal-rejecting rule
+  // overrides the legacy directional gate when confident; otherwise falls back
+  // to the exact findSetupEndIndex value (always computed → fallback path is
+  // byte-identical). Both spaces are trail-space.
+  const velocities = computeTrailVelocities(trail);
+  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
+  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
+  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
+  const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
+  state.takeawayAddressIdx = takeawayAddressIdx;
+  state.reliability.takeaway = "medium";
+
+  const trailIdxToFrame = (idx: number | null): number | null => {
+    if (idx == null || idx < 0 || idx >= trail.length) return null;
+    const f = frames.findIndex((fr) => fr.timestampMs === trail[idx].timestamp);
+    return f === -1 ? null : f;
+  };
+  state.takeawayTelemetry = {
+    takeaway_path: takeawayOnset.fired
+      ? ("body_scaled" as const)
+      : ("fallback_gate" as const),
+    takeaway_locked_body_height: takeawayOnset.lockedBodyHeight,
+    takeaway_body_scaled_frame: trailIdxToFrame(takeawayOnset.onsetTrailIdx),
+    takeaway_fallback_idx: trailIdxToFrame(fallbackIdx),
+    takeaway_travel_bh: takeawayOnset.travelBH,
+    takeaway_fallback_reason: takeawayOnset.fallbackReason,
+  };
+
+  // Phase 1 (frame-space) — takeaway onset. takeawayAddressIdx is a TRAIL-space index;
+  // map it to frame-space via timestamp so it can anchor the top search and so phases[].index
+  // agrees with topIdx/impactIdx. Computed here (before the top search) because the top window
+  // anchors on the takeaway instead of the late-prone swingStart.
+  const takeawayTimestamp = trail[takeawayAddressIdx].timestamp;
+  let takeawayIdx = frames.findIndex((f) => f.timestampMs === takeawayTimestamp);
+  if (takeawayIdx === -1) {
+    if (!input.salvageTrailMiss) {
+      throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
+    }
+    takeawayIdx = takeawayAddressIdx; // harness salvage — old Debug `?? takeawayAddressIdx`
+  }
+  state.takeawayIdx = takeawayIdx;
+
+  // Phase 4 — PROVISIONAL impact (arc-bottom or test override). Bounds the
+  // top/finish search; the consensus (below) becomes the final impact.
+  let arcBottomFrame: number;
+  if (input.impactOverride != null) {
+    // Required range [0, frames.length-1]: detectFaceOnTop's search bound
+    // `to = impactIdx - toOffset` indexes frames[F] for F <= to <= impactIdx, so an
+    // out-of-ARRAY override would read past the array. Out-of-ORDER but in-array
+    // values are safe — the top_search_bounds / temporal_inversion gates handle them.
+    if (input.impactOverride < 0 || input.impactOverride > frames.length - 1) {
+      return gate("impact_search_bounds", "impact_search");
+    }
+    arcBottomFrame = input.impactOverride;
+    state.assumptionsUsed.push("faceOn.impact:override");
+  } else {
+    const impact = detectFaceOnImpact(frames, msPerFrame);
+    state.assumptionsUsed.push("faceOn.impact");
+    if (impact.frame == null) {
+      return gate("impact_search_bounds", "impact_search");
+    }
+    arcBottomFrame = impact.frame;
+  }
+  state.arcBottomFrame = arcBottomFrame;
+
+  // Phase 3 — top of backswing. PRIMARY = median X-extreme (rotational top), anchored on
+  // the frame-mapped takeaway and the provisional arc-bottom. The legacy velocity-min rule
+  // (detectFaceOnTop) is retained as a logged shadow only (top_velmin_shadow).
+  const topSearchAnchor = takeawayIdx;
+  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
+  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
+  state.topVelMinShadow = topVelMin.frame;
+  state.topXExtreme = topXExtreme;
+  state.assumptionsUsed.push("faceOn.top");
+  if (topXExtreme.frame == null) {
+    return gate("top_search_bounds", "top_search");
+  }
+  const topIdx = topXExtreme.frame;
+  state.topIdx = topIdx;
+  state.reliability.top = topXExtreme.reliability ?? "medium";
+
+  // Phase 4 (PRIMARY) — xCross CONSENSUS impact over [topIdx, topIdx+downswingBudget] on
+  // preCanonical (the raw/un-mirrored x-sign space it was validated in). Arc-bottom is the
+  // per-reason fallback only; see selectFaceOnImpact.
+  const consensus =
+    input.impactOverride == null
+      ? computeImpactConsensus(input.preCanonical, topIdx, input.isLeftHanded, msPerFrame)
+      : null;
+  state.consensusShadow = consensus ? toImpactConsensusShadow(consensus) : null;
+  const selection = selectFaceOnImpact({
+    arcBottomFrame,
+    consensus,
+    isLeftHanded: input.isLeftHanded,
+    hasPreCanonical: input.preCanonical != null,
+    isOverride: input.impactOverride != null,
+    msPerFrame,
+  });
+  state.selection = selection;
+  const impactIdx = selection.impactIdx;
+  state.impactIdx = impactIdx;
+  state.reliability.impact = selection.impactReliability;
+  if (selection.impactSource === "consensus") state.assumptionsUsed.push("faceOn.impact:consensus");
+
+  // Phase 5 — finish, RE-ANCHORED on the FINAL impact (not the provisional arc-bottom),
+  // so a corrected impact later than the old arc-bottom-anchored finish does not trip
+  // the impact<finish monotonicity gate (e.g. 9d1606a6: impact 125 vs old finish 103).
+  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
+  state.finish = finish;
+  state.assumptionsUsed.push("faceOn.finish");
+  state.reliability.finish = finish.reliability;
+
+  state.reliability.true_address = "low";
+
+  // Sanity: takeaway must precede top must precede impact (final impact).
+  const triggerAOk = takeawayIdx < topIdx && topIdx < impactIdx;
+  state.triggerA = {
+    fired: !triggerAOk,
+    condition: `${takeawayIdx} < ${topIdx} < ${impactIdx} = ${triggerAOk}`,
+  };
+  if (!triggerAOk) {
+    return gate("temporal_inversion", "trigger_a");
+  }
+
+  const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
+  state.downswingIdx = downswingIdx;
+
+  const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
+  const labels = ["takeaway", "top", "downswing", "impact", "follow_through"];
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] <= indices[i - 1]) {
+      state.triggerB = {
+        fired: true,
+        offendingPair: `${labels[i - 1]}=${indices[i - 1]} >= ${labels[i]}=${indices[i]}`,
+      };
+      return gate("temporal_inversion", "ladder");
+    }
+  }
+  for (let i = 1; i < indices.length; i++) {
+    if (indices[i] - indices[i - 1] < 2) {
+      return gate("phases_too_bunched", "bunched");
+    }
+  }
+
+  return state;
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher entry point
 // ---------------------------------------------------------------------------
 
@@ -746,258 +1002,61 @@ export function detectFaceOnPhases(input: {
   fallbackGate: FallbackGate | null;
   ruleDebug: PhaseRuleDebug;
 } {
-  const { canonical, trail, msPerFrame } = input;
+  const { canonical, trail } = input;
   const frames = canonical.frames;
-  const isLeftHanded = input.isLeftHanded ?? false;
-  const reliability: PhaseRuleReliability = emptyReliability();
-  const assumptionsUsed: string[] = [];
 
-  if (trail.length < 6) {
-    return {
-      phases: [],
-      fallbackGate: "points_too_short",
-      ruleDebug: {
-        detector: "face_on",
-        swing_start_frame: null,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
-    };
-  }
-
-  // Phase 0 — swing_start
-  const swingStart = detectFaceOnSwingStart(frames, msPerFrame);
-  reliability.swing_start = swingStart.reliability;
-  assumptionsUsed.push("faceOn.swingStart");
-
-  // Phase 2 — takeaway address candidate. Body-scaled, reversal-rejecting rule
-  // overrides the legacy directional gate when confident; otherwise falls back
-  // to the exact findSetupEndIndex value (always computed → fallback path is
-  // byte-identical to today). Both spaces are trail-space.
-  const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
-  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
-  const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
-  reliability.takeaway = "medium";
-
-  const trailIdxToFrame = (idx: number | null): number | null => {
-    if (idx == null || idx < 0 || idx >= trail.length) return null;
-    const f = frames.findIndex((fr) => fr.timestampMs === trail[idx].timestamp);
-    return f === -1 ? null : f;
-  };
-  const takeawayTelemetry = {
-    takeaway_path: takeawayOnset.fired
-      ? ("body_scaled" as const)
-      : ("fallback_gate" as const),
-    takeaway_locked_body_height: takeawayOnset.lockedBodyHeight,
-    takeaway_body_scaled_frame: trailIdxToFrame(takeawayOnset.onsetTrailIdx),
-    takeaway_fallback_idx: trailIdxToFrame(fallbackIdx),
-    takeaway_travel_bh: takeawayOnset.travelBH,
-    takeaway_fallback_reason: takeawayOnset.fallbackReason,
-  };
-
-  // Phase 1 (frame-space) — takeaway onset. takeawayAddressIdx is a TRAIL-space index;
-  // map it to frame-space via timestamp so it can anchor the top search and so phases[].index
-  // agrees with topIdx/impactIdx. Computed here (before the top search) because the top window
-  // now anchors on the takeaway instead of the late-prone swingStart.
-  const takeawayTimestamp = trail[takeawayAddressIdx].timestamp;
-  const takeawayIdx = frames.findIndex((f) => f.timestampMs === takeawayTimestamp);
-  if (takeawayIdx === -1) {
-    throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
-  }
-
-  // Phase 4 — PROVISIONAL impact (arc-bottom or test override). Used to bound the
-  // top/finish search; the thumb crossing (computed below) becomes the final impact
-  // for RH swings. impactOverride is a test seam (testLeadWristImpact) and bypasses
-  // the thumb primary entirely.
-  let arcBottomFrame: number | null;
-  if (input.impactOverride != null) {
-    // Required range [0, frames.length-1]: detectFaceOnTop's search bound
-    // `to = impactIdx - toOffset` indexes frames[F] for F <= to <= impactIdx, so an
-    // out-of-ARRAY override would read past the array (frames[F].joints on undefined).
-    // Out-of-ORDER but in-array values are safe — the existing top_search_bounds /
-    // temporal_inversion gates handle them.
-    if (input.impactOverride < 0 || input.impactOverride > frames.length - 1) {
-      return {
-        phases: [],
-        fallbackGate: "impact_search_bounds",
-        ruleDebug: {
-          detector: "face_on",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: null,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-          ...takeawayTelemetry,
-        },
-      };
-    }
-    arcBottomFrame = input.impactOverride;
-    assumptionsUsed.push("faceOn.impact:override");
-  } else {
-    const impact = detectFaceOnImpact(frames, msPerFrame);
-    assumptionsUsed.push("faceOn.impact");
-    if (impact.frame == null) {
-      return {
-        phases: [],
-        fallbackGate: "impact_search_bounds",
-        ruleDebug: {
-          detector: "face_on",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: null,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-          ...takeawayTelemetry,
-        },
-      };
-    }
-    arcBottomFrame = impact.frame;
-  }
-
-  // Phase 3 — top of backswing. PRIMARY = median X-extreme (rotational top), anchored on
-  // the frame-mapped takeaway and the provisional arc-bottom. The legacy velocity-min rule
-  // (detectFaceOnTop) is retained as a logged shadow only (top_velmin_shadow); it mis-picks
-  // over the wider takeaway-anchored window, so it is no longer the top source.
-  const topSearchAnchor = takeawayIdx;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
-  assumptionsUsed.push("faceOn.top");
-  if (topXExtreme.frame == null) {
-    return {
-      phases: [],
-      fallbackGate: "top_search_bounds",
-      ruleDebug: {
-        detector: "face_on",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-        ...takeawayTelemetry,
-        top_x_extreme: topXExtreme,
-        top_velmin_shadow: topVelMin.frame,
-      },
-    };
-  }
-  const topIdx = topXExtreme.frame;
-  reliability.top = topXExtreme.reliability ?? "medium";
-
-  // Phase 4 (PRIMARY) — xCross CONSENSUS impact over [topIdx, topIdx+downswingBudget] on
-  // preCanonical (the raw/un-mirrored x-sign space it was validated in). Arc-bottom is the
-  // per-reason fallback only (override / LH / no-preCanonical / no-signals); see selectFaceOnImpact.
-  // The consensus window is takeaway/top-anchored — it does NOT depend on finish, so finish can be
-  // computed AFTER impact (re-anchored on it below) with no cycle.
-  const consensus =
-    input.impactOverride == null ? computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame) : null;
-  const impactConsensusShadow = consensus ? toImpactConsensusShadow(consensus) : null;
-  const selection = selectFaceOnImpact({
-    arcBottomFrame,
-    consensus,
-    isLeftHanded,
-    hasPreCanonical: input.preCanonical != null,
-    isOverride: input.impactOverride != null,
-    msPerFrame,
+  const s = runFaceOnPhaseSequence({
+    canonical,
+    trail,
+    msPerFrame: input.msPerFrame,
+    preCanonical: input.preCanonical,
+    isLeftHanded: input.isLeftHanded ?? false,
+    impactOverride: input.impactOverride,
+    salvageTrailMiss: false, // production semantics: trail-timestamp miss THROWS
   });
-  const impactIdx = selection.impactIdx;
-  const {
-    impactSource,
-    impactConsensusFinal,
-    impactArcbottom,
-    impactDelta,
-    impactCrossCheckMismatch,
-    impactFallbackReason,
-  } = selection;
-  reliability.impact = selection.impactReliability;
-  if (impactSource === "consensus") assumptionsUsed.push("faceOn.impact:consensus");
 
-  // Phase 5 — finish, RE-ANCHORED on the FINAL impact (not the provisional arc-bottom). Wiring
-  // change only — detectFaceOnFinish is unchanged; it just searches the plateau after the corrected
-  // impact. Required so a corrected impact later than the old arc-bottom-anchored finish does not
-  // trip the impact<finish monotonicity gate (e.g. 9d1606a6: impact 125 vs old finish 103).
-  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
-  assumptionsUsed.push("faceOn.finish");
-  reliability.finish = finish.reliability;
+  // ruleDebug assembly — field inclusion depends on how far the sequence got,
+  // preserving the exact pre-refactor per-gate shapes (points gate carries no
+  // takeaway telemetry; trigger_a carries impact but not top fields; the
+  // ladder/bunched gates and success carry everything).
+  const base = {
+    detector: "face_on" as const,
+    swing_start_frame: s.swingStart.frame,
+    true_address_frame: null,
+    reliability: s.reliability,
+    external_assumptions_used: s.assumptionsUsed,
+  };
+  const topFields = {
+    top_x_extreme: s.topXExtreme ?? undefined,
+    top_velmin_shadow: s.topVelMinShadow,
+  };
+  const impactFields = s.selection
+    ? {
+        impact_source: s.selection.impactSource,
+        impact_consensus_final: s.selection.impactConsensusFinal,
+        impact_arcbottom: s.selection.impactArcbottom,
+        impact_delta: s.selection.impactDelta,
+        impact_cross_check_mismatch: s.selection.impactCrossCheckMismatch,
+        impact_fallback_reason: s.selection.impactFallbackReason,
+        impact_consensus: s.consensusShadow,
+      }
+    : null;
 
-  // takeawayIdx (frame-space) was computed above, before the top search, so it can anchor it.
-  reliability.true_address = "low";
-
-  // Sanity: takeaway must precede top must precede impact (final impact).
-  if (!(takeawayIdx < topIdx && topIdx < impactIdx)) {
-    return {
-      phases: [],
-      fallbackGate: "temporal_inversion",
-      ruleDebug: {
-        detector: "face_on",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-        ...takeawayTelemetry,
-        impact_source: impactSource,
-        impact_consensus_final: impactConsensusFinal,
-        impact_arcbottom: impactArcbottom,
-        impact_delta: impactDelta,
-        impact_cross_check_mismatch: impactCrossCheckMismatch,
-        impact_fallback_reason: impactFallbackReason,
-        impact_consensus: impactConsensusShadow,
-      },
+  if (s.gate) {
+    const ruleDebug: PhaseRuleDebug = {
+      ...base,
+      ...(s.gateStage !== "points" ? s.takeawayTelemetry : null),
+      ...(s.gateStage === "trigger_a" || s.gateStage === "ladder" || s.gateStage === "bunched"
+        ? impactFields
+        : null),
+      ...(s.gateStage === "top_search" || s.gateStage === "ladder" || s.gateStage === "bunched"
+        ? topFields
+        : null),
     };
+    return { phases: [], fallbackGate: s.gate, ruleDebug };
   }
 
-  const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
-
-  const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] <= indices[i - 1]) {
-      return {
-        phases: [],
-        fallbackGate: "temporal_inversion",
-        ruleDebug: {
-          detector: "face_on",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: null,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-          ...takeawayTelemetry,
-          impact_source: impactSource,
-          impact_consensus_final: impactConsensusFinal,
-          impact_arcbottom: impactArcbottom,
-          impact_delta: impactDelta,
-          impact_cross_check_mismatch: impactCrossCheckMismatch,
-          impact_fallback_reason: impactFallbackReason,
-          top_x_extreme: topXExtreme,
-          top_velmin_shadow: topVelMin.frame,
-          impact_consensus: impactConsensusShadow,
-        },
-      };
-    }
-  }
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] - indices[i - 1] < 2) {
-      return {
-        phases: [],
-        fallbackGate: "phases_too_bunched",
-        ruleDebug: {
-          detector: "face_on",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: null,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-          ...takeawayTelemetry,
-          impact_source: impactSource,
-          impact_consensus_final: impactConsensusFinal,
-          impact_arcbottom: impactArcbottom,
-          impact_delta: impactDelta,
-          impact_cross_check_mismatch: impactCrossCheckMismatch,
-          impact_fallback_reason: impactFallbackReason,
-          top_x_extreme: topXExtreme,
-          top_velmin_shadow: topVelMin.frame,
-          impact_consensus: impactConsensusShadow,
-        },
-      };
-    }
-  }
-
+  const indices = [s.takeawayIdx!, s.topIdx!, s.downswingIdx!, s.impactIdx!, s.finish!.frame];
   const phases: DetectedPhase[] = PHASE_ORDER.map((phase, i) => {
     const frameIdx = indices[i]; // sub-detectors return FRAME-space indices
     return {
@@ -1014,21 +1073,10 @@ export function detectFaceOnPhases(input: {
     phases,
     fallbackGate: null,
     ruleDebug: {
-      detector: "face_on",
-      swing_start_frame: swingStart.frame,
-      true_address_frame: null,
-      reliability,
-      external_assumptions_used: assumptionsUsed,
-      ...takeawayTelemetry,
-      impact_source: impactSource,
-      impact_consensus_final: impactConsensusFinal,
-      impact_arcbottom: impactArcbottom,
-      impact_delta: impactDelta,
-      impact_cross_check_mismatch: impactCrossCheckMismatch,
-      impact_fallback_reason: impactFallbackReason,
-      top_x_extreme: topXExtreme,
-      top_velmin_shadow: topVelMin.frame,
-      impact_consensus: impactConsensusShadow,
+      ...base,
+      ...s.takeawayTelemetry,
+      ...impactFields,
+      ...topFields,
     },
   };
 }
@@ -1084,9 +1132,17 @@ export function detectFaceOnPhasesDebug(input: {
   preCanonical?: PoseSequence;
   isLeftHanded?: boolean;
 }): FaceOnPhasesDebugResult {
-  const { canonical, trail, msPerFrame } = input;
-  const frames = canonical.frames;
-  const isLeftHanded = input.isLeftHanded ?? false;
+  const s = runFaceOnPhaseSequence({
+    canonical: input.canonical,
+    trail: input.trail,
+    msPerFrame: input.msPerFrame,
+    preCanonical: input.preCanonical,
+    isLeftHanded: input.isLeftHanded ?? false,
+    // No impactOverride (parity with the old Debug body) and salvage the
+    // trail-timestamp miss instead of throwing so corpus scripts keep
+    // producing rows for breach-y swings.
+    salvageTrailMiss: true,
+  });
 
   const result: FaceOnPhasesDebugResult = {
     swingStartFrame: null,
@@ -1112,126 +1168,51 @@ export function detectFaceOnPhasesDebug(input: {
     takeawayFallbackIdx: null,
     takeawayTravelBH: null,
     takeawayFallbackReason: null,
-    triggerA: { fired: false, condition: "n/a (missing indices)" },
-    triggerB: { fired: false, offendingPair: null },
-    wouldFallbackGate: null,
+    triggerA: s.triggerA,
+    triggerB: s.triggerB,
+    wouldFallbackGate: s.gate,
   };
 
-  if (trail.length < 6) {
-    result.wouldFallbackGate = "points_too_short";
+  if (s.gateStage === "points") return result; // nothing else ran
+
+  result.swingStartFrame = s.swingStart.frame;
+  result.takeawayAddressIdx = s.takeawayAddressIdx;
+  result.addressIdx = s.takeawayAddressIdx;
+  if (s.takeawayTelemetry) {
+    result.takeawayPath = s.takeawayTelemetry.takeaway_path;
+    result.takeawayLockedBodyHeight = s.takeawayTelemetry.takeaway_locked_body_height;
+    result.takeawayBodyScaledFrame = s.takeawayTelemetry.takeaway_body_scaled_frame;
+    result.takeawayFallbackIdx = s.takeawayTelemetry.takeaway_fallback_idx;
+    result.takeawayTravelBH = s.takeawayTelemetry.takeaway_travel_bh;
+    result.takeawayFallbackReason = s.takeawayTelemetry.takeaway_fallback_reason;
+  }
+  if (s.gateStage === "impact_search") return result;
+
+  result.topVelMinShadow = s.topVelMinShadow;
+  result.topXExtreme = s.topXExtreme;
+  result.topIdx = s.topXExtreme?.frame ?? null;
+  if (s.gateStage === "top_search") {
+    result.impactIdx = s.arcBottomFrame; // best available before the gate
     return result;
   }
 
-  const swingStart = detectFaceOnSwingStart(frames, msPerFrame);
-  result.swingStartFrame = swingStart.frame;
-
-  const velocities = computeTrailVelocities(trail);
-  const smoothed = smoothVelocities(velocities, smoothWindow(msPerFrame));
-  const fallbackIdx = findSetupEndIndex(smoothed, trail, msPerFrame);
-  const takeawayOnset = findTakeawayOnsetFaceOn(trail, frames, msPerFrame);
-  const takeawayAddressIdx = takeawayOnset.onsetTrailIdx ?? fallbackIdx;
-  result.takeawayAddressIdx = takeawayAddressIdx;
-  result.addressIdx = takeawayAddressIdx;
-
-  const trailIdxToFrame = (idx: number | null): number | null => {
-    if (idx == null || idx < 0 || idx >= trail.length) return null;
-    const f = frames.findIndex((fr) => fr.timestampMs === trail[idx].timestamp);
-    return f === -1 ? null : f;
-  };
-  result.takeawayPath = takeawayOnset.fired ? "body_scaled" : "fallback_gate";
-  result.takeawayLockedBodyHeight = takeawayOnset.lockedBodyHeight;
-  result.takeawayBodyScaledFrame = trailIdxToFrame(takeawayOnset.onsetTrailIdx);
-  result.takeawayFallbackIdx = trailIdxToFrame(fallbackIdx);
-  result.takeawayTravelBH = takeawayOnset.travelBH;
-  result.takeawayFallbackReason = takeawayOnset.fallbackReason;
-
-  // Provisional arc-bottom impact (bounds top/finish search).
-  const impact = detectFaceOnImpact(frames, msPerFrame);
-
-  if (impact.frame == null) {
-    result.wouldFallbackGate = "impact_search_bounds";
-    return result;
+  result.impactIdx = s.impactIdx;
+  result.impactConsensus = s.consensusShadow;
+  if (s.selection) {
+    result.impactSource = s.selection.impactSource;
+    result.impactConsensusFinal = s.selection.impactConsensusFinal;
+    result.impactArcbottom = s.selection.impactArcbottom;
+    result.impactDelta = s.selection.impactDelta;
+    result.impactCrossCheckMismatch = s.selection.impactCrossCheckMismatch;
+    result.impactFallbackReason = s.selection.impactFallbackReason;
   }
-  const arcBottomFrame = impact.frame;
+  result.finishFrame = s.finish?.frame ?? null;
+  if (s.gateStage === "trigger_a") return result;
 
-  // Top anchors on the frame-mapped takeaway (mirrors detectFaceOnPhases). takeawayAddressIdx
-  // is TRAIL-space; map to frame-space for the search. PRIMARY top = median X-extreme;
-  // velocity-min is retained as a logged shadow only.
-  const takeawayIdxFrame = trailIdxToFrame(takeawayAddressIdx) ?? takeawayAddressIdx;
-  const topSearchAnchor = takeawayIdxFrame;
-  const topVelMin = detectFaceOnTop(frames, topSearchAnchor, arcBottomFrame, msPerFrame); // shadow only
-  const topXExtreme = detectFaceOnTopXExtreme(frames, topSearchAnchor, arcBottomFrame, msPerFrame);
-  result.topVelMinShadow = topVelMin.frame;
-  result.topXExtreme = topXExtreme;
-  result.topIdx = topXExtreme.frame;
+  // Set only after the triggerA gate passes — matches the old body, where a
+  // triggerA return left takeawayIdx/downswingIdx null.
+  result.takeawayIdx = s.takeawayIdx;
+  result.downswingIdx = s.downswingIdx;
 
-  if (topXExtreme.frame == null) {
-    result.impactIdx = arcBottomFrame; // best available before the gate
-    result.wouldFallbackGate = "top_search_bounds";
-    return result;
-  }
-
-  const takeawayIdx = takeawayIdxFrame;
-  const topIdx = topXExtreme.frame;
-
-  // Final impact: xCross CONSENSUS (primary) vs arc-bottom (per-reason fallback) — shared selector.
-  // Computed over [topIdx, topIdx+downswingBudget] on preCanonical; mirrors detectFaceOnPhases.
-  const consensus = computeImpactConsensus(input.preCanonical, topIdx, isLeftHanded, msPerFrame);
-  result.impactConsensus = consensus ? toImpactConsensusShadow(consensus) : null;
-  const selection = selectFaceOnImpact({
-    arcBottomFrame,
-    consensus,
-    isLeftHanded,
-    hasPreCanonical: input.preCanonical != null,
-    isOverride: false,
-    msPerFrame,
-  });
-  const impactIdx = selection.impactIdx;
-  result.impactIdx = impactIdx;
-  result.impactSource = selection.impactSource;
-  result.impactConsensusFinal = selection.impactConsensusFinal;
-  result.impactArcbottom = selection.impactArcbottom;
-  result.impactDelta = selection.impactDelta;
-  result.impactCrossCheckMismatch = selection.impactCrossCheckMismatch;
-  result.impactFallbackReason = selection.impactFallbackReason;
-
-  // Finish RE-ANCHORED on the FINAL impact (mirrors detectFaceOnPhases). Wiring only.
-  const finish = detectFaceOnFinish(frames, impactIdx, msPerFrame);
-  result.finishFrame = finish.frame;
-
-  const triggerAOk = takeawayIdx < topIdx && topIdx < impactIdx;
-  result.triggerA = {
-    fired: !triggerAOk,
-    condition: `${takeawayIdx} < ${topIdx} < ${impactIdx} = ${triggerAOk}`,
-  };
-
-  if (!triggerAOk) {
-    result.wouldFallbackGate = "temporal_inversion";
-    return result;
-  }
-
-  const downswingIdx = Math.floor(topIdx + (impactIdx - topIdx) * 0.35);
-  result.takeawayIdx = takeawayIdx;
-  result.downswingIdx = downswingIdx;
-
-  const indices = [takeawayIdx, topIdx, downswingIdx, impactIdx, finish.frame];
-  const labels = ["takeaway", "top", "downswing", "impact", "follow_through"];
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] <= indices[i - 1]) {
-      result.triggerB = {
-        fired: true,
-        offendingPair: `${labels[i - 1]}=${indices[i - 1]} >= ${labels[i]}=${indices[i]}`,
-      };
-      result.wouldFallbackGate = "temporal_inversion";
-      return result;
-    }
-  }
-  for (let i = 1; i < indices.length; i++) {
-    if (indices[i] - indices[i - 1] < 2) {
-      result.wouldFallbackGate = "phases_too_bunched";
-      return result;
-    }
-  }
-
-  return result;
+  return result; // covers ladder, bunched, and the clean run
 }
