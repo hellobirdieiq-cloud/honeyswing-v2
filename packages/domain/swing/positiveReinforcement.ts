@@ -66,8 +66,12 @@ export interface MetricScore {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Minimum confidence.overall to qualify for a general positive card. */
-const CONFIDENCE_THRESHOLD = 75;
+/**
+ * Minimum confidence.overall to qualify for a general positive card.
+ * confidence.overall is clamped 0–1 (computeSwingConfidence) — the previous
+ * value of 75 was compared against that 0–1 scale, making the branch dead.
+ */
+const CONFIDENCE_THRESHOLD = 0.75;
 
 /** Metric must score >= this to count as "good" / clear a flag. Matches TIP_SCORE_THRESHOLD in result.tsx. */
 const GOOD_SCORE_THRESHOLD = 80;

@@ -14,7 +14,7 @@
  *   - "unknown" → packages/domain/swing/phaseDetectionLegacy.ts
  */
 
-import type { PoseSequence } from "../../pose/PoseTypes";
+import type { PoseFrame, PoseSequence } from "../../pose/PoseTypes";
 import type { CameraAngle } from "./cameraAngle";
 import type { JsonValue } from "./jsonTypes";
 import { detectDTLPhases } from "./phaseDetectionDTL";
@@ -145,7 +145,40 @@ export function detectSwingPhasesWithDebug(
     });
   }
   const { phases, fallbackGate } = detectLegacyPhases(trail);
-  return { phases, fallbackGate, ruleDebug: legacyDebug("legacy") };
+  return {
+    phases: remapLegacyPhasesToFrames(phases, canonical.frames),
+    fallbackGate,
+    ruleDebug: legacyDebug("legacy"),
+  };
+}
+
+/**
+ * Legacy DetectedPhase.index is TRAIL-space (buildTrailPoints skips frames
+ * without both wrists), while every downstream consumer indexes
+ * canonical.frames. Remap by timestamp: the exact-match fast path is the
+ * identity while the adapter emits wrists on every frame (trail ↔ frames 1:1);
+ * the nearest-timestamp fallback covers any future trail gap — never throws.
+ * The trail-only legacy entry (isLegacyInput) has no frames in scope and keeps
+ * trail-space indices, as its script callers expect.
+ */
+function remapLegacyPhasesToFrames(
+  phases: DetectedPhase[],
+  frames: PoseFrame[],
+): DetectedPhase[] {
+  if (phases.length === 0 || frames.length === 0) return phases;
+  return phases.map((p) => {
+    if (frames[p.index]?.timestampMs === p.timestamp) return p;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < frames.length; i++) {
+      const d = Math.abs(frames[i].timestampMs - p.timestamp);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return { ...p, index: best };
+  });
 }
 
 /** Legacy entry used by older callers — preserved here for back-compat. */

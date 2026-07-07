@@ -82,10 +82,14 @@ function assertNull<T>(val: T | null, label: string): void {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const highConfidence: ConfidenceInput = { tier: 'high', overall: 85 };
-const mediumConfidence: ConfidenceInput = { tier: 'medium', overall: 65 };
-const lowConfidence: ConfidenceInput = { tier: 'low', overall: 30 };
-const borderlineConfidence: ConfidenceInput = { tier: 'high', overall: 75 };
+// Fixtures on the REAL 0–1 confidence scale (computeSwingConfidence clamps
+// overall to [0,1], confidenceScore.ts:250). The original 0–100 fixtures
+// matched a stale roadmap spec — prod values could never reach the old
+// threshold of 75, which is exactly the D4 bug this suite now guards.
+const highConfidence: ConfidenceInput = { tier: 'high', overall: 0.85 };
+const mediumConfidence: ConfidenceInput = { tier: 'medium', overall: 0.65 };
+const lowConfidence: ConfidenceInput = { tier: 'low', overall: 0.30 };
+const borderlineConfidence: ConfidenceInput = { tier: 'high', overall: 0.75 };
 
 const goodScores: MetricScore[] = [
   { metricKey: 'tempo', score: 90 },
@@ -199,23 +203,32 @@ group('General positive cards — gating');
 
 {
   const engine = new PositiveReinforcementEngine();
-  const weird: ConfidenceInput = { tier: 'high', overall: 70 };
+  const weird: ConfidenceInput = { tier: 'high', overall: 0.70 };
   const result = engine.processSwing(weird, goodScores, 0);
-  assertNull(result.card, 'does NOT fire when tier=high but overall < 75');
+  assertNull(result.card, 'does NOT fire when tier=high but overall < 0.75');
 }
 
 {
   const engine = new PositiveReinforcementEngine();
-  const weird: ConfidenceInput = { tier: 'medium', overall: 80 };
+  const weird: ConfidenceInput = { tier: 'medium', overall: 0.80 };
   const result = engine.processSwing(weird, goodScores, 0);
-  assertNull(result.card, 'does NOT fire when overall >= 75 but tier != high');
+  assertNull(result.card, 'does NOT fire when overall >= 0.75 but tier != high');
 }
 
 {
   const engine = new PositiveReinforcementEngine();
-  const justBelow: ConfidenceInput = { tier: 'high', overall: 74 };
+  const justBelow: ConfidenceInput = { tier: 'high', overall: 0.74 };
   const result = engine.processSwing(justBelow, goodScores, 0);
-  assertNull(result.card, 'does NOT fire at overall=74 (below threshold)');
+  assertNull(result.card, 'does NOT fire at overall=0.74 (below threshold)');
+}
+
+{
+  // D4 regression: a REAL pipeline value (0–1 clamped) must reach the general
+  // card. Before the 75 → 0.75 fix this branch was unreachable in prod.
+  const engine = new PositiveReinforcementEngine();
+  const realScale: ConfidenceInput = { tier: 'high', overall: 0.9 };
+  const result = engine.processSwing(realScale, goodScores, 0);
+  assert(result.card != null, 'D4: general card FIRES for real-scale 0.9 confidence');
 }
 
 {
@@ -687,7 +700,7 @@ assert(IMPROVEMENT_TEMPLATES.length >= 2, `improvement templates >= 2 (got ${IMP
   assert(allHavePlaceholder, 'all improvement templates contain {metric}');
 }
 
-assertEq(CONFIDENCE_THRESHOLD, 75, 'confidence threshold = 75 (roadmap spec)');
+assertEq(CONFIDENCE_THRESHOLD, 0.75, 'confidence threshold = 0.75 (0–1 scale; the old 75 was dead against clamped confidence)');
 assertEq(GOOD_SCORE_THRESHOLD, 80, 'good score threshold = 80 (matches TIP_SCORE_THRESHOLD)');
 
 {

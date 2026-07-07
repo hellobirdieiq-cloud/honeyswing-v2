@@ -17,7 +17,8 @@
  * Run with: npx --yes tsx packages/domain/swing/analysisPipeline.test.ts
  */
 
-import { analyzePoseSequence } from './analysisPipeline';
+import { analyzePoseSequence, computeFrameCountSuppression } from './analysisPipeline';
+import type { MetricWeightingResult, VisibilityWeightingResult } from './visibilityWeighting';
 import { createEmptyJoints, type PoseFrame, type PoseSequence } from '../../pose/PoseTypes';
 
 let passed = 0;
@@ -65,6 +66,47 @@ if (threw) {
 
 // Documented intent: should NOT throw (guard like computeZTrace).
 assert(!threw, 'M2: analyzePoseSequence(seq,false,[],frames.length) does not throw');
+
+// ---------------------------------------------------------------------------
+// D8 — computeFrameCountSuppression maps the per-window hipSpreadDelta keys to
+// the plain scoring key. Pre-fix it emitted 'hipSpreadDelta_address'/'_impact',
+// which match no suppressible metric — the suppression was silently inert.
+// ---------------------------------------------------------------------------
+console.log('\n── D8: frame-count suppression key mapping ──');
+{
+  const metric = (framesUsed: number): MetricWeightingResult => ({
+    weightedValue: 0,
+    unweightedValue: 0,
+    delta: 0,
+    framesUsed,
+    framesExcluded: 0,
+    avgWeight: 1,
+    minWeight: 1,
+    applied: true,
+  });
+  const visibility: VisibilityWeightingResult = {
+    applied: true,
+    version: 'test',
+    metrics: {
+      spineAngle: metric(1),              // under MIN_USABLE_FRAMES (3)
+      leftKneeAngle: metric(10),          // healthy — not suppressed
+      hipSpreadDelta_address: metric(1),  // both windows under → ONE plain key
+      hipSpreadDelta_impact: metric(0),
+    },
+  };
+  const suppressed = computeFrameCountSuppression(visibility);
+  assert(suppressed.includes('spineAngle'), 'D8: under-framed plain metric suppressed');
+  assert(!suppressed.includes('leftKneeAngle'), 'D8: healthy metric not suppressed');
+  assert(suppressed.includes('hipSpreadDelta'), 'D8: composite windows map to plain hipSpreadDelta');
+  assert(
+    !suppressed.includes('hipSpreadDelta_address') && !suppressed.includes('hipSpreadDelta_impact'),
+    'D8: raw window keys never emitted',
+  );
+  assert(
+    suppressed.filter((k) => k === 'hipSpreadDelta').length === 1,
+    'D8: two under-framed windows dedupe to one suppression key',
+  );
+}
 
 console.log(`\n${'═'.repeat(55)}`);
 console.log(`  Results: ${passed} passed, ${failed} failed`);

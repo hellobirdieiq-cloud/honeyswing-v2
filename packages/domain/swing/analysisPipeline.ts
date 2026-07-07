@@ -142,11 +142,20 @@ export function computeFrameCountSuppression(
 ): string[] {
   if (!visibility) return [];
   const minUsable = framesAt(MIN_USABLE_MS, msPerFrame, MIN_USABLE_FRAMES);
-  const out: string[] = [];
+  const out = new Set<string>();
   for (const [key, m] of Object.entries(visibility.metrics)) {
-    if (m.framesUsed < minUsable) out.push(key);
+    if (m.framesUsed < minUsable) {
+      // hipSpreadDelta is weighted per-window under composite keys; scoring's
+      // suppressible metric key is the plain 'hipSpreadDelta' — an under-framed
+      // window must suppress THAT, not a key nothing matches.
+      out.add(
+        key === 'hipSpreadDelta_address' || key === 'hipSpreadDelta_impact'
+          ? 'hipSpreadDelta'
+          : key,
+      );
+    }
   }
-  return out;
+  return [...out];
 }
 
 function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
@@ -379,13 +388,14 @@ function buildPipelineFrameData(
     // Task 12: Compute plausibility score for this frame
     const limbCheck = METRIC_LIMB_CHECKS[metricKey];
     const plausibility = limbCheck
-      ? scoreFramePlausibility(frames[i], limbCheck).score
-      : 1.0;
+      ? scoreFramePlausibility(frames[i], limbCheck)
+      : { score: 1.0 };
 
     result.push({
       angle: value,
       landmarkVisibilities: extractLandmarkVisibilities(frames[i], metricKey),
-      plausibility,
+      plausibility: plausibility.score,
+      measuredRatio: plausibility.measuredRatio,
     });
   }
   return result;
@@ -470,6 +480,12 @@ function applyVisibilityWeighting(
     for (let i = 0; i < frameData.length; i++) {
       if ((frameData[i].plausibility ?? 1.0) <= 0) {
         implausibleIndices.push(i);
+        // "Worst" = the measured segment ratio furthest from 1:1; a collapsed
+        // segment reports 0 (maximally deviant). Telemetry-only.
+        const ratio = frameData[i].measuredRatio;
+        if (ratio != null && (worstRatio == null || Math.abs(ratio - 1) > Math.abs(worstRatio - 1))) {
+          worstRatio = ratio;
+        }
       }
     }
 
@@ -666,10 +682,11 @@ export function analyzePoseSequence(
         : phaseAddressIdx
     );
 
+  const addressAvgSpan = framesAt(ADDRESS_WINDOW_MS, msPerFrame, 10) - 1;
   const addressFrame = averageFrames(
     canonical.frames,
     resolvedAddressIdx,
-    Math.min(resolvedAddressIdx + 9, canonical.frames.length - 1),
+    Math.min(resolvedAddressIdx + addressAvgSpan, canonical.frames.length - 1),
   );
 
   let angles: GolfAngles;

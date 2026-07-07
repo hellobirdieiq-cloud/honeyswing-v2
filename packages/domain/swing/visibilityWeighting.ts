@@ -113,6 +113,12 @@ export interface FrameAngleData {
    * 0 = implausible limb proportions, 1 = plausible. Default: 1.0.
    */
   readonly plausibility?: number;
+  /**
+   * Measured distal/proximal segment ratio from the plausibility check —
+   * present only on implausible frames (0 for a collapsed segment). Feeds
+   * implausible-frame telemetry (worstRatio); never used in weighting math.
+   */
+  readonly measuredRatio?: number;
 }
 
 /** Per-metric result from visibility weighting */
