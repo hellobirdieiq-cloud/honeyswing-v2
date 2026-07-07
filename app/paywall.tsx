@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,19 +19,35 @@ export default function PaywallScreen() {
   const [annual, setAnnual] = useState<PurchasesPackage | null>(null);
   const [selected, setSelected] = useState<'monthly' | 'annual'>('annual');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
-  useEffect(() => {
-    getOfferings().then((offerings) => {
-      const current = offerings?.current;
-      if (current) {
-        setMonthly(current.monthly ?? null);
-        setAnnual(current.annual ?? null);
-      }
-      setLoading(false);
-    }).catch((err) => console.error('[HoneySwing] getOfferings failed', err));
+  // setLoading(false) MUST run on both success and failure (finally) — a
+  // getOfferings() rejection (offline / RevenueCat unreachable) previously left
+  // the spinner stuck forever, and over-limit users are hard-redirected here,
+  // so it stranded the whole conversion surface. loadError drives a retry.
+  const loadOfferings = useCallback(() => {
+    setLoading(true);
+    setLoadError(false);
+    getOfferings()
+      .then((offerings) => {
+        const current = offerings?.current;
+        if (current) {
+          setMonthly(current.monthly ?? null);
+          setAnnual(current.annual ?? null);
+        }
+      })
+      .catch((err) => {
+        console.error('[HoneySwing] getOfferings failed', err);
+        setLoadError(true);
+      })
+      .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadOfferings();
+  }, [loadOfferings]);
 
   async function handlePurchase() {
     const pkg = selected === 'annual' ? annual : monthly;
@@ -92,6 +108,19 @@ export default function PaywallScreen() {
 
       {loading ? (
         <ActivityIndicator size="large" color={GOLD} style={styles.loader} />
+      ) : loadError ? (
+        <View style={styles.retryBox}>
+          <Text style={styles.retryText}>
+            Couldn&apos;t load plans. Check your connection and try again.
+          </Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadOfferings}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <View style={styles.plans}>
           <TouchableOpacity
@@ -119,9 +148,9 @@ export default function PaywallScreen() {
       )}
 
       <TouchableOpacity
-        style={[styles.subscribeButton, (purchasing || loading) && styles.buttonDisabled]}
+        style={[styles.subscribeButton, (purchasing || loading || loadError) && styles.buttonDisabled]}
         onPress={handlePurchase}
-        disabled={purchasing || loading}
+        disabled={purchasing || loading || loadError}
         activeOpacity={0.8}
       >
         {purchasing ? (
@@ -206,6 +235,31 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginVertical: 40,
+  },
+  retryBox: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    marginVertical: 32,
+    gap: 16,
+  },
+  retryText: {
+    color: '#999',
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 21,
+    paddingHorizontal: 12,
+  },
+  retryButton: {
+    borderWidth: 2,
+    borderColor: GOLD,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+  },
+  retryButtonText: {
+    color: GOLD,
+    fontSize: 16,
+    fontWeight: '700',
   },
   plans: {
     flexDirection: 'row',
