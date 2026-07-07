@@ -269,22 +269,6 @@ export function computeSwingConfidence(
 // ─── Downstream Helpers (Task 7/8) ────────────────────────────────────────────
 
 /**
- * Returns which metrics are allowed at a given confidence tier.
- * - high: 'all' (camera weight still gates individually)
- * - medium: Set of safe metrics (tempo, posture)
- * - low: 'none' (suppress all tips)
- *
- * Returns a defensive copy for medium to prevent mutation of the constant.
- */
-export function getAllowedMetricsForTier(
-  tier: 'high' | 'medium' | 'low',
-): 'all' | 'none' | Set<string> {
-  if (tier === 'high') return 'all';
-  if (tier === 'low') return 'none';
-  return new Set(MEDIUM_TIER_METRICS);
-}
-
-/**
  * Determines whether a specific metric should be shown to the user.
  * Combines confidence tier gating with camera-angle weight gating.
  *

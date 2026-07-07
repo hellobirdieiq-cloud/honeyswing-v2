@@ -44,14 +44,6 @@ export async function getUser(): Promise<{ id: string; created_at: string } | nu
   return { id: user.id, created_at: createdAt };
 }
 
-export async function getSession(): Promise<{ access_token: string; user: { id: string } } | null> {
-  const session = getClerkInstance().session;
-  if (!session) return null;
-  const token = await session.getToken();
-  if (!token) return null;
-  return { access_token: token, user: { id: session.user?.id ?? '' } };
-}
-
 export async function getUserId(): Promise<string | null> {
   return getClerkInstance().user?.id ?? null;
 }

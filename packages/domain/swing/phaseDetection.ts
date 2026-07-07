@@ -117,14 +117,6 @@ function legacyDebug(detector: "legacy"): PhaseRuleDebug {
   };
 }
 
-/**
- * Back-compat entry. Returns phases only — for the rich debug payload,
- * use `detectSwingPhasesWithDebug`.
- */
-export function detectSwingPhases(input: DispatcherInput): DetectedPhase[] {
-  return detectSwingPhasesWithDebug(input).phases;
-}
-
 export function detectSwingPhasesWithDebug(
   input: DispatcherInput,
 ): {
