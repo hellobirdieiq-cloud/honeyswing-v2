@@ -300,12 +300,14 @@ export type SwingMotionEntry = {
  * many swings in one query, keyed by id. Skips rows with null motion_frames
  * (e.g. failed-capture stubs) so callers can treat "absent from map" as
  * "no art available". Direct Supabase call (bypasses the adapter, like
- * getSwingMotionFrames). Returns an empty map on empty input or DB error
- * (logged). Does not throw. RLS scopes results to the caller's own swings.
+ * getSwingMotionFrames). Returns an empty map on empty input, and `null` on a
+ * DB error / exception (logged) — distinct from an empty map so the caller can
+ * retry a transient failure without re-fetching rows that legitimately have no
+ * art. Does not throw. RLS scopes results to the caller's own swings.
  */
 export async function getSwingMotionFramesBatch(
   ids: string[],
-): Promise<Map<string, SwingMotionEntry>> {
+): Promise<Map<string, SwingMotionEntry> | null> {
   const out = new Map<string, SwingMotionEntry>();
   if (ids.length === 0) return out;
   try {
@@ -321,7 +323,7 @@ export async function getSwingMotionFramesBatch(
         '[HoneySwing] swingStore getSwingMotionFramesBatch error:',
         error.message,
       );
-      return out;
+      return null; // transient failure — signal so the caller can retry
     }
     // EXTERNAL ASSUMPTION: motion_frames JSON matches PoseFrame[] shape — same
     // unvalidated assumption as getSwingMotionFrames.
@@ -342,7 +344,7 @@ export async function getSwingMotionFramesBatch(
     }
     return out;
   } catch {
-    return out;
+    return null; // transient failure — signal so the caller can retry
   }
 }
 

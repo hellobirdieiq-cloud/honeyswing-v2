@@ -90,6 +90,13 @@ export default function GalleryScreen() {
     if (toFetch.length === 0) return;
     toFetch.forEach((id) => requestedRef.current.add(id));
     const fetched = await getSwingMotionFramesBatch(toFetch);
+    if (fetched === null) {
+      // Transient fetch failure — evict so a later focus/scroll pass retries.
+      // (A successful-but-empty map means those rows legitimately have no art,
+      // so we KEEP them requested and never re-fetch.)
+      toFetch.forEach((id) => requestedRef.current.delete(id));
+      return;
+    }
     if (fetched.size === 0) return;
     setFramesMap((prev) => {
       const next = new Map(prev);
@@ -227,16 +234,20 @@ const GalleryCell = React.memo(function GalleryCell({
   const router = useRouter();
   const [favorite, setFavorite] = useState(initialFavorite);
   const [pending, setPending] = useState(false);
+  const togglingRef = useRef(false);
 
   // Re-sync if the underlying row's flag changes (e.g. a focus-driven refresh
-  // after the swing was favorited elsewhere). Within a session the list only
-  // refreshes on focus, so this never clobbers an in-flight optimistic toggle.
+  // after the swing was favorited elsewhere) — BUT never while our own toggle
+  // is in flight: a focus refresh can deliver the stale pre-toggle is_favorite
+  // and would clobber the optimistic state back before the write lands.
   useEffect(() => {
+    if (togglingRef.current) return;
     setFavorite(initialFavorite);
   }, [initialFavorite]);
 
   const onToggleFavorite = useCallback(async () => {
     if (pending) return;
+    togglingRef.current = true;
     const next = !favorite;
     setFavorite(next); // optimistic
     setPending(true);
@@ -245,6 +256,7 @@ const GalleryCell = React.memo(function GalleryCell({
     if (!ok) {
       setFavorite(!next); // revert — never show a state the DB didn't save
     }
+    togglingRef.current = false;
   }, [favorite, pending, swingId]);
 
   const onPress = useCallback(

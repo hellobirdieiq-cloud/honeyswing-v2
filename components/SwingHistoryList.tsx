@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -36,12 +36,22 @@ export default function SwingHistoryList() {
   const [profileMap, setProfileMap] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<string>('all');
 
-  useEffect(() => {
-    getProfiles().then((ps) => {
-      setProfiles(ps);
-      setProfileMap(Object.fromEntries(ps.map((p) => [p.id, getDisplayName(p)])));
-    }).catch((err) => console.error('[HoneySwing]', err));
-  }, []);
+  // Profiles refresh on focus (not mount-only): rows already refetch on focus,
+  // so a kid added/renamed/deleted while away would otherwise desync the tabs.
+  // If the active tab's profile vanished, fall back to 'all' — filtering rows
+  // by a deleted profile_id otherwise shows a permanently empty list.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getProfiles().then((ps) => {
+        if (cancelled) return;
+        setProfiles(ps);
+        setProfileMap(Object.fromEntries(ps.map((p) => [p.id, getDisplayName(p)])));
+        setActiveTab((cur) => (cur !== 'all' && !ps.some((p) => p.id === cur) ? 'all' : cur));
+      }).catch((err) => console.error('[HoneySwing]', err));
+      return () => { cancelled = true; };
+    }, []),
+  );
 
   const handleDeleteRequest = useCallback((swingId: string) => {
     Alert.alert(
