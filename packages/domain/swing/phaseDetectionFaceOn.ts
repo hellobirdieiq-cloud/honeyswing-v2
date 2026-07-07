@@ -672,7 +672,13 @@ function detectFaceOnFinish(
       sum += v;
       count++;
     }
-    return count === W ? sum / count : null;
+    // Full nominal window AND every sample present. The interior span is
+    // 2·floor(W/2)+1: equal to W when W is odd (60fps), W+1 when W is even
+    // (120fps) — the old `count === W` could never match an even-W interior
+    // window, nulling the whole rolling series. Edge-clamped windows
+    // (span < W) keep failing, exactly as before.
+    const span = hi - lo + 1;
+    return span >= W && count === span ? sum / count : null;
   });
 
   // Jitter filter: drop frames where raw value exceeds rolling avg by >jitterPct.

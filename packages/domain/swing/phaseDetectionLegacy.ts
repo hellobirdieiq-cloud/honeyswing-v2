@@ -75,11 +75,18 @@ function findMaxVelocityIndex(
 
 function fallbackPhases(points: SwingTrailPoint[]): DetectedPhase[] {
   const pcts = [0.12, 0.45, 0.55, 0.65, 0.9];
+  // Strictly-increasing contract: on short captures (n≤7) the pct floors
+  // collide, so forward-fill each index to at least prev+1 (clamped to the
+  // last point). No-op whenever the raw floors are already strictly
+  // increasing — every capture longer than ~10 points.
+  let prev = -1;
   return PHASE_ORDER.map((phase, i) => {
-    const idx = Math.min(
+    const raw = Math.min(
       points.length - 1,
       Math.max(0, Math.floor(pcts[i] * (points.length - 1))),
     );
+    const idx = Math.min(points.length - 1, Math.max(raw, prev + 1));
+    prev = idx;
     return {
       phase,
       label: PHASE_LABELS[phase],
@@ -238,10 +245,12 @@ export function detectLegacyPhases(points: SwingTrailPoint[]): {
 
   const result = tryHeuristicDetection(points);
 
-  if (result.phases.length === 6) {
-    const topTs = result.phases[2].timestamp;
+  // PHASE_ORDER has 5 slots (takeaway, top, downswing, impact, follow_through)
+  // since the June 6→5 relabel — the ratio reads top=[1] and impact=[3].
+  if (result.phases.length === 5) {
+    const topTs = result.phases[1].timestamp;
     const addressTs = result.phases[0].timestamp;
-    const impactTs = result.phases[4].timestamp;
+    const impactTs = result.phases[3].timestamp;
     const backswing = topTs - addressTs;
     const downswing = impactTs - topTs;
 

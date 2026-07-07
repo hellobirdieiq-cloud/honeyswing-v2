@@ -128,10 +128,14 @@ export function buildPhaseTagsFromAnalysis(
   const ranges: PhaseTagRange[] = [];
   for (let i = 0; i < deduped.length; i++) {
     const start = deduped[i].index;
-    const end =
+    // Clamp: colliding phase indices (short-capture fallback) would yield
+    // end = next.index − 1 < start — an inverted range must never persist.
+    const end = Math.max(
+      start,
       i + 1 < deduped.length
         ? deduped[i + 1].index - 1
-        : frameCount - 1;
+        : frameCount - 1,
+    );
     ranges.push({
       phase: mapSwingPhaseToClinic(deduped[i].phase),
       startFrameIndex: start,

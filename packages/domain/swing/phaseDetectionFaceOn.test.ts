@@ -359,6 +359,91 @@ console.log('\n── Case D: per-reason arc-bottom fallback (reliability low) �
 }
 
 // ---------------------------------------------------------------------------
+// ===========================================================================
+// Case D2 — finish rolling window at 120fps (even W)
+//
+// W = msToFrames(83ms rolling window): 5 at 60fps (odd) but 10 at 120fps
+// (even). The interior window span is 2·floor(W/2)+1 = W+1 for even W, so the
+// pre-fix `count === W` gate could never match an interior 120fps window —
+// the whole rolling series nulled out and finish pinned to lastIdx with low
+// reliability. Same real-time motion at both rates must find the same
+// real-time plateau.
+// ===========================================================================
+console.log('\n── Case D2: finish plateau detected at 120fps (even rolling window) ──');
+{
+  // scale=2 → 120 frames @120fps; scale=1 → 60 frames @60fps.
+  const buildFinishFixture = (scale: 1 | 2) => {
+    const N = 60 * scale;
+    const MS = 1000 / (60 * scale);
+    const s = (f: number) => f * scale;
+    const leadKF: KF[] = [
+      { f: s(0), x: 0.50, y: 0.62 }, { f: s(11), x: 0.50, y: 0.62 },
+      { f: s(28), x: 0.64, y: 0.32 }, { f: s(32), x: 0.645, y: 0.31 },
+      { f: s(45), x: 0.50, y: 0.72 }, { f: s(59), x: 0.42, y: 0.55 },
+    ];
+    const trailKF: KF[] = [
+      { f: s(0), x: 0.54, y: 0.62 }, { f: s(11), x: 0.54, y: 0.62 },
+      { f: s(28), x: 0.60, y: 0.34 }, { f: s(32), x: 0.605, y: 0.33 },
+      { f: s(45), x: 0.52, y: 0.70 }, { f: s(59), x: 0.46, y: 0.55 },
+    ];
+    const lShoKF: KF[] = [
+      { f: s(0), x: 0.46, y: 0.30 }, { f: s(30), x: 0.50, y: 0.29 }, { f: s(59), x: 0.50, y: 0.30 },
+    ];
+    // rightShoulder present through the END: recedes to impact, then rises
+    // and PLATEAUS from s(52) — the finish signal the rolling window reads.
+    const rShoKF: KF[] = [
+      { f: s(0), x: 0.58, y: 0.30 }, { f: s(30), x: 0.66, y: 0.29 }, { f: s(45), x: 0.58, y: 0.30 },
+      { f: s(52), x: 0.72, y: 0.30 }, { f: s(59), x: 0.72, y: 0.30 },
+    ];
+    const frames: PoseFrame[] = [];
+    for (let i = 0; i < N; i++) {
+      const joints = createEmptyJoints();
+      joints.leftWrist = joint('leftWrist', track(leadKF, i));
+      joints.rightWrist = joint('rightWrist', track(trailKF, i));
+      joints.leftShoulder = joint('leftShoulder', track(lShoKF, i));
+      joints.rightShoulder = joint('rightShoulder', track(rShoKF, i));
+      frames.push({ timestampMs: i * MS, joints, frameWidth: 1, frameHeight: 1 });
+    }
+    return { frames, trail: buildTrail(frames), MS, impactOverride: s(45), N };
+  };
+
+  // 120fps (even W=10): pre-fix this pinned finish to lastIdx / reliability low.
+  {
+    const fx = buildFinishFixture(2);
+    const r = detectFaceOnPhases({
+      canonical: { frames: fx.frames, source: 'test' },
+      trail: fx.trail,
+      msPerFrame: fx.MS,
+      impactOverride: fx.impactOverride,
+    });
+    const ft = r.phases.find((p) => p.phase === 'follow_through');
+    assert(r.fallbackGate === null && r.phases.length === 5,
+      `D2 @120fps: 5 heuristic phases (gate=${r.fallbackGate})`);
+    assert(ft != null && ft.index === 109,
+      `D2 @120fps: finish lands on the plateau (got ${ft?.index}, want 109; pre-fix pinned near lastIdx ${fx.N - 1})`);
+    const rel = (r.ruleDebug as { reliability?: { finish?: string } }).reliability?.finish;
+    assert(rel === 'high', `D2 @120fps: finish reliability high (got ${rel}; pre-fix low)`);
+  }
+
+  // 60fps (odd W=5): identical real-time motion — behavior unchanged by the fix.
+  {
+    const fx = buildFinishFixture(1);
+    const r = detectFaceOnPhases({
+      canonical: { frames: fx.frames, source: 'test' },
+      trail: fx.trail,
+      msPerFrame: fx.MS,
+      impactOverride: fx.impactOverride,
+    });
+    const ft = r.phases.find((p) => p.phase === 'follow_through');
+    assert(r.fallbackGate === null && r.phases.length === 5,
+      `D2 @60fps: 5 heuristic phases (gate=${r.fallbackGate})`);
+    assert(ft != null && ft.index === 54,
+      `D2 @60fps: finish at 54 — the same real-time instant as the 120fps pick (109/2≈54.5) (got ${ft?.index})`);
+    const rel = (r.ruleDebug as { reliability?: { finish?: string } }).reliability?.finish;
+    assert(rel === 'high', `D2 @60fps: finish reliability high (got ${rel})`);
+  }
+}
+
 console.log(`\n${'═'.repeat(55)}`);
 console.log(`  Results: ${passed} passed, ${failed} failed`);
 console.log(`${'═'.repeat(55)}`);

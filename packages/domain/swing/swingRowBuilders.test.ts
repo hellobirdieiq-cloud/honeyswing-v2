@@ -242,6 +242,26 @@ assertEq(JSON.stringify(ranges[1]), JSON.stringify({ phase: 'top', startFrameInd
 assertEq(JSON.stringify(ranges[2]), JSON.stringify({ phase: 'impact', startFrameIndex: 12, endFrameIndex: 19 }), 'impact 12→19');
 assertEq(JSON.stringify(ranges[3]), JSON.stringify({ phase: 'finish', startFrameIndex: 20, endFrameIndex: 24 }), 'follow_through→finish 20→24 (last end = frameCount−1)');
 
+// D9 — colliding phase indices (short-capture fallback used to emit them)
+// must not persist an inverted range: end is clamped to >= start.
+const collided: DetectedPhase[] = [
+  makePhase('takeaway', 0),
+  makePhase('top', 2),
+  makePhase('downswing', 2), // collides with top → pre-fix end = 2−1 = 1 < start
+  makePhase('impact', 3),
+  makePhase('follow_through', 4),
+];
+const clamped = buildPhaseTagsFromAnalysis(makeAnalysis({ phases: collided }), 6);
+assert(
+  clamped.every((r) => r.endFrameIndex >= r.startFrameIndex),
+  'D9: no inverted range when phase indices collide',
+);
+assertEq(
+  JSON.stringify(clamped[1]),
+  JSON.stringify({ phase: 'top', startFrameIndex: 2, endFrameIndex: 2 }),
+  'D9: colliding top clamps to a single-frame range (end = start)',
+);
+
 // ---------------------------------------------------------------------------
 // buildSpineAngleSeries (asserted against a live calculateGolfAngles call)
 // ---------------------------------------------------------------------------
