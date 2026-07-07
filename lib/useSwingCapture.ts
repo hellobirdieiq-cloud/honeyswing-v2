@@ -168,20 +168,28 @@ export function useSwingCapture({
     navigatedRef.current = true;
     setCurrentSwingVideoUri(videoUriRef.current);
 
-    let swingId: string | null = null;
-    try {
-      swingId = await (swingIdPromiseRef.current ?? Promise.resolve(null));
-    } catch {
-      // persist failed — navigate without swingId
-    }
     if (skipResultNavigation) {
+      // Coach/watch mode: the callback contract delivers the RESOLVED id, so
+      // this branch (no router.push, nothing user-visible waiting) still
+      // awaits the insert.
+      let swingId: string | null = null;
+      try {
+        swingId = await (swingIdPromiseRef.current ?? Promise.resolve(null));
+      } catch {
+        // persist failed — deliver null
+      }
       onSwingPersisted?.(swingId);
       return;
     }
+    // Navigation deliberately does NOT await the insert: the result screen
+    // renders from the in-memory store and picks up the swingId later via
+    // subscribeCurrentSwingId. KPI now measures true intent→push (pre-change
+    // builds included the insert share — compare across versions accordingly;
+    // [KPI] insert-ms still times the insert itself).
     if (recordIntentAtRef.current != null) {
       console.log('[KPI] intent-to-result-ms', Date.now() - recordIntentAtRef.current);
     }
-    router.push({ pathname: '/analysis/result', params: swingId ? { swingId } : {} } as Href);
+    router.push('/analysis/result' as Href);
   }
 
   // rtmw: raw frames retained for debugging when extraction DID produce a stream

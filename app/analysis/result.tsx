@@ -5,7 +5,12 @@ import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { VideoView } from 'expo-video';
 import { styles } from './resultStyles';
-import { computeFocus, saveFocus } from '../../lib/swingMotionStore';
+import {
+  computeFocus,
+  saveFocus,
+  getCurrentSwingId,
+  subscribeCurrentSwingId,
+} from '../../lib/swingMotionStore';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, getUserId, supabase } from '../../lib/supabase';
@@ -47,6 +52,13 @@ const NO_DATA_FAILURE_REASONS = new Set([
 export default function ResultScreen() {
   const router = useRouter();
   const { swingId } = useLocalSearchParams<{ swingId?: string }>();
+  // Live captures navigate here WITHOUT a swingId param (navigation no longer
+  // waits for the DB insert); the id arrives via the store subscription when
+  // persistSwing resolves. The param always wins — history taps and coach
+  // deep-links carry it, so a lingering live id can never leak into those.
+  const [liveSwingId, setLiveSwingId] = useState<string | null>(getCurrentSwingId());
+  useEffect(() => subscribeCurrentSwingId(setLiveSwingId), []);
+  const effectiveSwingId = swingId ?? liveSwingId ?? undefined;
   const { width: screenW } = useWindowDimensions();
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [isLeftHanded, setIsLeftHanded] = useState<boolean | null>(null);
@@ -72,7 +84,7 @@ export default function ResultScreen() {
     analysis,
     partialReason,
     videoUri,
-  } = useSwingSource(swingId, isLeftHanded);
+  } = useSwingSource(effectiveSwingId, isLeftHanded);
 
   useEffect(() => {
     getUserId().then(setViewerUserId).catch((err) => console.error('[HoneySwing]', err));
@@ -281,10 +293,10 @@ export default function ResultScreen() {
   // would be RLS-blocked — merge_swing_debug is SECURITY INVOKER — but don't
   // even try; the insight derives from the viewer's own session, not this swing).
   useEffect(() => {
-    if (!swingId || !sessionInsight || !isOwnSwing) return;
+    if (!effectiveSwingId || !sessionInsight || !isOwnSwing) return;
     supabase
       .rpc('merge_swing_debug', {
-        swing_id: swingId,
+        swing_id: effectiveSwingId,
         patch: { session_insight_shown: sessionInsight.message },
       })
       .then(({ error }) => {
@@ -292,7 +304,7 @@ export default function ResultScreen() {
           console.error('[HoneySwing] session_insight_shown update error:', error.message);
         }
       });
-  }, [swingId, sessionInsight, isOwnSwing]);
+  }, [effectiveSwingId, sessionInsight, isOwnSwing]);
 
   // Metro log for verification before tip UI exists
   useEffect(() => {

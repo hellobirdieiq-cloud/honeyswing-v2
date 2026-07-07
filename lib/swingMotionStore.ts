@@ -21,6 +21,7 @@ let currentSwingId: string | null = null;
 
 export function setCurrentSwingMotion(data: LiveSwingMotionData): void {
   currentMotion = data;
+  currentCaptureToken++;
 }
 
 export function getCurrentSwingMotion(): LiveSwingMotionData | null {
@@ -32,6 +33,8 @@ export function clearCurrentSwingMotion(): void {
   currentAnalysis = null;
   currentVideoUri = null;
   currentSwingId = null;
+  currentCaptureToken++;
+  notifySwingIdListeners(null);
 }
 
 export function setCurrentSwingVideoUri(uri: string | null): void {
@@ -54,8 +57,46 @@ export function clearCurrentSwingAnalysis(): void {
   currentAnalysis = null;
 }
 
-export function setCurrentSwingId(id: string | null): void {
+// The swing id is the one store field that changes AFTER the result screen
+// mounts (persistSwing resolves it post-navigation), so it alone is
+// subscribable. Every other field keeps per-render-snapshot semantics — the
+// listener's setState re-render is what refreshes those snapshots.
+const swingIdListeners = new Set<(id: string | null) => void>();
+
+// Monotonic capture generation. setCurrentSwingMotion (each capture claims the
+// store exactly once) and clearCurrentSwingMotion (new recording / profile
+// switch / reset) both advance it, so a persist that resolves after its
+// capture was superseded can prove it is stale.
+let currentCaptureToken = 0;
+
+function notifySwingIdListeners(id: string | null): void {
+  for (const listener of swingIdListeners) listener(id);
+}
+
+export function subscribeCurrentSwingId(
+  listener: (id: string | null) => void,
+): () => void {
+  swingIdListeners.add(listener);
+  return () => {
+    swingIdListeners.delete(listener);
+  };
+}
+
+export function getCurrentCaptureToken(): number {
+  return currentCaptureToken;
+}
+
+/**
+ * Set (and broadcast) the live swing's DB id. Pass `forCaptureToken` from any
+ * async resolve path: if that capture has been superseded (a newer
+ * setCurrentSwingMotion/clear advanced the token), the call is a no-op — no
+ * assignment, no notify — so a slow swing-A insert can never stamp its id onto
+ * swing B's mounted result screen.
+ */
+export function setCurrentSwingId(id: string | null, forCaptureToken?: number): void {
+  if (forCaptureToken !== undefined && forCaptureToken !== currentCaptureToken) return;
   currentSwingId = id;
+  notifySwingIdListeners(id);
 }
 
 export function getCurrentSwingId(): string | null {

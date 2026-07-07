@@ -36,10 +36,12 @@ export function useSwingSource(swingId: string | undefined, isLeftHanded: boolea
   const videoUri = getCurrentSwingVideoUri();
   const liveSwingId = getCurrentSwingId();
   // "live" means: the in-memory store holds the swing being viewed. True when
-  // either (a) URL carries no swingId AND in-memory has data (live capture
-  // path where persist returned no id), or (b) URL swingId matches the
-  // in-memory id (live capture path with successful persist). History-tap
-  // navigation falls through to false because the tapped swingId won't match.
+  // either (a) no swingId AND in-memory has data (live capture path — nav no
+  // longer waits for the insert, so this is every live swing's first render,
+  // and permanently so when persist fails/returns no id), or (b) swingId
+  // matches the in-memory id (live capture once the caller's store
+  // subscription delivers the persisted id). History-tap navigation falls
+  // through to false because the tapped swingId won't match.
   const isLiveSwing = motion !== null && (!swingId || swingId === liveSwingId);
   const [swingRecord, setSwingRecord] = useState<SwingRecord | null>(null);
   const [recordLoaded, setRecordLoaded] = useState(false);

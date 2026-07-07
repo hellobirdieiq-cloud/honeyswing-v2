@@ -12,6 +12,7 @@ import type { VideoFile } from 'react-native-vision-camera';
 import type { PoseSequence } from '../packages/pose/PoseTypes';
 import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';
 import {
+  getCurrentCaptureToken,
   setCurrentSwingAnalysis,
   setCurrentSwingId,
   setCurrentSwingMotion,
@@ -285,6 +286,11 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       source: 'live-camera',
       isLeftHanded: isLeftHandedRef.current,
     });
+    // Claimed by the setCurrentSwingMotion above; passed to the guarded
+    // setCurrentSwingId below so a slow insert that outlives this capture
+    // (user backed out, recorded another swing) cannot stamp its id onto the
+    // newer swing's result screen.
+    const captureToken = getCurrentCaptureToken();
     setCurrentSwingAnalysis(analysis);
     updateCapturePhase('complete');
 
@@ -323,7 +329,7 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       pipelineMs,
     ).then((swingId) => {
       if (swingId) {
-        setCurrentSwingId(swingId);
+        setCurrentSwingId(swingId, captureToken); // no-op if this capture was superseded
         console.log('[persistSwing] saved', { swingId, frames: poseFrames.length });
       } else {
         console.warn('[persistSwing] skipped (no user)', { frames: poseFrames.length });
