@@ -808,7 +808,13 @@ export function drainOutbox(): Promise<OutboxDrainResult> {
             await deadLetter(e, 'zero_rows');
             deadLettered++;
           } else {
-            e.nextEligibleAt = backoffIso(e.attempts);
+            // Back off on the zero-row counter, not e.attempts (which this
+            // branch never increments) — otherwise the backoff stayed frozen at
+            // BACKOFF_BASE and ZERO_ROW_MAX retries burned in ~15s, dead-lettering
+            // on a transient insert-lag / RLS hiccup (G9). `-1` keeps the first
+            // retry fast (insert lag usually clears quickly) then grows:
+            // 2s → 4s → 8s → 16s …
+            e.nextEligibleAt = backoffIso(e.zeroRowAttempts - 1);
             await persistDrainDeltas(e);
             retried++;
           }
@@ -826,7 +832,30 @@ export function drainOutbox(): Promise<OutboxDrainResult> {
       }
 
       const remainingEntries = await listEntries();
-      scheduleNextDrain(remainingEntries); // req 4(e) self-rescheduling one-shot
+      // G6: an entry can become eligible DURING this in-flight drain — a new
+      // capture's attachSwingId fires a drain that coalesces into this one
+      // (returns the running promise), or a backoff expires mid-drain. It was
+      // not in the start-of-drain snapshot, and scheduleNextDrain only arms
+      // FUTURE timers, so it would otherwise wait for the next external edge
+      // (foreground / reconnect). Re-drain immediately when one is eligible now.
+      const nowEnd = nowMs();
+      const eligibleNow = remainingEntries.some(
+        (e) =>
+          e.swingId !== null &&
+          e.copyComplete &&
+          e.attempts < MAX_ATTEMPTS &&
+          e.zeroRowAttempts < ZERO_ROW_MAX &&
+          parseEligible(e.nextEligibleAt) <= nowEnd,
+      );
+      if (eligibleNow) {
+        cancelTimer();
+        // 0ms one-shot: runs after the finally below resets isDraining.
+        timerHandle = scheduler(() => {
+          void drainOutbox().catch(() => {});
+        }, 0);
+      } else {
+        scheduleNextDrain(remainingEntries); // req 4(e) self-rescheduling one-shot
+      }
       return {
         attempted,
         done,

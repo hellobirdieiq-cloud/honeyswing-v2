@@ -507,10 +507,20 @@ async function run(): Promise<void> {
     const { fs } = base({ updatePose: () => ({ rowCount: 0, error: null }) }, 0.5);
     const m = baseMeta({ id: 'bo-1', swingId: 'swing-10', attempts: 0, zeroRowAttempts: 0 });
     seedEntry(fs, m, JSON.stringify(frames()));
-    await drainOutbox(); // zero_row -> zeroRowAttempts=1, backoffIso(attempts=0)
-    const after = await readMetaDirect(fs, 'bo-1');
-    const delta = Date.parse(after!.nextEligibleAt) - nowVal;
-    assertEq(delta, BASE * Math.pow(2, 0), 'first backoff = BASE*2^0 (jitter 1.0)');
+    // G9: the zero-row retry backoff must GROW on zeroRowAttempts, not stay
+    // frozen at BASE. Drive successive 0-row UPDATEs past each backoff and assert
+    // 2s → 4s → 8s (BASE*2^0/^1/^2 = backoffIso(zeroRowAttempts-1)). The pre-G9
+    // bug used backoffIso(attempts=0) and reported BASE on every retry, so
+    // assertions #2 and #3 below FAIL against it — this is what protects the fix.
+    for (let i = 0; i < 3; i++) {
+      const t0 = nowVal; // backoffIso anchors nextEligibleAt on nowMs()=nowVal
+      await drainOutbox(); // zero_row -> zeroRowAttempts++ -> backoffIso(zeroRowAttempts-1)
+      const after = await readMetaDirect(fs, 'bo-1');
+      assertEq(after!.zeroRowAttempts, i + 1, `zeroRowAttempts = ${i + 1} after drain ${i + 1}`);
+      const delta = Date.parse(after!.nextEligibleAt) - t0;
+      assertEq(delta, BASE * Math.pow(2, i), `zero-row backoff #${i + 1} = BASE*2^${i} (grows)`);
+      advance(delta + 1); // past this backoff so the next drain is eligible
+    }
 
     // Max reachable attempts is MAX_ATTEMPTS-1 = 7 (attempts>=8 dead-letters).
     // backoffIso(7) = BASE*2^7 = 256s, which stays under the 6h ceiling — the
