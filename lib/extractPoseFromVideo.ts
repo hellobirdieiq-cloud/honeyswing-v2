@@ -35,8 +35,14 @@ export type ExtractResult = {
  *   - !humanPresent              → { poseFrames: [], rtmw: [], failure: 'no-person' }
  *   - extractRtmw / AVAsset throw → exception propagates to caller's try/catch
  *
- * Order: extract → zero-frames early return (skips the body-confirm native
- * round-trip when there's nothing to confirm) → confirmBodyAtVideo → adapt.
+ * Order: confirmBodyAtVideo FIRST → extract → zero-frames early return → adapt.
+ * Confirm-first (efficiency-audit Fix 3): a no-person clip must not pay the
+ * full RTMW extraction (~seconds) before rejecting — it used to, and then
+ * discarded the extracted frames anyway. The confirm runs on every swing
+ * either way, so the happy path is net-zero; only the rare zero-frames case
+ * now pays one confirm it previously skipped. A confirm REJECTION (decode /
+ * Vision throw — distinct from humanPresent=false) fails OPEN into
+ * extraction: a flaky confirm must never kill a good clip.
  */
 export async function extractPoseFromVideo(
   videoUri: string,
@@ -46,6 +52,26 @@ export async function extractPoseFromVideo(
   captureFps: number,
   analyzerDecimation: number,
 ): Promise<ExtractResult> {
+  // Gate BEFORE the expensive extraction. humanPresent=false is a definitive
+  // reject; a thrown confirm (frame decode / Vision failure) falls open.
+  try {
+    const bodyConfirm = await confirmBodyAtVideo(videoUri, clipDurationMs / 2);
+    if (!bodyConfirm.humanPresent) {
+      return {
+        poseFrames: [],
+        rtmw: [],
+        failure: 'no-person',
+        captureFps: null,
+        videoDurationMs: null,
+        videoFrameCount: null,
+        extractionTotalMs: null,
+        extractionBreakdown: null,
+      };
+    }
+  } catch (e) {
+    console.warn('[HoneySwing][extract] body-confirm threw — proceeding to extraction', e);
+  }
+
   const step = analyzerDecimation * (1000 / captureFps);
   const upperBound = Math.floor(clipDurationMs / step);
   const timestamps: number[] = [];
@@ -84,21 +110,6 @@ export async function extractPoseFromVideo(
       poseFrames: [],
       rtmw: [],
       failure: null,
-      captureFps: measuredCaptureFps,
-      videoDurationMs: measuredVideoDurationMs,
-      videoFrameCount: measuredVideoFrameCount,
-      extractionTotalMs,
-      extractionBreakdown,
-    };
-  }
-
-  const middleTimestamp = clipDurationMs / 2;
-  const bodyConfirm = await confirmBodyAtVideo(videoUri, middleTimestamp);
-  if (!bodyConfirm.humanPresent) {
-    return {
-      poseFrames: [],
-      rtmw: [],
-      failure: 'no-person',
       captureFps: measuredCaptureFps,
       videoDurationMs: measuredVideoDurationMs,
       videoFrameCount: measuredVideoFrameCount,
