@@ -154,7 +154,9 @@ export default function GripResultScreen() {
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
-          onPress={() => router.push('/grip/capture' as Href)}
+          // back (not push): pop this result to the capture screen underneath —
+          // pushing /grip/capture grew the stack unboundedly on repeat tries.
+          onPress={() => router.back()}
           disabled={isLoading}
           activeOpacity={0.7}
         >
@@ -162,7 +164,10 @@ export default function GripResultScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
-          onPress={() => router.push('/(tabs)/grip' as Href)}
+          // replace (not push): dismiss the grip flow back to the tab without
+          // stacking another (tabs)/grip entry (matches the app's dismiss-to-tab
+          // convention used by signin/paywall).
+          onPress={() => router.replace('/(tabs)/grip' as Href)}
           disabled={isLoading}
           activeOpacity={0.7}
         >

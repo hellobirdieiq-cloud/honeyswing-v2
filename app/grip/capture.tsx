@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useFocusEffect, type Href } from 'expo-router';
 import { Camera, useCameraDevice, useFrameProcessor } from 'react-native-vision-camera';
 import { Worklets } from 'react-native-worklets-core';
 import Svg, { Circle, Line } from 'react-native-svg';
@@ -77,17 +77,23 @@ export default function GripCaptureScreen() {
     setHandDebug(smoothed);
   }, []);
 
-  const onHandResults = Worklets.createRunOnJS(
-    (raw: unknown) => {
-      if (!Array.isArray(raw) || raw.length === 0) {
-        updateHandDebug([]);
-        return;
-      }
-      if (raw.length === 1 && (raw[0] as any)?._diagnostic) {
-        return;
-      }
-      updateHandDebug(raw as HandResult[]);
-    }
+  // Memoized: createRunOnJS builds a new worklet-callable each call, and
+  // onHandResults is a useFrameProcessor dep — rebuilding it every render
+  // re-created the frame processor and its per-frame setState loop. Stable now
+  // (updateHandDebug is itself useCallback-stable).
+  const onHandResults = useMemo(
+    () =>
+      Worklets.createRunOnJS((raw: unknown) => {
+        if (!Array.isArray(raw) || raw.length === 0) {
+          updateHandDebug([]);
+          return;
+        }
+        if (raw.length === 1 && (raw[0] as any)?._diagnostic) {
+          return;
+        }
+        updateHandDebug(raw as HandResult[]);
+      }),
+    [updateHandDebug],
   );
 
   const frameProcessor = useFrameProcessor(
@@ -135,6 +141,16 @@ export default function GripCaptureScreen() {
       if (countdownTimer.current) clearTimeout(countdownTimer.current);
     };
   }, []);
+
+  // Reset `submitting` whenever the screen regains focus. handleUseThis sets it
+  // true then pushes /grip/result; returning here (Try Again → router.back)
+  // leaves this screen mounted in photo phase, so without this reset "Use This"
+  // would stay permanently disabled. No-op on the initial mount (already false).
+  useFocusEffect(
+    useCallback(() => {
+      setSubmitting(false);
+    }, []),
+  );
 
   function handleTapToFocus(e: { nativeEvent: { locationX: number; locationY: number } }) {
     if (phase !== 'camera' || !cameraRef.current || !device?.supportsFocus) return;
