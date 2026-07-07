@@ -75,6 +75,18 @@ export async function persistSwing(
   const authUserId = await getUserId();
   if (!authUserId) {
     console.log("[persistSwing] No user, skipping DB write");
+    // Anonymous swings still advance the local free-swing counter that
+    // checkSwingLimit gates on — without this the counter never increments and
+    // the limit is unenforceable for signed-out users. Real swings only (stub
+    // rows from failed captures carry no frames). try/catch so a storage hiccup
+    // never turns a no-op persist into a thrown rejection.
+    if (frames.length > 0) {
+      try {
+        await incrementLocalSwingCount();
+      } catch (err) {
+        console.error('[HoneySwing] incrementLocalSwingCount (anon) failed', err);
+      }
+    }
     return null;
   }
   const profileId = authUserId;
@@ -208,12 +220,6 @@ export async function persistSwing(
     }
   }
 
-  // Real swings count toward the anonymous limit; stub rows (failure
-  // persists with empty frames) do NOT — they aren't swings.
-  if (frames.length > 0) {
-    await incrementLocalSwingCount();
-  }
-
   if (insertError || thrown) {
     const failClass = classifyInsertError(insertError, thrown);
     const message =
@@ -244,6 +250,16 @@ export async function persistSwing(
   // The row exists in DB for analytics, but event bus / session counter are
   // reserved for real swings (frames.length > 0).
   if (frames.length === 0) return swingId;
+
+  // Count the swing AFTER the insert-error check (a failed insert must not burn
+  // quota) and in try/catch: a throw here would propagate out of persistSwing
+  // and make the reconcile caller abandon the outbox entry for a row that DOES
+  // exist (G7). Real swings only — guaranteed past the stub guard above.
+  try {
+    await incrementLocalSwingCount();
+  } catch (err) {
+    console.error('[HoneySwing] incrementLocalSwingCount failed', err);
+  }
 
   if (swingId) {
     emitEvent('swing.recorded', {
