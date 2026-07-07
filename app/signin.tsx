@@ -65,69 +65,77 @@ export default function SignInScreen() {
 
     setError('');
     setLoading(true);
-    const verifyResult = await signIn.emailCode.verifyCode({ code: code.trim() });
-    const clerkError = verifyResult.error;
+    // try/catch/finally parity with handleSendCode: any thrown await (network
+    // drop, SDK exception) must reset loading — otherwise Verify stays disabled
+    // forever and the screen is bricked until re-entry. `finally` owns the reset
+    // so the individual paths no longer each clear it.
+    try {
+      const verifyResult = await signIn.emailCode.verifyCode({ code: code.trim() });
+      const clerkError = verifyResult.error;
 
-    if (clerkError) {
-      const errorCode = (clerkError as any).errors?.[0]?.code;
+      if (clerkError) {
+        const errorCode = (clerkError as any).errors?.[0]?.code;
 
-      if (errorCode === 'sign_up_if_missing_transfer') {
-        const transferResult = await signUp.create({ transfer: true });
-        if (transferResult.error) {
-          setError(transferResult.error.message ?? 'Could not complete sign-up.');
-          setCode('');
-          setLoading(false);
+        if (errorCode === 'sign_up_if_missing_transfer') {
+          const transferResult = await signUp.create({ transfer: true });
+          if (transferResult.error) {
+            setError(transferResult.error.message ?? 'Could not complete sign-up.');
+            setCode('');
+            return;
+          }
+
+          if (signUp.status !== 'complete') {
+            setError('Sign-up incomplete. Please try again.');
+            setCode('');
+            return;
+          }
+
+          const finalizeResult = await signUp.finalize();
+          if (finalizeResult.error) {
+            setError(finalizeResult.error.message ?? 'Could not complete sign-up.');
+            return;
+          }
+
+          router.replace('/(tabs)/record' as Href);
           return;
         }
 
-        if (signUp.status !== 'complete') {
-          setError('Sign-up incomplete. Please try again.');
-          setCode('');
-          setLoading(false);
-          return;
-        }
-
-        const finalizeResult = await signUp.finalize();
-        if (finalizeResult.error) {
-          setError(finalizeResult.error.message ?? 'Could not complete sign-up.');
-          setLoading(false);
-          return;
-        }
-
-        router.replace('/(tabs)/record' as Href);
-        setLoading(false);
+        setError(clerkError.message ?? 'Invalid code.');
+        setCode('');
         return;
       }
 
-      setError(clerkError.message ?? 'Invalid code.');
-      setCode('');
-      setLoading(false);
-      return;
-    }
+      if (signIn.status !== 'complete') {
+        setError('Verification incomplete. Please try again.');
+        setCode('');
+        return;
+      }
 
-    if (signIn.status !== 'complete') {
-      setError('Verification incomplete. Please try again.');
-      setCode('');
-      setLoading(false);
-      return;
-    }
+      const finalizeResult = await signIn.finalize();
+      if (finalizeResult.error) {
+        setError(finalizeResult.error.message ?? 'Could not complete sign-in.');
+        return;
+      }
 
-    const finalizeResult = await signIn.finalize();
-    if (finalizeResult.error) {
-      setError(finalizeResult.error.message ?? 'Could not complete sign-in.');
+      router.replace('/(tabs)/record' as Href);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    router.replace('/(tabs)/record' as Href);
-    setLoading(false);
   }
 
   async function handleSendNewCode() {
     setCode('');
     setError('');
-    await signIn.reset();
-    await signUp.reset();
+    // Clear any stuck loading (e.g. after a thrown verify) so Verify re-enables.
+    setLoading(false);
+    try {
+      await signIn.reset();
+      await signUp.reset();
+    } catch {
+      // reset failures are non-fatal — fall through to the email step anyway
+    }
     setStep('email');
   }
 
