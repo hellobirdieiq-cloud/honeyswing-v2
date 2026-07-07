@@ -57,7 +57,13 @@ export default function ResultScreen() {
   // persistSwing resolves. The param always wins — history taps and coach
   // deep-links carry it, so a lingering live id can never leak into those.
   const [liveSwingId, setLiveSwingId] = useState<string | null>(getCurrentSwingId());
-  useEffect(() => subscribeCurrentSwingId(setLiveSwingId), []);
+  useEffect(() => {
+    // Re-read on attach: a store notify landing between the useState
+    // initializer and this subscription (fast insert resolving during the
+    // first render window) would otherwise be missed forever.
+    setLiveSwingId(getCurrentSwingId());
+    return subscribeCurrentSwingId(setLiveSwingId);
+  }, []);
   const effectiveSwingId = swingId ?? liveSwingId ?? undefined;
   const { width: screenW } = useWindowDimensions();
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);

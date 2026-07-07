@@ -19,7 +19,11 @@ import { STARTED_FRESHNESS_MS } from './watchImuConstants';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
-import { processRecordedVideo, type CaptureProcessingContext } from './captureProcessing';
+import {
+  processRecordedVideo,
+  type CaptureProcessingContext,
+  type PipelineVideoEntry,
+} from './captureProcessing';
 import {
   computeNavigationBlockReason,
   evaluateWatchAutoStart,
@@ -124,6 +128,12 @@ export function useSwingCapture({
   // (decoupled from swingId + network); reconciled via attachSwingId on persist
   // success, or abandoned on any terminal capture failure. iOS only.
   const videoOutboxEntryIdRef = useRef<string | null>(null);
+  // Monotonic per-capture generation, minted in beginRecording. Every
+  // late-arriving async completion (window timer, stop-fallback, failure
+  // stub-insert .then, pipeline failure) checks its own generation against
+  // this before touching shared state — the same supersession pattern as the
+  // store's capture token, generalized to the hook's refs.
+  const captureGenerationRef = useRef(0);
   const guidanceSnapshotRef = useRef<{ separation: number | null; color: CameraGuidanceColor | null }>({
     separation: null,
     color: null,
@@ -196,12 +206,34 @@ export function useSwingCapture({
   // but the swing was still rejected (no-person, or analysis/phase-detection
   // threw). Attached to the stub row's pose_full so #4 can replay the rejection.
   // Omitted for the genuinely-empty failures (zero-frames, recording-error).
-  function handleCaptureFailure(reason: string, rtmw?: Rtmw133Frame[] | null) {
+  function handleCaptureFailure(
+    reason: string,
+    rtmw?: Rtmw133Frame[] | null,
+    opts?: { generation?: number; videoEntry?: PipelineVideoEntry },
+  ) {
+    const generation = opts?.generation ?? captureGenerationRef.current;
+    const stale = generation !== captureGenerationRef.current;
+
     // A failed capture never uploads its video — abandon the durable entry so it
-    // isn't stranded pending until the orphan sweep.
-    const strandedVideoEntry = videoOutboxEntryIdRef.current;
+    // isn't stranded pending until the orphan sweep. The pipeline passes ITS
+    // capture's entry by value (a later capture may own the shared ref by now);
+    // hook-local failures (recording-error, stop-fallback) predate any entry and
+    // fall back to the shared ref — current generation only, so a stale failure
+    // can never abandon a newer capture's entry.
+    const videoEntry = opts?.videoEntry;
+    let strandedVideoEntry: string | null = null;
+    if (videoEntry) {
+      if (videoEntry.id && !videoEntry.abandoned) {
+        videoEntry.abandoned = true;
+        strandedVideoEntry = videoEntry.id;
+      }
+    } else if (!stale) {
+      strandedVideoEntry = videoOutboxEntryIdRef.current;
+    }
     if (strandedVideoEntry) {
-      videoOutboxEntryIdRef.current = null;
+      if (videoOutboxEntryIdRef.current === strandedVideoEntry) {
+        videoOutboxEntryIdRef.current = null;
+      }
       abandonPending([strandedVideoEntry]).catch((e) =>
         console.warn('[HoneySwing] abandonPending (capture failure) failed', e),
       );
@@ -217,6 +249,16 @@ export function useSwingCapture({
         timestamp: Date.now(),
       }),
     ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
+
+    if (stale) {
+      // Late failure from a superseded capture: its own entry is abandoned
+      // above; everything else (timers, phase, swingIdPromiseRef, navigation)
+      // belongs to the CURRENT capture and stays untouched. No stub row
+      // either — the persist inputs (profile snapshot, gravity readings) have
+      // been overwritten by the newer capture and would misattribute it.
+      console.warn('[useSwingCapture] stale capture failure ignored', { reason, generation });
+      return;
+    }
 
     clearTimers();
     updateCapturePhase('processing');
@@ -242,6 +284,9 @@ export function useSwingCapture({
     updateCapturePhase('complete');
 
     swingIdPromiseRef.current.then((swingId) => {
+      // A slow stub insert can resolve after the user has begun another capture
+      // (which resets navigatedRef) — never navigate for a superseded capture.
+      if (generation !== captureGenerationRef.current) return;
       if (navigatedRef.current) return;
       navigatedRef.current = true;
       if (skipResultNavigation) {
@@ -255,9 +300,16 @@ export function useSwingCapture({
     });
   }
 
-  async function finalizeCapture(origin: StopOrigin) {
+  async function finalizeCapture(origin: StopOrigin, generation?: number) {
+    // Only a live 'capturing' phase for the CURRENT capture may finalize: a
+    // late window timer (e.g. armed before a blur ended the recording
+    // natively, so processRecordedVideo already moved the phase on) or a
+    // superseded generation must not re-enter the stop path.
+    if (generation != null && generation !== captureGenerationRef.current) return;
+    if (capturePhaseRef.current !== 'capturing') return;
     if (isFinalizingRef.current) return;
     isFinalizingRef.current = true;
+    const fallbackGeneration = captureGenerationRef.current;
 
     stopOriginRef.current = origin;
     // A manual stop below VALID_MIN_MS can only be a fragment (no classifiable
@@ -284,6 +336,8 @@ export function useSwingCapture({
     // EXTERNAL ASSUMPTION — iOS typical stopRecording finalize latency ~100-500ms;
     // 1500ms gives ~3x headroom. Not measured.
     recordingStopFallbackTimerRef.current = setTimeout(() => {
+      // A fallback armed for a superseded capture must not fail the current one.
+      if (fallbackGeneration !== captureGenerationRef.current) return;
       console.log('[KPI] stop-fallback-fired', Date.now());
       if (discardRequestedRef.current) {
         // Sub-minimum manual stop: the fragment is discarded wholesale — even
@@ -292,7 +346,9 @@ export function useSwingCapture({
         updateCapturePhase('idle');
         return;
       }
-      handleCaptureFailure('recording-stop-fallback');
+      handleCaptureFailure('recording-stop-fallback', undefined, {
+        generation: fallbackGeneration,
+      });
     }, 1500);
   }
 
@@ -327,6 +383,11 @@ export function useSwingCapture({
     } else {
       activeProfileSnapshotRef.current = null;
     }
+
+    // Mint THIS capture's generation. Everything armed below (window timer,
+    // recording callbacks, pipeline context) carries it and no-ops once a
+    // newer capture has minted a higher one.
+    const generation = ++captureGenerationRef.current;
 
     const origin = opts?.origin ?? 'phone';
     captureOriginRef.current = origin;
@@ -378,7 +439,10 @@ export function useSwingCapture({
       watch,
       targetFps,
       updateCapturePhase,
-      handleCaptureFailure,
+      // Bind the failure route to THIS capture's generation; the pipeline adds
+      // its video entry (by value) as the third argument.
+      handleCaptureFailure: (reason, rtmw, videoEntry) =>
+        handleCaptureFailure(reason, rtmw, { generation, videoEntry }),
       tryNavigate,
     };
     cameraRef.current?.startRecording({
@@ -388,7 +452,7 @@ export function useSwingCapture({
       onRecordingFinished: (video) => { void processRecordedVideo(video, processingCtx); },
       onRecordingError: (e) => {
         console.error('[HoneySwing] REC ERR:', e);
-        handleCaptureFailure('recording-error');
+        handleCaptureFailure('recording-error', undefined, { generation });
       },
     });
 
@@ -397,7 +461,7 @@ export function useSwingCapture({
     goPlayer.play();
 
     captureTimeoutRef.current = setTimeout(() => {
-      finalizeCapture('window_timer').catch(err => console.error('[finalizeCapture] timeout error:', err));
+      finalizeCapture('window_timer', generation).catch(err => console.error('[finalizeCapture] timeout error:', err));
     }, CAPTURE_WINDOW_MS);
   }
 

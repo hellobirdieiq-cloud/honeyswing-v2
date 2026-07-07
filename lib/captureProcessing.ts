@@ -65,6 +65,19 @@ export interface WatchCaptureApi {
 }
 
 /**
+ * THIS capture's durable video-outbox entry, held BY VALUE with an
+ * abandonment flag. The reconcile .then and the failure path coordinate
+ * through this object instead of the hook-lifetime shared ref: a later
+ * capture's beginRecording resets that ref, so reading it after the awaited
+ * insert either stranded this capture's video (never attached → dead-letter)
+ * or, worse, attached the NEXT capture's entry to this capture's row.
+ */
+export interface PipelineVideoEntry {
+  id: string | null;
+  abandoned: boolean;
+}
+
+/**
  * Everything the pipeline reads from the capture in flight. Refs are passed AS
  * REFS (never dereferenced at build time): gravityReadingsRef, isLeftHandedRef
  * and recordingStopFallbackTimerRef are written in finalizeCapture AFTER the
@@ -91,7 +104,13 @@ export interface CaptureProcessingContext {
   watch: WatchCaptureApi;
   targetFps: number | undefined;
   updateCapturePhase: (phase: CapturePhase) => void;
-  handleCaptureFailure: (reason: string, rtmw?: Rtmw133Frame[] | null) => void;
+  // The hook binds this to the capture's generation; the pipeline passes its
+  // video entry so a failure abandons THIS capture's entry, never the shared ref's.
+  handleCaptureFailure: (
+    reason: string,
+    rtmw?: Rtmw133Frame[] | null,
+    videoEntry?: PipelineVideoEntry,
+  ) => void;
   tryNavigate: () => void;
 }
 
@@ -151,13 +170,17 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
   // background). MUST run BEFORE the up-to-45s extraction so a kill during
   // extraction still drains the video later. Extraction reads the ORIGINAL
   // temp path and is never blocked. iOS only; Android stays on fallback.
+  const videoEntry: PipelineVideoEntry = { id: null, abandoned: false };
   if (outboxEnabled()) {
     try {
-      videoOutboxEntryIdRef.current = captureVideoOutbox(video.path);
+      videoEntry.id = captureVideoOutbox(video.path);
     } catch (e) {
       console.warn('[HoneySwing] captureVideoOutbox threw', e);
-      videoOutboxEntryIdRef.current = null;
     }
+    // Shared ref kept in sync for hook-local failure paths that predate any
+    // pipeline entry (recording-error, stop-fallback); this pipeline itself
+    // only ever acts on the by-value videoEntry above.
+    videoOutboxEntryIdRef.current = videoEntry.id;
   }
 
   let extractionMs = 0;
@@ -194,11 +217,11 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     extractionMs = result.rtmw.reduce((acc, f) => acc + (f.extractionMs ?? 0), 0);
 
     if (result.failure === 'no-person') {
-      handleCaptureFailure('no-person', result.rtmw);
+      handleCaptureFailure('no-person', result.rtmw, videoEntry);
       return;
     }
     if (result.rtmw.length === 0) {
-      handleCaptureFailure('zero-frames');
+      handleCaptureFailure('zero-frames', undefined, videoEntry);
       return;
     }
 
@@ -370,11 +393,16 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
 
     swingIdPromiseRef.current?.then(async (swingId) => {
       if (outboxEnabled()) {
-        // Ref read stays AFTER the await (mutual-exclusion window with the
-        // failure path's read-and-null); only the decision itself is lifted.
         const poseEntryId = poseEntryIdPromise ? await poseEntryIdPromise : null;
-        const plan = planOutboxReconcile(poseEntryId, videoOutboxEntryIdRef.current, swingId);
-        videoOutboxEntryIdRef.current = null;
+        // THIS capture's entry by value — mutual exclusion with the failure
+        // path is the per-capture abandoned flag, not the shared ref (which a
+        // newer capture may own by the time this insert resolves). The shared
+        // ref is cleared only while it still points at our entry.
+        const videoEntryId = videoEntry.abandoned ? null : videoEntry.id;
+        const plan = planOutboxReconcile(poseEntryId, videoEntryId, swingId);
+        if (videoOutboxEntryIdRef.current === videoEntry.id) {
+          videoOutboxEntryIdRef.current = null;
+        }
         if (plan.action === 'attach') {
           attachSwingId(plan.ids, plan.swingId); // reconcile: fires one drain
         } else if (plan.action === 'abandon') {
@@ -414,6 +442,6 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     } else {
       console.warn('[HoneySwing] extract-or-analyze threw:', msg);
     }
-    handleCaptureFailure('extract-or-analyze-threw', rtmwForFailure);
+    handleCaptureFailure('extract-or-analyze-threw', rtmwForFailure, videoEntry);
   }
 }

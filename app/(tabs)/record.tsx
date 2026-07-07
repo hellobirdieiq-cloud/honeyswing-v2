@@ -290,7 +290,14 @@ export default function RecordTab() {
       setIsCameraActive(true);
       return () => {
         setIsCameraActive(false);
+        // Blur mid-capture: deactivating the camera ends the recording
+        // natively, so the still-armed 4s capture-window timer would later
+        // fire finalizeCapture against a recording that already finished
+        // (stub row + abandoned video + wrong-screen nav). Kill it with the
+        // countdown/fallback timers here, not just on unmount.
+        clearTimers();
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- clearTimers only touches stable refs; tracking it (recreated per render) would re-run the focus effect every render
     }, [])
   );
 
