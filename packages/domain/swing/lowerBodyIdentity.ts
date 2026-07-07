@@ -194,7 +194,13 @@ function computeBaseline(frames: PoseFrame[]): {
   let tally = 0;
   let votes = 0;
   for (const frame of frames) {
-    const v = voteLowerBodyOrientation(frame, VOTE_SEPARATION_MIN);
+    // Baseline is tallied at DECISION grade — the same threshold the swap
+    // decision acts on (not the weaker VOTE_SEPARATION_MIN). Idempotency
+    // requires this: a corrected stream votes s0 at every DECISION-grade
+    // frame, so re-tallying at decision grade recomputes the same s0. Under
+    // the old weak threshold a marginal baseline could flip on re-application
+    // — weak votes swept into a swap run negate and drag the tally across 0.
+    const v = voteLowerBodyOrientation(frame, DECISION_SEPARATION_MIN);
     if (v === null) continue;
     tally += v;
     votes++;

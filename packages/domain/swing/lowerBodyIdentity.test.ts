@@ -241,6 +241,50 @@ group("#10 purity + null baseline");
   assert(r.swappedFrames.length === 0 && r.frames.every((f, i) => f === allCollapsed[i]), "null baseline → untouched");
 }
 
+group("#11 D5 — marginal baseline stays idempotent under re-application");
+{
+  // Per-pair (right − left) delta on the vote pairs (knee + ankle): sum = 2d,
+  // separation = 2|d|.  d = ±0.05 → strong (sep 0.10); d = +0.015 → weak
+  // (sep 0.03, valid at VOTE_SEPARATION_MIN 0.02 but below DECISION 0.04).
+  const layoutD = (d: number): Partial<Record<JointName, number>> => ({
+    leftHip: 0.46, rightHip: 0.46 + d,
+    leftKnee: 0.45, rightKnee: 0.45 + d,
+    leftAnkle: 0.45, rightAnkle: 0.45 + d,
+    leftHeel: 0.44, rightHeel: 0.44 + d,
+    leftFootIndex: 0.43, rightFootIndex: 0.43 + d,
+    leftWrist: 0.3, rightWrist: 0.7,
+  });
+  const S_PLUS = layoutD(+0.05);   // strong +1
+  const S_MINUS = layoutD(-0.05);  // strong −1
+  const W_PLUS = layoutD(+0.015);  // weak +1 (counts at 0.02, abstains at 0.04)
+
+  // f0 strong+1 · f1–5 strong−1 · f6–13 weak+1 (swept into the swap run) ·
+  // f14 strong+1.  At the WEAK tally (pre-fix computeBaseline): +5/15 → s0=+1,
+  // low_confidence; the correction swaps f1–13, whose weak votes then negate,
+  // so re-tallying weak gives −1 → the baseline FLIPS and f(f(x)) ≠ f(x).
+  // At DECISION grade (the fix) only the 7 strong votes count: tally −3 →
+  // s0=−1 stably, the correction swaps just {0,14}, and re-application swaps
+  // nothing.  Pre-fix this fixture returned baselineSign 1→−1, swapped
+  // {1..13}→{0..14}, idempotent=false; the assertions below are the post-fix
+  // contract.
+  const marginal = makeStream([
+    S_PLUS,
+    S_MINUS, S_MINUS, S_MINUS, S_MINUS, S_MINUS,
+    W_PLUS, W_PLUS, W_PLUS, W_PLUS, W_PLUS, W_PLUS, W_PLUS, W_PLUS,
+    S_PLUS,
+  ]);
+
+  const once = correctLowerBodyIdentity(marginal);
+  const twice = correctLowerBodyIdentity(once.frames);
+
+  assert(once.lowConfidenceBaseline === true, "marginal path exercised (low_confidence_baseline)");
+  assert(once.baselineSign === -1, "baseline tallied at decision grade → s0 = -1 (stable, not the weak +1)");
+  assert(deepEqual(once.swappedFrames, [0, 14]), "first pass swaps only the two decision-grade contradictions {0,14}");
+  assert(twice.swappedFrames.length === 0, "second pass swaps nothing (pre-fix swapped all 15)");
+  assert(twice.baselineSign === once.baselineSign, "baseline sign does not flip on re-application (pre-fix flipped +1→-1)");
+  assert(deepEqual(once.frames, twice.frames), "f(f(x)) === f(x) on the marginal baseline");
+}
+
 // ---------------------------------------------------------------------------
 
 console.log(`\n${passed} passed, ${failed} failed`);
