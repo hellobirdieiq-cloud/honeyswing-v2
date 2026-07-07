@@ -113,7 +113,7 @@ export function useWatchImuCapture() {
   const latestWatchStartMsRef = useRef<number | null>(null);
   const phoneMonoAtVideoStartRef = useRef<number | null>(null);
   // Consumer (useSwingCapture) handler for watch-initiated starts.
-  const startedHandlerRef = useRef<((e: WatchStartedEvent) => void) | null>(null);
+  const startedHandlerRef = useRef<((e: WatchStartedEvent) => boolean | void) | null>(null);
 
   // Resolve the toggle once on mount (and keep it current if the screen remounts).
   useEffect(() => {
@@ -150,9 +150,11 @@ export function useWatchImuCapture() {
     if (!enabledRef.current) return;
     const seq = typeof p.seq === 'number' ? p.seq : 0;
     const watchStartMs = typeof p.watchStartMs === 'number' ? p.watchStartMs : 0;
-    // Adopt the watch's seq so getReadings accepts its blob and late-join can map it.
+    // Adopt the watch's seq for alignment / late-join mapping. inFlightSeqRef is
+    // NOT set here: a watch `started` the consumer refuses (stale / not pre-armed)
+    // must not gate the late-join drain (handleWatchBatch), or its IMU batch would
+    // be silently dropped. It's adopted below only if the consumer auto-starts.
     currentSeqRef.current = seq;
-    inFlightSeqRef.current = seq;
     latestWatchStartMsRef.current = watchStartMs;
     captureStartMsRef.current = Date.now();
 
@@ -168,7 +170,7 @@ export function useWatchImuCapture() {
       // leave startedAgeMs = Infinity → no auto-start, seq still adopted for alignment/late-join
     }
 
-    startedHandlerRef.current?.({
+    const accepted = startedHandlerRef.current?.({
       seq,
       watchStartMs,
       durationMs: typeof p.durationMs === 'number' ? p.durationMs : DEFAULT_CAPTURE_DURATION_MS,
@@ -176,6 +178,8 @@ export function useWatchImuCapture() {
       receivedMonoMs: typeof p.receivedMonoMs === 'number' ? p.receivedMonoMs : 0,
       startedAgeMs,
     });
+    // Adopt in-flight ONLY when the consumer actually auto-started a recording.
+    if (accepted) inFlightSeqRef.current = seq;
   }, []);
 
   // ── Batch: late-join drain (only for batches NOT consumed by an in-flight persist) ──
@@ -346,8 +350,19 @@ export function useWatchImuCapture() {
     if (inFlightSeqRef.current === seq) inFlightSeqRef.current = null;
   }, []);
 
+  /**
+   * Clear the in-flight seq on a capture that failed before persist (no-person,
+   * zero-frames, extract threw) — the persist path's registerSwingId never runs
+   * for those, so without this the late-join drain (handleWatchBatch) keeps
+   * skipping this seq's batch forever. Safe: captures are serialized, so this
+   * only ever clears the current, now-failed capture.
+   */
+  const clearInFlight = useCallback(() => {
+    inFlightSeqRef.current = null;
+  }, []);
+
   /** Set the consumer for watch-initiated starts; returns an unsubscribe. */
-  const registerStartedHandler = useCallback((cb: (e: WatchStartedEvent) => void) => {
+  const registerStartedHandler = useCallback((cb: (e: WatchStartedEvent) => boolean | void) => {
     startedHandlerRef.current = cb;
     return () => {
       if (startedHandlerRef.current === cb) startedHandlerRef.current = null;
@@ -366,6 +381,7 @@ export function useWatchImuCapture() {
     getAlignment,
     getCurrentSeq,
     registerSwingId,
+    clearInFlight,
     registerStartedHandler,
     isEnabled,
   };

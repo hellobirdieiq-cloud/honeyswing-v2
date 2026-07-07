@@ -260,6 +260,11 @@ export function useSwingCapture({
       return;
     }
 
+    // This (current) capture failed before persist → registerSwingId never runs,
+    // so clear the watch in-flight seq here or its late-join IMU batch would be
+    // dropped by handleWatchBatch's in-flight skip (G5).
+    watch.clearInFlight();
+
     clearTimers();
     updateCapturePhase('processing');
 
@@ -525,14 +530,15 @@ export function useSwingCapture({
         preArmedRef.current = false;
         setPreArmed(false);
         beginRecording({ origin: 'watch' });
-      } else {
-        console.log('[useSwingCapture] watch started (no auto-start)', {
-          preArmed: preArmedRef.current,
-          fresh,
-          phase: capturePhaseRef.current,
-          seq: started.seq,
-        });
+        return true; // accepted → the hook adopts this seq as in-flight
       }
+      console.log('[useSwingCapture] watch started (no auto-start)', {
+        preArmed: preArmedRef.current,
+        fresh,
+        phase: capturePhaseRef.current,
+        seq: started.seq,
+      });
+      return false; // refused → hook leaves inFlightSeq unset so the batch drains
     });
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
