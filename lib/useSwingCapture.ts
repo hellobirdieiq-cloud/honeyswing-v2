@@ -274,21 +274,30 @@ export function useSwingCapture({
     videoUriRef.current = null;
     updateCapturePhase('complete');
 
-    swingIdPromiseRef.current.then((swingId) => {
-      // A slow stub insert can resolve after the user has begun another capture
-      // (which resets navigatedRef) — never navigate for a superseded capture.
-      if (generation !== captureGenerationRef.current) return;
-      if (navigatedRef.current) return;
-      navigatedRef.current = true;
-      if (skipResultNavigation) {
+    if (skipResultNavigation) {
+      // Coach/watch mode: the callback contract delivers the RESOLVED id
+      // (same as the happy-path branch in tryNavigate), so this branch alone
+      // still awaits the stub insert.
+      swingIdPromiseRef.current.then((swingId) => {
+        // A slow stub insert can resolve after the user has begun another capture
+        // (which resets navigatedRef) — never fire for a superseded capture.
+        if (generation !== captureGenerationRef.current) return;
+        if (navigatedRef.current) return;
+        navigatedRef.current = true;
         onSwingPersisted?.(swingId);
-        return;
-      }
-      router.push({
-        pathname: '/analysis/no-swing',
-        params: { reason, ...(swingId ? { swingId } : {}) },
-      } as Href);
-    });
+      });
+      return;
+    }
+
+    // Navigate immediately — the no-swing screen reads only `reason`, and the
+    // stub insert (still running above) is not allowed to strand the failure
+    // screen behind a hung network call.
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    router.push({
+      pathname: '/analysis/no-swing',
+      params: { reason },
+    } as Href);
   }
 
   async function finalizeCapture(origin: StopOrigin, generation?: number) {
