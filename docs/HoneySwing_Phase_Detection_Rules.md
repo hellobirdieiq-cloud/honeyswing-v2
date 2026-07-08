@@ -1,7 +1,7 @@
 # HoneySwing Phase Detection Rules — All Camera Angles
 
 **Version:** Session 90 (2026-05-11)
-**Status:** DTL N=4 validated. Face-on N=2 validated. All rules provisional until clinic.
+**Status:** Face-on is the PRIMARY quality target (2026-07-02 pivot — see `docs/FACE_ON_FIRST_LINE_PLAN.md`): X-extreme top + xCross consensus impact are SHIPPED + LIVE (corpus is 68/72 face-on). DTL N=4 validated, legacy = backup only. Rules still marked PROVISIONAL below remain gated on the clinic.
 **Next gate:** Dave clinic + 10+ swings per angle across 3+ golfers.
 **Data source:** `motion_frames[i].joints.*` for all new rules. `trail_points` for existing pipeline rules.
 
@@ -12,7 +12,7 @@
 | Angle | DB value | Status | Primary signal axis |
 |---|---|---|---|
 | DTL (trail side) | `camera_angle: "front"` ⚠️ inverted label | Primary — all rules validated | Hip x-spread, lead wrist x |
-| Face-on | `camera_angle: "side"` ⚠️ inverted label | Secondary — N=2 validated | Wrist velocity, wrist z, shoulder x |
+| Face-on | `camera_angle: "side"` ⚠️ inverted label | PRIMARY — quality target (2026-07-02 pivot); consensus impact LIVE both handedness | Lead-landmark X-extreme (top), xCross consensus (impact) |
 
 **⚠️ DB label inversion:** `camera_angle` field is inverted from plain English. Use `angle_gating.bucket` instead — reads `"dtl"` or `"front"` correctly.
 
@@ -263,9 +263,36 @@ AND mean(avg[F..F+SUSTAIN_FRAMES]) > baseline × SUSTAIN_MULTIPLIER
 
 ## Face-On Phase 3 — Top of backswing
 
+**Signal (LIVE):** Median X-extreme — per-landmark frame of MAX canonical x for
+3 lead landmarks (nose, rightShoulder, rightEar), combined by MEDIAN (robust to
+a single drifting landmark; the mean is kept in telemetry for comparison only).
+`detectFaceOnTopXExtreme` (`phaseDetectionFaceOn.ts`) — wired as the real top:
+`topIdx = topXExtreme.frame` at the call site.
+**Status:** SHIPPED — window anchored on the frame-mapped takeaway and the
+INDEPENDENT provisional arc-bottom impact (non-circular). MAX x for BOTH
+handedness — canonicalization normalizes lefty/righty to the same direction,
+so there is no `isLeftHanded` branch.
+
+```
+from = takeaway + round(searchStartFraction × (arcBottom − takeaway))
+to   = arcBottom − round(searchEndFraction × (arcBottom − takeaway))
+       (A.topXExtreme owns its own fractions — phaseDetectionShared.ts)
+
+per landmark ∈ {nose, rightShoulder, rightEar}  // canonical LEAD side
+  pick[l] = frame of MAX canonical x in [from..to], confidence-gated
+            (strict > keeps the FIRST frame of a flat plateau)
+
+top = MEDIAN(picks)
+reliability: 3 picks within the consensus window = high; ≥2 picks = medium; 1 = low
+```
+
+### Shadow — 3-signal velocity rule (logged as `top_velmin_shadow`; NOT live)
+
+The previous rule below is parallel-computed for ground-truth comparison only
+(`detectFaceOnTop` — the call-site comment: "retained as a logged shadow only").
+
 **Signal:** rightWrist velocity minimum + rightWrist z maximum + leftShoulder x minimum
-**Validated:** N=1 confirmed (3b035cd6), N=1 estimated (c6860ce5)
-**Status:** PROVISIONAL
+**Validated (historical):** N=1 confirmed (3b035cd6), N=1 estimated (c6860ce5)
 
 ```
 // Search window
@@ -285,13 +312,13 @@ else:
   top = vel_min_fi  // best single signal
 ```
 
-**Signal quality ranking:**
+**Signal quality ranking (historical):**
 1. rightWrist z maximum — cleanest, peaks at +0.23 at top, no ambiguity
 2. rightWrist velocity minimum — clear valley
 3. leftShoulder x minimum — TPI-validated, confidence ~0.9999
 4. rightWrist confidence minimum — lags 4-9 frames, use as check only
 
-**Results:** 3b035cd6: f85-87 confirmed (algorithm: f91, within 4 frames) ✓
+**Results (historical):** 3b035cd6: f85-87 confirmed (algorithm: f91, within 4 frames) ✓
 
 ---
 
@@ -418,8 +445,8 @@ finish = first frame where rolling average reaches plateau value
 | 0 — Swing start | Hip dSpreadX | 3-joint velocity avg | No |
 | 1 — True address | Spine+head+knee window | Not validated | No |
 | 2 — Takeaway | Wrist midX directional gate | Same | Yes ✓ |
-| 3 — Top | Lead wrist X minimum | Wrist vel min + Z max + shoulder | No |
-| 4 — Impact | Combined wrist Y max + 67ms | Lead-thumb-line last zero-crossing (RH); arc-bottom fallback; cross-check flag | No |
+| 3 — Top | Trail wrist X minimum | Lead-landmark X-extreme median (vel-min rule = logged shadow) | No |
+| 4 — Impact | Combined wrist Y max + 67ms | xCross consensus, both handedness; arc-bottom fallback; cross-check flag | No |
 | 5 — Finish | velXY < 0.008 × 3 frames | Trail shoulder x plateau | No |
 
 ---
@@ -439,13 +466,13 @@ finish = first frame where rolling average reaches plateau value
 | Face-on trigger multiplier | 2.5x | Face-on 0 | Face-on |
 | Face-on sustain multiplier | 10x | Face-on 0 | Face-on |
 | Face-on sustain window | 330ms | Face-on 0 | Face-on |
-| Face-on top 5-frame window | ±5 frames | Face-on 3 | Face-on |
+| Face-on top 5-frame window | ±5 frames | Face-on 3 (shadow rule) | Face-on |
 | Impact lag correction | 27ms | Face-on 4 — SUPERSEDED with detector | Face-on |
 | Rise rate threshold | 0.03 | Face-on 4 — SUPERSEDED with detector | Face-on |
 | Rise sustain | 110ms | Face-on 4 — SUPERSEDED with detector | Face-on |
-| Impact speed lookback | 3 frames | Face-on 4 (shipped) | Face-on |
-| Impact peak percentile | 0.95 | Face-on 4 (shipped) | Face-on |
-| Impact band threshold | 0.9 × peak | Face-on 4 (shipped) | Face-on |
+| Impact speed lookback | 3 frames | Face-on 4 (arc-bottom fallback) | Face-on |
+| Impact peak percentile | 0.95 | Face-on 4 (arc-bottom fallback) | Face-on |
+| Impact band threshold | 0.9 × peak | Face-on 4 (arc-bottom fallback) | Face-on |
 | Shoulder plateau filter | >10% exclusion | Face-on 5 | Face-on |
 | Shoulder plateau confirm | 550ms rising | Face-on 5 | Face-on |
 
