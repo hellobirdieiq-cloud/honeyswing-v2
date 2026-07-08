@@ -25,13 +25,14 @@ for (const raw of readFileSync(envPath, 'utf8').split('\n')) {
   env[key] = val;
 }
 const KEY = env.SUPABASE_SERVICE_ROLE_KEY;
-if (!KEY) {
-  console.error('error: SUPABASE_SERVICE_ROLE_KEY missing in .env');
+const URL = env.EXPO_PUBLIC_SUPABASE_URL;
+if (!KEY || !URL) {
+  console.error('error: SUPABASE_SERVICE_ROLE_KEY / EXPO_PUBLIC_SUPABASE_URL missing in .env');
   process.exit(1);
 }
 
 const supabase = createClient(
-  'https://xutbbirehugrrbkauhnl.supabase.co',
+  URL,
   KEY,
   { auth: { persistSession: false, autoRefreshToken: false } },
 );
