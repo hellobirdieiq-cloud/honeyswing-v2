@@ -142,6 +142,10 @@ export default function ResultScreen() {
   // callback used to freeze the number mid-count forever.
   const finalScore = analysis?.score ?? 0;
   const hasAnalysis = analysis !== null;
+  // Withheld score (analysis resolved but score is null — e.g. tempo missing,
+  // scoring.ts returns score:null) must render as "—", never a literal 0 that
+  // reads as a real failing grade.
+  const scoreWithheld = hasAnalysis && analysis?.score == null;
   const [displayedScore, setDisplayedScore] = useState(0);
   const displayedScoreRef = useRef(0);
   const finalScoreRef = useRef(finalScore);
@@ -388,7 +392,7 @@ export default function ResultScreen() {
             {/* 1. Score */}
             <View style={styles.scoreCard}>
               <Text style={[styles.score, { color: scoreColor }]}>
-                {displayedScore}
+                {scoreWithheld ? '—' : displayedScore}
               </Text>
               {tempoLabelText && (
                 <Text style={[styles.tempoVerdict, { color: scoreColor }]}>

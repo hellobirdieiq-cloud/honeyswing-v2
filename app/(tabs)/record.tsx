@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator, useWindowDimensions, Modal, Pressable, Alert, Linking } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -73,6 +73,12 @@ export default function RecordTab() {
   const [containerH, setContainerH] = useState(0);
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  // Non-null when setupScreen() threw (audio-mode/permission/limit check
+  // rejected). Without this, a throw left hasPermission stuck at null → a
+  // permanent "Starting camera..." spinner with no way out.
+  const [setupError, setSetupError] = useState<string | null>(null);
+  // Bumped by the "Try again" CTA to re-run the setup effect.
+  const [setupNonce, setSetupNonce] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showCameraHint, setShowCameraHint] = useState(false);
@@ -360,6 +366,7 @@ export default function RecordTab() {
 
     clearCurrentSwingMotion();
     clearCurrentSwingAnalysis();
+    setSetupError(null);
 
     async function setupScreen() {
       const limitStatus = await checkSwingLimit();
@@ -391,14 +398,17 @@ export default function RecordTab() {
       }
     }
 
-    setupScreen();
+    setupScreen().catch((err) => {
+      console.error('[HoneySwing] record setup failed', err);
+      if (mounted) setSetupError("We couldn't start the camera. Please try again.");
+    });
 
     return () => {
       mounted = false;
       clearTimers();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clearTimers is defined inline in useSwingCapture and would cause infinite loop if tracked
-  }, [router]);
+  }, [router, setupNonce]);
 
   // Fallback banner: show after 5s if camera hasn't initialized
   useEffect(() => {
@@ -480,10 +490,28 @@ export default function RecordTab() {
         </>
       ) : (
         <View style={styles.placeholder}>
-          <ActivityIndicator size="large" color={GOLD} />
-          <Text style={styles.placeholderText}>
-            {hasPermission === false ? 'Camera permission denied' : 'Starting camera...'}
-          </Text>
+          {setupError ? (
+            <>
+              <Text style={styles.placeholderText}>{setupError}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => setSetupNonce((n) => n + 1)}>
+                <Text style={styles.retryButtonText}>Try again</Text>
+              </TouchableOpacity>
+            </>
+          ) : hasPermission === false ? (
+            <>
+              <Text style={styles.placeholderText}>
+                Camera access is off. Enable it in Settings to record your swing.
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={() => Linking.openSettings()}>
+                <Text style={styles.retryButtonText}>Open Settings</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <ActivityIndicator size="large" color={GOLD} />
+              <Text style={styles.placeholderText}>Starting camera...</Text>
+            </>
+          )}
         </View>
       )}
 
