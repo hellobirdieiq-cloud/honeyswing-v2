@@ -1,0 +1,19 @@
+diff --git a/node_modules/@clerk/expo/expo-module.config.json b/node_modules/@clerk/expo/expo-module.config.json
+index 355aef1..d10f092 100644
+--- a/node_modules/@clerk/expo/expo-module.config.json
++++ b/node_modules/@clerk/expo/expo-module.config.json
+@@ -1,12 +1,12 @@
+ {
+   "platforms": ["apple", "android"],
+   "apple": {
++    "podspecPath": "ios/ClerkExpo.podspec",
+     "modules": [
+       "ClerkExpoModule",
+       "ClerkAuthViewModule",
+       "ClerkUserProfileViewModule",
+-      "ClerkUserButtonViewModule",
+-      "ClerkGoogleSignInModule"
++      "ClerkUserButtonViewModule"
+     ]
+   },
+   "android": {

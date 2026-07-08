@@ -1,9 +1,17 @@
 # patches/
 
-## @clerk+expo+3.2.8.patch — keep GoogleSignIn out of the iOS build
+## @clerk+expo+3.7.1.patch — keep GoogleSignIn out of the iOS build
+
+*Re-rolled from 3.2.8 → 3.7.1 (2026-07-07, T2-20 Clerk bump) following the
+procedure below: `podspecPath` pin re-applied AND `ClerkGoogleSignInModule`
+removed from the new `apple.modules` array (the 3.6.x note case). Android
+modules untouched, matching the original patch's scope. Autolinking re-verified:
+resolves the single `ClerkExpo` pod.*
 
 **What it does.** Adds the `apple.podspecPath` key to `@clerk/expo`'s
-`expo-module.config.json`, pinning Expo autolinking to `ios/ClerkExpo.podspec`.
+`expo-module.config.json`, pinning Expo autolinking to `ios/ClerkExpo.podspec`,
+and removes `ClerkGoogleSignInModule` from `apple.modules` so the generated
+modules provider doesn't reference a Swift module whose pod isn't linked.
 
 **Why it exists.** `@clerk/expo` ships two podspecs (`ClerkExpo.podspec` and
 `ClerkGoogleSignIn.podspec`) but its shipped `expo-module.config.json` declares
