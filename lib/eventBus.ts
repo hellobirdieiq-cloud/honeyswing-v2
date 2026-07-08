@@ -14,11 +14,27 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './storageKeys';
-
 // Lazy require for ./supabase — that module transitively loads @clerk/expo
 // which can't run under the plain tsx test runner. Declaring require here
 // so tsc accepts it under strict mode.
 declare function require(id: string): unknown;
+
+// App version is derived from expo-constants (see ./appVersion), which
+// transitively pulls react-native and can't be transformed by the tsx test
+// runner. Lazy-require it (same reason as ./supabase above) so importing
+// eventBus under tests never loads it; fall back to '0.0.0' there.
+let cachedAppVersion: string | null = null;
+function getAppVersion(): string {
+  if (cachedAppVersion !== null) return cachedAppVersion;
+  let v = '0.0.0';
+  try {
+    v = (require('./appVersion') as typeof import('./appVersion')).APP_VERSION ?? '0.0.0';
+  } catch {
+    // expo-constants unavailable (e.g. the tsx test runner) — keep the fallback.
+  }
+  cachedAppVersion = v;
+  return v;
+}
 
 // ---------------------------------------------------------------------------
 // D1 Event catalog — payload types
@@ -212,7 +228,6 @@ function getSupabaseAdapter(): SupabaseAdapter {
 // Module state
 // ---------------------------------------------------------------------------
 
-const APP_VERSION = '1.9.4';
 const QUEUE_CAP = 500;
 const BATCH_SIZE = 50;
 const MAX_ATTEMPTS = 5;
@@ -317,7 +332,7 @@ async function enqueue(record: EventRecord): Promise<void> {
     emittedAt: new Date().toISOString(),
     userId,
     sessionId,
-    appVersion: APP_VERSION,
+    appVersion: getAppVersion(),
     attempts: 0,
   };
   queue.push(envelope);

@@ -12,6 +12,7 @@ import { IMU_BATCH_SEQ_LOOKBACK_MS } from './watchImuConstants';
 import type { CaptureClassification } from '@/packages/domain/swing/captureValidity';
 import { getCoachCode } from './coachCode';
 import { getActiveProfileHandedness } from './handedness';
+import { APP_VERSION } from './appVersion';
 import { getPrimaryProfile } from './playerProfiles';
 import { getFrequencyDebugInfo } from '@/packages/domain/swing/tipFrequency';
 import { positiveReinforcementEngine } from '@/packages/domain/swing/positiveReinforcement';
@@ -32,8 +33,6 @@ import {
 import type { StopOrigin } from '@/packages/domain/swing/captureFlow';
 
 export type { WatchImuPersist };
-
-const APP_VERSION = '1.10.0';
 
 /** Optional camera guidance snapshot from Task 13 */
 export interface CameraGuidanceSnapshot {
