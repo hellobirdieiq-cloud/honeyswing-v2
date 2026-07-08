@@ -14,7 +14,6 @@ import {
   loadFocus,
   type FocusData,
 } from '../../lib/swingMotionStore';
-import SkeletonOverlay, { type Landmark } from '../../components/SkeletonOverlay';
 import FaceOnSetupOverlay from '../../components/FaceOnSetupOverlay';
 import CameraGuidance from '../../components/CameraGuidance';
 import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
@@ -46,21 +45,6 @@ import { styles } from './recordStyles';
 const ReanimatedCamera = Animated.createAnimatedComponent(Camera);
 
 /** Isolated component — landmark state updates only re-render this subtree, not the parent. */
-const LiveSkeleton = React.memo(function LiveSkeleton({
-  updateRef,
-  width,
-  height,
-  frameAspect,
-}: {
-  updateRef: React.MutableRefObject<((lms: Landmark[]) => void) | null>;
-  width: number;
-  height: number;
-  frameAspect: number;
-}) {
-  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
-  updateRef.current = setLandmarks;
-  return <SkeletonOverlay landmarks={landmarks} width={width} height={height} frameAspect={frameAspect} />;
-});
 
 // Recover the onboarding display name from Supabase to seed a local profile for
 // users who onboarded before local profiles were seeded (self-heal on Record mount).
@@ -93,9 +77,6 @@ export default function RecordTab() {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [showCameraHint, setShowCameraHint] = useState(false);
   const [focus, setFocus] = useState<FocusData | null>(null);
-  const skeletonUpdateRef = useRef<((lms: Landmark[]) => void) | null>(null);
-  const frameAspectRef = useRef(0);
-  const [frameAspectState, setFrameAspectState] = useState(0);
 
   const cameraRef = useRef<Camera>(null);
   // Live mirror of cameraReady for the once-per-focus shutter closure to read
@@ -485,12 +466,6 @@ export default function RecordTab() {
               ageTier={activeProfile?.ageTier}
             />
           )}
-          <LiveSkeleton
-            updateRef={skeletonUpdateRef}
-            width={screenW}
-            height={containerH}
-            frameAspect={frameAspectState}
-          />
           {capturePhase === 'idle' && cameraReady && (
             <CameraGuidance color={guidanceColor} label={guidanceLabel} />
           )}

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { NativeModules } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Camera } from 'react-native-vision-camera';
 import type { Router, Href } from 'expo-router';
 import type { AudioPlayer } from 'expo-audio';
@@ -18,7 +17,6 @@ import { useWatchImuCapture } from './useWatchImuCapture';
 import { STARTED_FRESHNESS_MS } from './watchImuConstants';
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
-import { resetCaptureFrameStats, getCaptureFrameStats } from './usePoseFrameHandler';
 import {
   processRecordedVideo,
   type CaptureProcessingContext,
@@ -239,17 +237,6 @@ export function useSwingCapture({
       );
     }
 
-    const stats = getCaptureFrameStats();
-    AsyncStorage.setItem(
-      'lastFailedCaptureStats',
-      JSON.stringify({
-        reason,
-        totalCallbacks: stats.total_callbacks,
-        nonzeroLandmarkFrames: stats.nonzero_landmark_frames,
-        timestamp: Date.now(),
-      }),
-    ).catch((err) => console.error('[HoneySwing] lastFailedCaptureStats write:', err));
-
     if (stale) {
       // Late failure from a superseded capture: its own entry is abandoned
       // above; everything else (timers, phase, swingIdPromiseRef, navigation)
@@ -269,7 +256,6 @@ export function useSwingCapture({
     updateCapturePhase('processing');
 
     swingIdPromiseRef.current = persistFailedSwing(reason, {
-      captureFrameStats: stats,
       targetFps: targetFps ?? null,
       cameraGuidance: {
         camera_angle_at_start: guidanceSnapshotRef.current.separation,
@@ -406,7 +392,6 @@ export function useSwingCapture({
     videoOutboxEntryIdRef.current = null;
     stopOriginRef.current = null;
     discardRequestedRef.current = false;
-    resetCaptureFrameStats();
     onBeginRecording();
 
     guidanceSnapshotRef.current = {

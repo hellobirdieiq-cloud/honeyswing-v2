@@ -35,7 +35,6 @@ import type { WatchImuReading, WatchImuMeasured, WatchImuAlignment } from '../pa
 import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
-import { getCaptureFrameStats } from './usePoseFrameHandler';
 import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
@@ -319,7 +318,6 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
 
     const baseClassification = classifyCapture(poseFrames);
     const classification = deriveClassification(baseClassification, fallbackGateReason);
-    const captureFrameStats = getCaptureFrameStats();
     const pipelineMs = {
       extract_wall_ms: extractWallMs,
       analysis_ms: analysisMs,
@@ -337,7 +335,6 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
         camera_guidance_color: guidanceSnapshotRef.current.color,
       },
       nativeGripResult,
-      captureFrameStats,
       targetFps ?? null,
       gravityReadingsRef.current,
       activeProfileSnapshotRef.current?.id,

@@ -2,13 +2,11 @@ import { persistSwing, type CameraGuidanceSnapshot } from './persistSwing';
 import { persistPoseFull } from './persistPoseFull';
 import { analyzePoseSequence } from '../packages/domain/swing/analysisPipeline';
 import type { CaptureClassification } from '@/packages/domain/swing/captureValidity';
-import type { CaptureFrameStats } from './usePoseFrameHandler';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import type { Rtmw133Frame } from '../packages/pose/rtmw/Rtmw133Frame';
 import { CAPTURE_FPS } from './cameraFormat';
 
 export interface FailedSwingContext {
-  captureFrameStats: CaptureFrameStats;
   targetFps: number | null;
   cameraGuidance: CameraGuidanceSnapshot;
   gravityReadings: GravityReading[];
@@ -44,7 +42,6 @@ export async function persistFailedSwing(
     stubClassification,
     ctx.cameraGuidance,
     null,
-    ctx.captureFrameStats,
     ctx.targetFps,
     ctx.gravityReadings,
     ctx.playerProfileId,

@@ -20,7 +20,6 @@ import { sessionAccumulator } from './sessionAccumulator';
 import { getAgeTier } from './ageTier';
 import { getGripClassification } from './gripStore';
 import { emit as emitEvent } from './eventBus';
-import type { CaptureFrameStats } from './usePoseFrameHandler';
 import {
   classifyInsertError,
   buildWatchImuDebug,
@@ -48,7 +47,6 @@ export async function persistSwing(
   classification: CaptureClassification | null,
   cameraGuidance?: CameraGuidanceSnapshot,
   nativeGrip?: Record<string, unknown>[] | null,
-  captureFrameStats?: CaptureFrameStats,
   requestedFps?: number | null,
   gravityReadings?: GravityReading[],
   playerProfileId?: string | null,
@@ -182,7 +180,6 @@ export async function persistSwing(
       // exactly the truncation signature this field exists to diagnose. Discarded
       // sub-minimum fragments produce no row at all (dev log only).
       stop_origin: stopOrigin ?? null,
-      capture_frame_stats: captureFrameStats ?? null,
       watch_imu: watchImuDebug,
       // seq→swing mapping for IMU batch late-join; imu_only marks an orphan IMU record.
       capture_seq: watchImu?.captureSeq ?? null,
@@ -387,7 +384,6 @@ export async function persistImuOnlyRecord(
     stubClassification,
     undefined, // cameraGuidance
     null, // nativeGrip
-    undefined, // captureFrameStats
     null, // requestedFps
     undefined, // gravityReadings
     undefined, // playerProfileId
