@@ -5,6 +5,77 @@ import type { PoseFrame, JointName, NormalizedJoint } from '../packages/pose/Pos
 import type { DetectedPhase } from '../packages/domain/swing/phaseDetection';
 import { GOLD } from '../lib/colors';
 
+// ═══════════════════════════════════════════════════════════════════════
+// SWING ART V2 — validated visual recipe (speed→width, impact-proximity
+// color, single soft glow). Flip SWING_ART_V2 to false for one-line rollback
+// to the legacy renderer below (kept fully intact behind the flag).
+// ═══════════════════════════════════════════════════════════════════════
+// Annotated `: boolean` (not literal `true`) so the type checker keeps BOTH
+// render paths live — flipping to false is a genuine one-line rollback and the
+// legacy helpers below never read as dead/unused.
+const SWING_ART_V2: boolean = true;
+
+const V2 = {
+  // speed → width (computed in normalized space on the smoothed trail)
+  EMA_ALPHA: 0.85,        // ema = ALPHA*prev + (1-ALPHA)*cur (heavy smoothing)
+  SPEED_POW: 0.3,
+  WIDTH_MIN_FRAC: 5.5 / 900, // fractions of card size (900px reference canvas)
+  WIDTH_MAX_FRAC: 33 / 900,
+  // impact-proximity color: BASE everywhere, blending to IGNITE near impact
+  BASE_COLOR: '#FF6B00',
+  IGNITE_COLOR: '#FFF3D0',
+  IGNITE_WINDOW_FRAC: 0.06,  // half-window = duration * this, in ms
+  IGNITE_POW: 1.2,
+  // glow (single pass under the opaque core)
+  GLOW_WIDTH_MULT: 1.44,
+  GLOW_OPACITY: 0.04,
+  GLOW_ON_THUMB: false,      // drop glow on small gallery thumbnails (perf)
+  // segmentation / downsampling caps
+  SEG_CAP_THUMB: 90,
+  SEG_CAP_FULL: 180,
+  THUMB_SIZE_THRESHOLD: 260, // card width below this = thumbnail
+} as const;
+
+type RGB = { r: number; g: number; b: number };
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+function hexToRgb(hex: string): RGB {
+  const h = hex.replace('#', '');
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+function rgbToCss(c: RGB): string {
+  return `rgb(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)})`;
+}
+
+function lerpRgb(a: RGB, b: RGB, t: number): RGB {
+  return { r: lerp(a.r, b.r, t), g: lerp(a.g, b.g, t), b: lerp(a.b, b.b, t) };
+}
+
+/** One cubic-Bézier segment `M p1 C cp1 cp2 p2` using Catmull-Rom control
+ *  points (±(neighbor delta)/6), matching buildSmoothPath's per-segment math.
+ *  p0/p3 are the clamped neighbors of the p1→p2 segment. */
+function catmullRomSegment(
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+): string {
+  const f = (n: number) => n.toFixed(1);
+  const cp1x = p1.x + (p2.x - p0.x) / 6;
+  const cp1y = p1.y + (p2.y - p0.y) / 6;
+  const cp2x = p2.x - (p3.x - p1.x) / 6;
+  const cp2y = p2.y - (p3.y - p1.y) / 6;
+  return `M ${f(p1.x)} ${f(p1.y)} C ${f(cp1x)} ${f(cp1y)} ${f(cp2x)} ${f(cp2y)} ${f(p2.x)} ${f(p2.y)}`;
+}
+
 // ── Color palette ────────────────────────────────────────────────────
 const HERO_GRADIENT = [
   { offset: '0%', color: '#4A7CF7' },
@@ -118,6 +189,137 @@ const GHOST_CONNECTIONS: [JointName, JointName][] = [
   ['rightHip', 'rightKnee'],
 ];
 
+// ── Swing Art V2 compute ─────────────────────────────────────────────
+type V2Segment = { d: string; w: number; color: string };
+type V2Art = { mode: 'v2'; segments: V2Segment[]; drawGlow: boolean };
+
+/** Build the V2 variable-width, impact-colored segment list from a swing's
+ *  motion frames. Trail extraction/smoothing is identical to V1; V2 adds
+ *  per-point speed→width and impact-proximity color, then downsamples to a
+ *  per-card segment cap. Returns null for too-short / degenerate swings. */
+function computeV2Art(
+  frames: PoseFrame[],
+  phases: DetectedPhase[],
+  size: number,
+  pad: number,
+): V2Art | null {
+  if (frames.length < 6) return null;
+
+  // ── Raw wrist trail + per-point timestamps ──────────────────────────
+  const rawXY: { x: number; y: number }[] = [];
+  const rawTs: number[] = [];
+  for (const frame of frames) {
+    const w = midpointOf(frame, 'leftWrist', 'rightWrist');
+    if (w) {
+      rawXY.push(w);
+      rawTs.push(frame.timestampMs);
+    }
+  }
+  if (rawXY.length < 4) return null;
+
+  // Smooth positions (count/order preserved → timestamps ride along by
+  // index); trimDeceleration only trims the tail, so slice ts the same.
+  const smoothed = smoothTrail(rawXY, 7, 2);
+  const points = trimDeceleration(smoothed);
+  const n = points.length;
+  if (n < 2) return null;
+  const pointTs = rawTs.slice(0, n);
+
+  // ── Fit-to-square bounds (same transform as V1) ─────────────────────
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const rangeX = maxX - minX || 0.01;
+  const rangeY = maxY - minY || 0.01;
+  const scale = (size - pad * 2) / Math.max(rangeX, rangeY);
+  const offX = pad + ((size - pad * 2) - rangeX * scale) / 2;
+  const offY = pad + ((size - pad * 2) - rangeY * scale) / 2;
+  const mapped = points.map((p) => ({
+    x: offX + (p.x - minX) * scale,
+    y: offY + (p.y - minY) * scale,
+  }));
+
+  // ── Speed → width (normalized space, EMA, normalize by max, pow) ─────
+  const speed = new Array<number>(n);
+  speed[0] = 0;
+  for (let i = 1; i < n; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    speed[i] = Math.sqrt(dx * dx + dy * dy);
+  }
+  const ema = new Array<number>(n);
+  ema[0] = speed[0];
+  for (let i = 1; i < n; i++) {
+    ema[i] = V2.EMA_ALPHA * ema[i - 1] + (1 - V2.EMA_ALPHA) * speed[i];
+  }
+  let maxEma = 0;
+  for (let i = 0; i < n; i++) if (ema[i] > maxEma) maxEma = ema[i];
+  const widthPx = ema.map((e) => {
+    const sN = maxEma > 0 ? e / maxEma : 0;
+    const shaped = Math.pow(sN, V2.SPEED_POW);
+    return lerp(V2.WIDTH_MIN_FRAC, V2.WIDTH_MAX_FRAC, shaped) * size;
+  });
+
+  // ── Impact-proximity color per point ────────────────────────────────
+  const impactT = phases.find((p) => p.phase === 'impact')?.timestamp ?? null;
+  // Full-swing duration (not just the trimmed trail span) — matches the
+  // playground denominator and is stable when low-confidence lead/tail frames
+  // are dropped from the trail.
+  const duration =
+    (frames[frames.length - 1].timestampMs - frames[0].timestampMs) || 1;
+  const half = duration * V2.IGNITE_WINDOW_FRAC;
+  const base = hexToRgb(V2.BASE_COLOR);
+  const ignite = hexToRgb(V2.IGNITE_COLOR);
+  const colorRgb: RGB[] = pointTs.map((t) => {
+    if (impactT == null || half <= 0) return base;
+    const f = Math.pow(Math.max(0, 1 - Math.abs(t - impactT) / half), V2.IGNITE_POW);
+    return lerpRgb(base, ignite, f);
+  });
+
+  // ── Downsample to per-card knot cap (keep endpoints + impact peak) ──
+  const cap = size < V2.THUMB_SIZE_THRESHOLD ? V2.SEG_CAP_THUMB : V2.SEG_CAP_FULL;
+  const stride = Math.max(1, Math.ceil((n - 1) / cap));
+  const idxSet = new Set<number>();
+  for (let i = 0; i < n; i += stride) idxSet.add(i);
+  idxSet.add(n - 1);
+  if (impactT != null) {
+    let bestIdx = 0, bestDist = Infinity;
+    for (let i = 0; i < n; i++) {
+      const d = Math.abs(pointTs[i] - impactT);
+      if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+    idxSet.add(bestIdx);
+  }
+  const knotIdx = Array.from(idxSet).sort((a, b) => a - b);
+  const K = knotIdx.length;
+  if (K < 2) return null;
+
+  const kPts = knotIdx.map((i) => mapped[i]);
+  const kW = knotIdx.map((i) => widthPx[i]);
+  const kColor = knotIdx.map((i) => colorRgb[i]);
+
+  // ── Segments: one Catmull-Rom cubic per knot pair ───────────────────
+  const segments: V2Segment[] = [];
+  for (let j = 0; j < K - 1; j++) {
+    const p0 = kPts[Math.max(j - 1, 0)];
+    const p1 = kPts[j];
+    const p2 = kPts[j + 1];
+    const p3 = kPts[Math.min(j + 2, K - 1)];
+    segments.push({
+      d: catmullRomSegment(p0, p1, p2, p3),
+      w: (kW[j] + kW[j + 1]) / 2,
+      color: rgbToCss(lerpRgb(kColor[j], kColor[j + 1], 0.5)),
+    });
+  }
+
+  const drawGlow = size >= V2.THUMB_SIZE_THRESHOLD || V2.GLOW_ON_THUMB;
+  return { mode: 'v2', segments, drawGlow };
+}
+
 interface Props {
   frames: PoseFrame[];
   phases: DetectedPhase[];
@@ -132,6 +334,7 @@ export default function SwingArtCard({ frames, phases, width, showLabel = true }
   const pad = size * 0.03;
 
   const art = useMemo(() => {
+    if (SWING_ART_V2) return computeV2Art(frames, phases, size, pad);
     if (frames.length < 6) return null;
 
     // ── Extract raw wrist trail ──────────────────────────────────────
@@ -221,11 +424,56 @@ export default function SwingArtCard({ frames, phases, width, showLabel = true }
       }
     }
 
-    return { ghostElements, heroD, heroStart, heroEnd, impactD };
+    return { mode: 'v1' as const, ghostElements, heroD, heroStart, heroEnd, impactD };
   }, [frames, phases, size, pad]);
 
   if (!art) return null;
 
+  // ── Swing Art V2 render ────────────────────────────────────────────
+  if (art.mode === 'v2') {
+    return (
+      <View style={styles.card}>
+        {showLabel && <Text style={styles.title}>Your Swing</Text>}
+        <View style={[styles.artContainer, { width: size, height: size }]}>
+          <Svg width={size} height={size}>
+            {/* Glow: single soft pass under the core (dropped on thumbnails) */}
+            {art.drawGlow && (
+              <G>
+                {art.segments.map((s, i) => (
+                  <Path
+                    key={`glow-${i}`}
+                    d={s.d}
+                    stroke={s.color}
+                    strokeWidth={s.w * V2.GLOW_WIDTH_MULT}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                    opacity={V2.GLOW_OPACITY}
+                  />
+                ))}
+              </G>
+            )}
+            {/* Core: opaque variable-width, impact-colored ribbon */}
+            <G>
+              {art.segments.map((s, i) => (
+                <Path
+                  key={`core-${i}`}
+                  d={s.d}
+                  stroke={s.color}
+                  strokeWidth={s.w}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              ))}
+            </G>
+          </Svg>
+        </View>
+      </View>
+    );
+  }
+
+  // ── Legacy render (SWING_ART_V2 = false) ───────────────────────────
   return (
     <View style={styles.card}>
       {showLabel && <Text style={styles.title}>Your Swing</Text>}
