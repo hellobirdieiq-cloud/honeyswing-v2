@@ -140,14 +140,37 @@ async function computeAll(): Promise<Record<string, SwingDigest>> {
   }
   const sb = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  const { data, error } = await sb
-    .from("swings")
-    .select("id, motion_frames, swing_debug")
-    .not("motion_frames", "is", null)
-    .order("id", { ascending: true });
-  if (error) {
-    console.error(`[replayCorpusDigest] fetch failed: ${error.message}`);
-    process.exit(1);
+  // Chunked fetch + per-chunk retry (promoted from the .tmp paged fork,
+  // Batch 7 / T9-71 partial): the original monolithic 72-row motion_frames
+  // select 522'd at Cloudflare on this corpus, so chunking IS the fetch now.
+  // Digest logic below is unchanged from the original tool.
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const ids: string[] = [];
+  for (let attempt = 1; ; attempt++) {
+    const { data: idRows, error: idErr } = await sb
+      .from("swings")
+      .select("id")
+      .not("motion_frames", "is", null)
+      .order("id", { ascending: true });
+    if (!idErr) { for (const r of idRows ?? []) ids.push(String(r.id)); break; }
+    if (attempt >= 5) { console.error(`[paged] id fetch failed: ${idErr.message}`); process.exit(1); }
+    await sleep(4000 * attempt);
+  }
+  const data: { id: string; motion_frames: unknown; swing_debug: unknown }[] = [];
+  const CHUNK = 6;
+  for (let o = 0; o < ids.length; o += CHUNK) {
+    const slice = ids.slice(o, o + CHUNK);
+    for (let attempt = 1; ; attempt++) {
+      const { data: rows, error: rowErr } = await sb
+        .from("swings")
+        .select("id, motion_frames, swing_debug")
+        .in("id", slice)
+        .order("id", { ascending: true });
+      if (!rowErr) { data.push(...((rows ?? []) as typeof data)); break; }
+      if (attempt >= 5) { console.error(`[paged] chunk at ${o} failed: ${rowErr.message}`); process.exit(1); }
+      await sleep(4000 * attempt);
+    }
+    console.error(`[paged] fetched ${data.length}/${ids.length}`);
   }
 
   const out: Record<string, SwingDigest> = {};
