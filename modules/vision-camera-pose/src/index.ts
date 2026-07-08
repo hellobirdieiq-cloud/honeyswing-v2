@@ -1,5 +1,6 @@
 import { NativeModules } from 'react-native';
 export * from './rtmw';
+export * from './puttingTracker';
 
 const { HoneyGripBridge } = NativeModules;
 
