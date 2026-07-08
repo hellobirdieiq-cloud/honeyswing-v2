@@ -14,6 +14,7 @@ import type { GolfAngles } from '../packages/domain/swing/angles';
 import { generateFocusInsight, generateImprovementInsight, generateConsistencyInsight } from './sessionInsights';
 import { getCachedAgeTier, type AgeTier } from './ageTier';
 import { isMetricEligible } from '@/packages/domain/swing/tipFrequency';
+import { METRIC_DEFINITIONS } from '@/packages/domain/swing/metricDefinitions';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -89,6 +90,39 @@ const METRIC_DISPLAY_NAMES: Record<AccumulatorMetricKey, string> = {
   tempo: 'tempo',
 };
 
+/** Collapsed System-B tip keys (coachingTips METRIC_KEY_MAP) → accumulator keys.
+ *  The live caller (result.tsx) fires the COLLAPSED keys; 'elbow'/'kneeFlex'
+ *  mark both sides because the collapse kept only the worse-scoring side and
+ *  side identity is unrecoverable here. Keys not in this map (spineAngle,
+ *  shoulderTilt, tempo, and test-supplied lateralized names) fall through as-is. */
+const FLAG_KEY_TRANSLATION: Record<string, readonly AccumulatorMetricKey[]> = {
+  elbow: ['leftElbowAngle', 'rightElbowAngle'],
+  kneeFlex: ['leftKneeAngle', 'rightKneeAngle'],
+};
+
+/** Ideal values for direction-aware trends. Angle ideals come from
+ *  METRIC_DEFINITIONS; tempo's is the center of the 2.5–3.5 "good" ratio band
+ *  (tempoAnalysis). hipSpreadDelta has no defined ideal anywhere — its trend
+ *  keeps the raw-slope fallback in getTrend. */
+const METRIC_IDEALS: Partial<Record<AccumulatorMetricKey, number>> = {
+  spineAngle: METRIC_DEFINITIONS.spineAngle.ideal,
+  leftElbowAngle: METRIC_DEFINITIONS.leftElbowAngle.ideal,
+  rightElbowAngle: METRIC_DEFINITIONS.rightElbowAngle.ideal,
+  leftKneeAngle: METRIC_DEFINITIONS.leftKneeAngle.ideal,
+  rightKneeAngle: METRIC_DEFINITIONS.rightKneeAngle.ideal,
+  shoulderTilt: METRIC_DEFINITIONS.shoulderTilt.ideal,
+  tempo: 3.0,
+};
+
+/** Insight eligibility. isMetricEligible is a System-B CUE predicate — it
+ *  hard-suppresses 'tempo' only because tempo has no cue() text, which is
+ *  irrelevant here: session insights render their own generic templates
+ *  (sessionInsights.ts). Age-tier limits still apply to everything else. */
+function isInsightEligible(metricKey: AccumulatorMetricKey, ageTier: AgeTier): boolean {
+  if (metricKey === 'tempo') return true;
+  return isMetricEligible(metricKey, ageTier);
+}
+
 // ---------------------------------------------------------------------------
 // Stats helpers
 // ---------------------------------------------------------------------------
@@ -134,17 +168,15 @@ function linearSlope(values: number[], window: number): number {
 
 /**
  * Determine trend direction based on slope.
- * For angle metrics, "improving" means getting closer to ideal.
- * Since we don't know each metric's ideal direction without scoring context,
- * we use the sign of the slope relative to whether it was previously flagged.
- * If the metric was flagged (too high/too low), improving = moving opposite to the flag direction.
- *
- * Simplified: we just check if the absolute slope exceeds threshold.
- * The insight generator decides if it's improvement based on flag count decreasing.
+ * With a known ideal, the trend is computed on the DEVIATION |value − ideal|:
+ * shrinking deviation = improving, growing = declining — a spine angle
+ * drifting further past ideal must not read as "getting better". Metrics
+ * without a defined ideal (hipSpreadDelta) fall back to raw slope direction.
  */
-function getTrend(values: number[]): TrendDirection {
-  const slope = linearSlope(values, TREND_WINDOW);
-  const recent = values.slice(-TREND_WINDOW);
+function getTrend(values: number[], ideal: number | null): TrendDirection {
+  const series = ideal != null ? values.map((v) => Math.abs(v - ideal)) : values;
+  const slope = linearSlope(series, TREND_WINDOW);
+  const recent = series.slice(-TREND_WINDOW);
   if (recent.length < 2) return 'stable';
 
   // Normalize slope by the range of recent values
@@ -154,12 +186,9 @@ function getTrend(values: number[]): TrendDirection {
   if (range === 0) return 'stable';
 
   const normalizedSlope = Math.abs(slope) / range;
-  if (normalizedSlope >= TREND_SLOPE_THRESHOLD) {
-    // Check if more recent values are closer to the mean (improving consistency)
-    // or just moving in one direction
-    return slope > 0 ? 'improving' : 'declining';
-  }
-  return 'stable';
+  if (normalizedSlope < TREND_SLOPE_THRESHOLD) return 'stable';
+  if (ideal != null) return slope < 0 ? 'improving' : 'declining';
+  return slope > 0 ? 'improving' : 'declining';
 }
 
 // ---------------------------------------------------------------------------
@@ -199,11 +228,17 @@ class SessionAccumulatorImpl {
       this._addMetricValue('tempo', analysis.tempo.tempoRatio);
     }
 
-    // Track which metrics were flagged (tip fired)
+    // Track which metrics were flagged (tip fired). Translate the caller's
+    // collapsed System-B keys onto the lateralized accumulator keys — without
+    // this, elbow/knee flagCounts stay 0 forever and the consistency insight
+    // praises the exact metric being corrected every swing.
     for (const metricKey of tipsFired) {
-      const stats = this._metrics.get(metricKey as AccumulatorMetricKey);
-      if (stats) {
-        stats.flagCount++;
+      const targets = FLAG_KEY_TRANSLATION[metricKey] ?? [metricKey as AccumulatorMetricKey];
+      for (const key of targets) {
+        const stats = this._metrics.get(key);
+        if (stats) {
+          stats.flagCount++;
+        }
       }
     }
   }
@@ -263,7 +298,7 @@ class SessionAccumulatorImpl {
     let best: { key: AccumulatorMetricKey; flagCount: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
-      if (!isMetricEligible(key, ageTier)) continue;
+      if (!isInsightEligible(key, ageTier)) continue;
       const flagRate = stats.flagCount / this._swingCount;
       if (flagRate >= FOCUS_FLAG_RATE && stats.flagCount >= FOCUS_MIN_FLAGS) {
         if (!best || stats.flagCount > best.flagCount) {
@@ -285,14 +320,18 @@ class SessionAccumulatorImpl {
     let best: { key: AccumulatorMetricKey; slope: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
-      if (!isMetricEligible(key, ageTier)) continue;
+      if (!isInsightEligible(key, ageTier)) continue;
       // Must have been flagged at least twice earlier in session
       if (stats.flagCount < 2) continue;
       if (stats.values.length < TREND_WINDOW) continue;
 
-      const trend = getTrend(stats.values);
+      const ideal = METRIC_IDEALS[key] ?? null;
+      const trend = getTrend(stats.values, ideal);
       if (trend === 'improving') {
-        const slope = Math.abs(linearSlope(stats.values, TREND_WINDOW));
+        // Rank on the same series the trend was judged on (deviation when an
+        // ideal exists) so "most improving" means fastest approach to ideal.
+        const series = ideal != null ? stats.values.map((v) => Math.abs(v - ideal)) : stats.values;
+        const slope = Math.abs(linearSlope(series, TREND_WINDOW));
         if (!best || slope > best.slope) {
           best = { key, slope };
         }
@@ -312,7 +351,7 @@ class SessionAccumulatorImpl {
     let best: { key: AccumulatorMetricKey; cv: number } | null = null;
 
     for (const [key, stats] of this._metrics) {
-      if (!isMetricEligible(key, ageTier)) continue;
+      if (!isInsightEligible(key, ageTier)) continue;
       // Must never have been flagged
       if (stats.flagCount > 0) continue;
       if (stats.values.length < 3) continue;
