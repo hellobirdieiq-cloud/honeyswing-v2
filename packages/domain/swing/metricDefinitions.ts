@@ -2,8 +2,8 @@
  * Single source of truth for metric ideal values, tolerances, labels,
  * skeleton segment mappings, and coaching cue generators.
  *
- * Consumed by VisualCoachCard, swingMotionStore (computeFocus), and
- * coachingTips. Consolidates what was previously triplicated across those files.
+ * Consumed by swingMotionStore (computeFocus), coachingTips, and
+ * sessionAccumulator. Consolidates what was previously triplicated.
  */
 
 type AgeTier = 'junior' | 'youth' | 'teen' | 'adult';

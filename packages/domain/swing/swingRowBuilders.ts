@@ -8,9 +8,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { Json } from '@/lib/database.types';
 import type { PoseFrame, NormalizedJoint, JointName } from '../../pose/PoseTypes';
-import type { AnalysisResult } from './analysisPipeline';
 import type { DetectedPhase } from './phaseDetection';
-import { calculateGolfAngles } from './angles';
 import {
   WORN_WRIST,
   WATCH_IMU_CLOCK_NOTE,
@@ -18,11 +16,6 @@ import {
   type WatchImuMeasured,
   type WatchImuAlignment,
 } from './watchImu';
-import type {
-  MetricSnapshot,
-  PhaseTagRange,
-  PhaseTag,
-} from './phaseTags';
 import { isGoodFrame } from './captureValidity';
 
 export type InsertFailClass =
@@ -87,66 +80,6 @@ export function extractPhaseSource(phases: DetectedPhase[] | undefined): string 
   if (sources.every((s) => s === 'heuristic')) return 'heuristic';
   if (sources.every((s) => s === 'fallback')) return 'fallback';
   return 'mixed';
-}
-
-export function buildMetricSnapshotFromAnalysis(analysis: AnalysisResult): MetricSnapshot {
-  return {
-    spineAngle: analysis.angles?.spineAngle ?? null,
-    spineDrift: analysis.angles?.spineDrift ?? null,
-    tempoRatio: analysis.tempo?.tempoRatio ?? null,
-    hipSpreadDelta: analysis.angles?.hipSpreadDelta ?? null,
-    leftElbowAngle: analysis.angles?.leftElbowAngle ?? null,
-    rightElbowAngle: analysis.angles?.rightElbowAngle ?? null,
-    leftKneeAngle: analysis.angles?.leftKneeAngle ?? null,
-    rightKneeAngle: analysis.angles?.rightKneeAngle ?? null,
-    shoulderTilt: analysis.angles?.shoulderTilt ?? null,
-  };
-}
-
-function mapSwingPhaseToClinic(p: DetectedPhase['phase']): PhaseTag {
-  return p === 'follow_through' ? 'finish' : p;
-}
-
-export function buildPhaseTagsFromAnalysis(
-  analysis: AnalysisResult,
-  frameCount: number,
-): PhaseTagRange[] {
-  const detected = analysis.phases;
-  if (!detected || detected.length === 0) return [];
-
-  const sorted = [...detected].sort((a, b) => a.index - b.index);
-
-  const seen = new Set<PhaseTag>();
-  const deduped: DetectedPhase[] = [];
-  for (const p of sorted) {
-    const tag = mapSwingPhaseToClinic(p.phase);
-    if (seen.has(tag)) continue;
-    seen.add(tag);
-    deduped.push(p);
-  }
-
-  const ranges: PhaseTagRange[] = [];
-  for (let i = 0; i < deduped.length; i++) {
-    const start = deduped[i].index;
-    // Clamp: colliding phase indices (short-capture fallback) would yield
-    // end = next.index − 1 < start — an inverted range must never persist.
-    const end = Math.max(
-      start,
-      i + 1 < deduped.length
-        ? deduped[i + 1].index - 1
-        : frameCount - 1,
-    );
-    ranges.push({
-      phase: mapSwingPhaseToClinic(deduped[i].phase),
-      startFrameIndex: start,
-      endFrameIndex: end,
-    });
-  }
-  return ranges;
-}
-
-export function buildSpineAngleSeries(frames: PoseFrame[]): (number | null)[] {
-  return frames.map((f) => calculateGolfAngles(f).spineAngle);
 }
 
 export function calcFpsEstimate(frames: PoseFrame[]): number | null {

@@ -90,7 +90,7 @@ function makeTempo(ratio: number): SwingTempo {
 console.log('\n=== Scoring Module Tests ===');
 
 // ---------------------------------------------------------------------------
-// Section A — scoreAngle (still exported; used by VisualCoachCard, confidence)
+// Section A — scoreAngle (still exported; used by swingMotionStore computeFocus, confidence)
 // ---------------------------------------------------------------------------
 
 group('A. scoreAngle');

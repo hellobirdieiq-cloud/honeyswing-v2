@@ -120,8 +120,8 @@ export async function setPrimaryProfile(id: string): Promise<void> {
   await saveProfiles(updated);
   // Keep the global age-tier mirror (honeyswing:ageTier key + sync cache +
   // tip-frequency limiter) pointed at the active player, so downstream readers
-  // (persistSwing, computeFocus, VisualCoachCard, sessionAccumulator) stay
-  // unchanged. Profiles without an ageTier inherit whatever the mirror holds.
+  // (persistSwing, computeFocus, sessionAccumulator) stay unchanged.
+  // Profiles without an ageTier inherit whatever the mirror holds.
   const newPrimary = updated.find((p) => p.id === id);
   if (newPrimary?.ageTier) {
     await applyAgeTier(newPrimary.ageTier);

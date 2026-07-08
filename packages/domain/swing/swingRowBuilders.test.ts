@@ -5,8 +5,8 @@
  *
  * No jest — project-standard hand-rolled runner (mirrors lib/swingStore.test.ts).
  * Every expected value is derived from the real implementation in
- * swingRowBuilders.ts (and its pure deps isGoodFrame / calculateGolfAngles /
- * the watchImu constants), not hardcoded guesses.
+ * swingRowBuilders.ts (and its pure deps isGoodFrame / the watchImu
+ * constants), not hardcoded guesses.
  */
 
 import type { PostgrestError } from '@supabase/supabase-js';
@@ -15,18 +15,12 @@ import {
   buildWatchImuDebug,
   calcPoseSuccessRate,
   extractPhaseSource,
-  buildMetricSnapshotFromAnalysis,
-  buildPhaseTagsFromAnalysis,
-  buildSpineAngleSeries,
   calcFpsEstimate,
   enrichFramesWithVelocity,
   type WatchImuPersist,
 } from './swingRowBuilders';
 import { createEmptyJoints, type PoseFrame, type JointName } from '../../pose/PoseTypes';
-import { calculateGolfAngles, type GolfAngles } from './angles';
 import type { DetectedPhase, SwingTrailPoint } from './phaseDetection';
-import type { SwingTempo } from './tempoAnalysis';
-import type { AnalysisResult } from './analysisPipeline';
 import type { WatchImuMeasured, WatchImuReading } from './watchImu';
 import { WORN_WRIST, WATCH_IMU_CLOCK_NOTE } from './watchImu';
 
@@ -97,32 +91,6 @@ function makePhase(
   return { phase, label: phase, point: pt(), index, timestamp: index * 10, source };
 }
 
-function makeAnalysis(over: Partial<AnalysisResult>): AnalysisResult {
-  // Required-field base mirrors analysisPipeline's empty-return shape verbatim.
-  return {
-    score: null,
-    honeyBoom: false,
-    cameraAngleValid: false,
-    swingConfidence: {
-      overall: 0,
-      tier: 'low',
-      components: { jointVisibility: 0, cameraAngle: 0, phaseDetection: 0, frameCoverage: 0 },
-    },
-    cameraAngleResult: {
-      angle: 'unknown',
-      shoulderSpread: 0,
-      hipSpread: 0,
-      avgSpread: 0,
-      footIndexNorm: null,
-      weights: {
-        spineAngle: 0, leftElbowAngle: 0, rightElbowAngle: 0, leftKneeAngle: 0,
-        rightKneeAngle: 0, hipSpreadDelta: 0, shoulderTilt: 0, tempo: 0,
-      },
-    },
-    ...over,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // classifyInsertError
 // ---------------------------------------------------------------------------
@@ -176,102 +144,6 @@ assertEq(
   'mixed',
   'heuristic + fallback → mixed',
 );
-
-// ---------------------------------------------------------------------------
-// buildMetricSnapshotFromAnalysis
-// ---------------------------------------------------------------------------
-
-group('buildMetricSnapshotFromAnalysis');
-const angles: GolfAngles = {
-  spineAngle: 30,
-  spineDrift: 4,
-  leftElbowAngle: 170,
-  rightElbowAngle: 165,
-  leftKneeAngle: 160,
-  rightKneeAngle: 155,
-  hipSpreadDelta: 12,
-  shoulderTilt: -5,
-};
-const tempo: SwingTempo = {
-  backswingMs: 800,
-  downswingMs: 280,
-  tempoRatio: 2.86,
-  totalSwingMs: 1080,
-  tempoRating: 'good',
-  phaseTimestamps: { takeaway: 200, top: 800, downswing: 900, impact: 1080, follow_through: 1280 },
-};
-const snap = buildMetricSnapshotFromAnalysis(makeAnalysis({ angles, tempo }));
-assertEq(snap.spineAngle, 30, 'spineAngle mapped');
-assertEq(snap.spineDrift, 4, 'spineDrift mapped');
-assertEq(snap.tempoRatio, 2.86, 'tempoRatio from tempo');
-assertEq(snap.hipSpreadDelta, 12, 'hipSpreadDelta mapped');
-assertEq(snap.leftElbowAngle, 170, 'leftElbowAngle mapped');
-assertEq(snap.rightElbowAngle, 165, 'rightElbowAngle mapped');
-assertEq(snap.leftKneeAngle, 160, 'leftKneeAngle mapped');
-assertEq(snap.rightKneeAngle, 155, 'rightKneeAngle mapped');
-assertEq(snap.shoulderTilt, -5, 'shoulderTilt mapped');
-
-const snapNull = buildMetricSnapshotFromAnalysis(makeAnalysis({}));
-assert(
-  Object.values(snapNull).every((v) => v === null),
-  'angles & tempo undefined → all 9 fields null',
-);
-
-// ---------------------------------------------------------------------------
-// buildPhaseTagsFromAnalysis (sort + dedup + follow_through→finish)
-// ---------------------------------------------------------------------------
-
-group('buildPhaseTagsFromAnalysis');
-assertEq(
-  JSON.stringify(buildPhaseTagsFromAnalysis(makeAnalysis({ phases: [] }), 25)),
-  '[]',
-  'no phases → []',
-);
-// Out-of-order input WITH a duplicate clinic tag (two takeaways).
-const phases: DetectedPhase[] = [
-  makePhase('top', 5),
-  makePhase('takeaway', 2),
-  makePhase('takeaway', 8), // duplicate tag — must be dropped after sort
-  makePhase('impact', 12),
-  makePhase('follow_through', 20),
-];
-const ranges = buildPhaseTagsFromAnalysis(makeAnalysis({ phases }), 25);
-assertEq(ranges.length, 4, 'duplicate takeaway dropped → 4 ranges');
-assertEq(JSON.stringify(ranges[0]), JSON.stringify({ phase: 'takeaway', startFrameIndex: 2, endFrameIndex: 4 }), 'takeaway 2→4 (sorted first; end = next.index−1)');
-assertEq(JSON.stringify(ranges[1]), JSON.stringify({ phase: 'top', startFrameIndex: 5, endFrameIndex: 11 }), 'top 5→11');
-assertEq(JSON.stringify(ranges[2]), JSON.stringify({ phase: 'impact', startFrameIndex: 12, endFrameIndex: 19 }), 'impact 12→19');
-assertEq(JSON.stringify(ranges[3]), JSON.stringify({ phase: 'finish', startFrameIndex: 20, endFrameIndex: 24 }), 'follow_through→finish 20→24 (last end = frameCount−1)');
-
-// D9 — colliding phase indices (short-capture fallback used to emit them)
-// must not persist an inverted range: end is clamped to >= start.
-const collided: DetectedPhase[] = [
-  makePhase('takeaway', 0),
-  makePhase('top', 2),
-  makePhase('downswing', 2), // collides with top → pre-fix end = 2−1 = 1 < start
-  makePhase('impact', 3),
-  makePhase('follow_through', 4),
-];
-const clamped = buildPhaseTagsFromAnalysis(makeAnalysis({ phases: collided }), 6);
-assert(
-  clamped.every((r) => r.endFrameIndex >= r.startFrameIndex),
-  'D9: no inverted range when phase indices collide',
-);
-assertEq(
-  JSON.stringify(clamped[1]),
-  JSON.stringify({ phase: 'top', startFrameIndex: 2, endFrameIndex: 2 }),
-  'D9: colliding top clamps to a single-frame range (end = start)',
-);
-
-// ---------------------------------------------------------------------------
-// buildSpineAngleSeries (asserted against a live calculateGolfAngles call)
-// ---------------------------------------------------------------------------
-
-group('buildSpineAngleSeries');
-const seriesFrames = [goodFrame(0), goodFrame(10)];
-const series = buildSpineAngleSeries(seriesFrames);
-assertEq(series.length, seriesFrames.length, 'length matches frame count');
-assertEq(series[0], calculateGolfAngles(seriesFrames[0]).spineAngle, 'frame0 = calculateGolfAngles().spineAngle');
-assertEq(series[1], calculateGolfAngles(seriesFrames[1]).spineAngle, 'frame1 = calculateGolfAngles().spineAngle');
 
 // ---------------------------------------------------------------------------
 // calcFpsEstimate (median dt; slice(0,20); even-count; degenerate cases)
