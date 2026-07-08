@@ -482,7 +482,10 @@ export function selectFaceOnImpact(args: {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 — top of backswing (consensus across velocity min, z max, shoulder x min)
+// Phase 3 (SHADOW) — velocity-min top (consensus across velocity min, z max,
+// shoulder x min). Logged as top_velmin_shadow for ground-truth comparison
+// only; the LIVE top is detectFaceOnTopXExtreme (topIdx = topXExtreme.frame
+// at the call site).
 // ---------------------------------------------------------------------------
 
 function detectFaceOnTop(
@@ -552,16 +555,18 @@ function detectFaceOnTop(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 (SHADOW) — X-extreme top. Parallel-computed beside detectFaceOnTop for
-// ground-truth validation; NOT wired as the real top this phase.
+// Phase 3 (LIVE) — X-extreme top. Wired as the real top (topIdx =
+// topXExtreme.frame at the call site); detectFaceOnTop (velocity min) is the
+// logged shadow (top_velmin_shadow).
 //
-// top = round(mean of the MAX-canonical-x frames) of 3 canonical LEAD landmarks
-// (nose, rightShoulder, rightEar). MAX x for BOTH handedness — canonicalization
-// normalizes lefty/righty to the same direction (measured: RH 16c98eeb MAX@~85,
-// LH d5084eb5 MAX@~98), so no isLeftHanded branch (same as detectFaceOnTop, which
-// hardcodes canonical lead = right*). Window anchors on swingStart + the
+// top = MEDIAN of the MAX-canonical-x frames of 3 canonical LEAD landmarks
+// (nose, rightShoulder, rightEar) — mean kept in telemetry for comparison only.
+// MAX x for BOTH handedness — canonicalization normalizes lefty/righty to the
+// same direction (measured: RH 16c98eeb MAX@~85, LH d5084eb5 MAX@~98), so no
+// isLeftHanded branch (same as detectFaceOnTop, which hardcodes canonical
+// lead = right*). Window anchors on the frame-mapped takeaway + the
 // INDEPENDENT arc-bottom impact → non-circular. Owns its own search fractions
-// (A.topXExtreme) so the live rule's baseline is untouched.
+// (A.topXExtreme), independent of the shadow rule's.
 // ---------------------------------------------------------------------------
 
 const TOP_XEXTREME_LEAD: { key: keyof FaceOnTopXExtreme["perLandmark"]; joint: JointName }[] = [

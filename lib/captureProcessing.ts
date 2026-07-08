@@ -1,8 +1,10 @@
 /**
  * captureProcessing.ts — the post-recording pipeline, moved verbatim from
- * useSwingCapture.ts (Batch 5.1): outbox capture → pose extraction (45s timeout)
- * → identity correction → watch-IMU alignment → analysis → grip estimation →
- * store writes → persistSwing → outbox reconcile → drift telemetry → navigation.
+ * useSwingCapture.ts (Batch 5.1): outbox capture → pose extraction (90s timeout,
+ * EXTRACTION_TIMEOUT_MS) → identity correction → watch-IMU alignment → analysis
+ * → grip estimation → store writes → navigation (fires as soon as analysis +
+ * video are ready — it does NOT await the persist insert, 3de790a) with
+ * persistSwing → outbox reconcile → drift telemetry running concurrently.
  * Impure by nature (native modules, supabase, outbox) — lives in lib/, not
  * packages/domain. The capture hook owns state, failure routing and navigation,
  * and injects them via CaptureProcessingContext (refs as refs — see the type).
