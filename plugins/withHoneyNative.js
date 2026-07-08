@@ -27,12 +27,8 @@ const SOURCE_FILES = [
   "HoneyLiDARDemoViewController.swift",
   "HoneyVisionCameraHandPlugin.m",
   "HoneyVisionCameraHandPlugin.swift",
-  "HoneyVisionCameraPosePlugin.m",
-  "HoneyVisionCameraPosePlugin.swift",
   "HoneyVisionAppleHandPlugin.m",
   "HoneyVisionAppleHandPlugin.swift",
-  "HoneyMediaPipeOneShotPlugin.m",
-  "HoneyMediaPipeOneShotPlugin.swift",
   "HoneyHandSegmenterPlugin.m",
   "HoneyHandSegmenterPlugin.swift",
   "HoneyRTMWModule.m",
@@ -45,7 +41,7 @@ const SOURCE_FILES = [
   "HoneyWatchImuModule.swift",
 ];
 
-const RESOURCE_FILES = ["hand_landmarker.task", "pose_landmarker_full.task", "selfie_segmenter.tflite"];
+const RESOURCE_FILES = ["hand_landmarker.task", "selfie_segmenter.tflite"];
 
 const RESOURCE_DIRS = ["rtmw_l_256x192.mlpackage"];
 
