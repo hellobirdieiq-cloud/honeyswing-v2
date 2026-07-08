@@ -928,6 +928,22 @@ async function sweepOrphans(): Promise<void> {
   }
 }
 
+/**
+ * Piggyback the analytics queue on the outbox's lifecycle triggers (T4-96):
+ * eventBus.drain()'s only internal trigger is a 5-minute interval, and JS
+ * timers pause in background — without this, events from short sessions sit
+ * undelivered for sessions. Lazy-require like emitError above so the engine
+ * stays importable under the tsx test runner.
+ */
+function drainEventBus(): void {
+  try {
+    const mod = require('./eventBus') as { drain: () => Promise<unknown> };
+    void mod.drain().catch(() => {});
+  } catch {
+    // eventBus unavailable (e.g. test env without ./supabase) — skip.
+  }
+}
+
 function wireLifecycleListeners(): void {
   if (listenersWired) return;
   listenersWired = true;
@@ -940,7 +956,10 @@ function wireLifecycleListeners(): void {
       };
     };
     AppState.addEventListener('change', (state: string) => {
-      if (state === 'active') void drainOutbox().catch(() => {});
+      if (state === 'active') {
+        void drainOutbox().catch(() => {});
+        drainEventBus();
+      }
     });
   } catch {
     // RN unavailable — skip.
@@ -957,6 +976,7 @@ function wireLifecycleListeners(): void {
       const connected = s.isConnected === true;
       if (lastKnownConnected === false && connected) {
         void drainOutbox().catch(() => {});
+        drainEventBus();
       }
       lastKnownConnected = connected;
     });
@@ -968,11 +988,16 @@ function wireLifecycleListeners(): void {
 /**
  * Relaunch bootstrap (trigger a): orphan sweep, wire AppState 'active' +
  * NetInfo false->true, then drain. Safe to call once on app mount.
+ * Also drains the analytics queue: the initial 'active' state never fires the
+ * AppState change listener, so a relaunch would otherwise wait out eventBus's
+ * 5-minute interval — and relaunch-after-a-short-session is exactly the case
+ * where prior-session events are sitting undelivered.
  */
 export function bootstrapOutbox(): void {
   void (async () => {
     await sweepOrphans();
     wireLifecycleListeners();
+    drainEventBus();
     await drainOutbox();
   })().catch((err) => console.warn('[outbox] bootstrap failed:', err));
 }
