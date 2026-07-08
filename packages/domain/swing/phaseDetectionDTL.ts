@@ -386,11 +386,38 @@ export function detectDTLPhases(input: {
   const topIdx = top.frame;
   reliability.top = "high";
 
-  // Phase 1 — true_address (search backward from top)
-  const trueAddress = detectDTLTrueAddress(frames, topIdx, msPerFrame);
+  // Phase 1 — true_address (search backward from top). detectDTLTrueAddress
+  // scans FRAMES, so its anchor must be frame-space: map the trail-space
+  // topIdx through its timestamp (identity while trail↔frames are 1:1;
+  // diverges the moment buildTrailPoints drops a frame). Same pattern as
+  // phaseDetectionFaceOn.ts:862-869. Every trail point is built from a frame,
+  // so a miss is the same invariant breach the phase assembly throws on below.
+  const topTimestamp = trail[topIdx].timestamp;
+  const topFrameIdx = frames.findIndex((f) => f.timestampMs === topTimestamp);
+  if (topFrameIdx === -1) {
+    throw new Error('[HoneySwing] trail timestamp not found in frames — phase fix incomplete');
+  }
+  const trueAddress = detectDTLTrueAddress(frames, topFrameIdx, msPerFrame);
   reliability.true_address = trueAddress.reliability ?? "low";
   assumptionsUsed.push("dtl.trueAddress");
-  const addressIdx = trueAddress.frame != null ? trueAddress.frame : takeawayAddressIdx;
+  // trueAddress.frame is FRAME-space; indices[] below is consumed as
+  // trail-space (trail[ti].timestamp). Map back via nearest timestamp — exact
+  // at 1:1; nearest covers a true-address frame dropped from the trail
+  // (no trail wrist), mirroring the legacy assembly's nearest fallback.
+  let addressIdx = takeawayAddressIdx;
+  if (trueAddress.frame != null) {
+    const targetTs = frames[trueAddress.frame].timestampMs;
+    let nearest = 0;
+    let nearestDist = Infinity;
+    for (let i = 0; i < trail.length; i++) {
+      const d = Math.abs(trail[i].timestamp - targetTs);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = i;
+      }
+    }
+    addressIdx = nearest;
+  }
 
   // Phase 4 — impact
   const impact = detectDTLImpact(trail, topIdx, msPerFrame);
