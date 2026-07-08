@@ -439,7 +439,7 @@ class HoneyRtmwOneShotPlugin: NSObject {
       keypoints.append([
         "x": xNorm * Float32(origWidth),
         "y": yNorm * Float32(origHeight),
-        "confidence": max(xMax, yMax),
+        "confidence": min(xMax, yMax),
       ])
     }
     return keypoints
