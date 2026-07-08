@@ -693,3 +693,25 @@ The coach pivot added ~1,100 lines the rubric has never seen:
 2026-07-04; god-file, orphan, tsconfig-perimeter, and dependency-class facts
 re-measured from the tree. NOT RE-MEASURED: expo-doctor (network-gated,
 reason at finding #19). No production code was modified.*
+
+---
+
+## Delta as of `ca6f028` (2026-07-08, Batch 7 / T6-54 — measured, not carried forward)
+
+Baselines re-measured live after Batches 3–5c (`4012fa9..ca6f028`, 30+ commits).
+Historical rev-2/rev-3 figures above are untouched — they were true when measured.
+
+| Baseline | Rev 3 (2026-07-04) | Measured 2026-07-08 |
+|---|---|---|
+| Lint | 10 warnings | **8** (0 errors, 8 warnings) — re-run live; dropped at `3bf0f14` (N1-JS dead-plumbing removal) |
+| Tests | 54 / 53 / 1 | **58 files / 57 green / 1 parked red** (phaseDetectionDTL, unchanged profile 9/7) — re-run live; +4 suites since rev 3 |
+| God-files (>600 non-test, rev-3 scope: app/ lib/ packages/, excludes scripts/) | 6 | **8** — `wc -l` census: phaseDetectionFaceOn 1224 (−12), **outbox.ts 1067** (was 998; G6/G9/G8 + T4-96 drain work), settings 836 (=), analysisPipeline 831 (+17), **record.tsx 716** (was 698; T2-91 error path), phaseDetectionShared 673 (=), plus two NEW 600-crossers: `app/grip/capture.tsx` **614** and `app/analysis/result.tsx` **604** (crept back over the line since its 525-line decomposition) |
+| Orphans | 4 | **2 of the listed 4 deleted** [`01194c2`]: GripHistoryRow.tsx + VisualCoachCard.tsx gone (their rows in the Axis-1(d) import census above are likewise historical). The 2 hand adapters remain from the listed set. **Full census NOT re-measured this pass** (needs a knip re-run) |
+| Cycles | 7 | **NOT re-measured this pass** (needs a madge re-run); no known structural change to the 7 recorded |
+
+Findings-ledger movement since rev 3:
+
+- **#12 (supabase-js in devDependencies): RESOLVED** [`5d89769` / T2-19] — moved to `dependencies`.
+- #14 (`category_scores` write-only), #15 (`reliability.impact` zero consumers — ticketed T7-86), #20 (vanished-feature effects) — re-verified still true during the Batch 5c/7 sweeps.
+
+*Delta provenance: lint, full test suite, and the god-file census re-run live 2026-07-08; orphan statement derived from the `01194c2` deletion (grep-verified zero references at delete time). NOT re-measured: knip orphan census, madge cycles, expo-doctor. No production code modified in this pass (docs-only batch).*
