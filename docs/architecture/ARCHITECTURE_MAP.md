@@ -19,7 +19,7 @@ app/  (UI screens)
   └─► lib/  (glue: hooks, in-memory state, persistence)
         └─► packages/domain/swing/  (PURE TypeScript analysis — no UI, no native)
         └─► packages/pose/          (pose I/O: types + RTMW adapter)
-              └─► native Swift / modules  (camera frame processing, RTMW, MediaPipe)
+              └─► native Swift / modules  (post-hoc RTMW extraction, body-confirm; MediaPipe hands on the grip screen only)
 ```
 
 The key property: **`packages/domain/swing` has no import-level UI or native
@@ -43,7 +43,7 @@ honeyswing-v2/
 │
 ├── app/                        ← UI (Expo Router screens)
 │   ├── (tabs)/
-│   │   ├── record.tsx          ← 📷 capture screen (camera + live skeleton)
+│   │   ├── record.tsx          ← 📷 capture screen (plain video recording — no frame processor)
 │   │   ├── history.tsx · gallery.tsx · grip.tsx · settings.tsx
 │   ├── analysis/
 │   │   ├── result.tsx          ← 📊 score / angles / tempo / coach
@@ -81,8 +81,8 @@ honeyswing-v2/
 │       ├── positiveReinforcement.ts · tipFrequency.ts · tempoDisplay.ts
 │       └── … (keypointVeto, canonicalTransform, confidenceScore, …)
 │
-├── native-assets/ios/          ← HoneyVisionCameraPosePlugin.swift (live MediaPipe)
-│                                  + HoneyRtmwOneShotPlugin.swift (CoreML RTMW extract)
+├── native-assets/ios/          ← HoneyRtmwOneShotPlugin.swift (CoreML RTMW extract)
+│                                  + HoneyAppleVisionBodyConfirmPlugin.swift (body-confirm gate)
 ├── modules/vision-camera-pose/                          ← native bridge
 └── supabase/migrations/        ← DB schema history (swings table)
 ```
@@ -169,18 +169,23 @@ The per-area table above is a **7-area subset** (`app/ lib/ packages/pose/
 packages/domain/swing/ native-assets/ modules/` + supabase `.ts`), `.ts/.tsx/.swift`
 only. The whole repo (adds `.sql`, plus the areas below) is:
 
-**276 files / 65,082 lines.** Subtracting the 4,932-line generated
-`supabase/migrations/20260417055038_remote_schema.sql` leaves **60,150** — but
-that is an **upper bound** on hand-authored code, not a pure figure: it still
-includes `ios/honeyswing/` generated/duplicated Swift (3,373; `AppDelegate.swift`
-is Expo-generated, the `Honey*` plugins are build-time copies of
-`native-assets/ios/`). Removing those too puts hand-authored at **≈ 56,777**.
+**289 files / 68,801 lines** (as of `ca6f028`; method: `find` over `.ts/.tsx/.swift/.sql`
+excluding `node_modules`, `ios/Pods`, `ios/build`, `.expo` — stated here so future
+re-measures are reproducible; the previous snapshot's exact exclusion set was
+unrecorded, so treat cross-snapshot deltas as approximate). Subtracting the
+4,932-line generated `supabase/migrations/20260417055038_remote_schema.sql`
+leaves **63,869** — an **upper bound** on hand-authored code, not a pure figure:
+it still includes `ios/honeyswing/` generated/duplicated Swift (3,373;
+`AppDelegate.swift` is Expo-generated, the `Honey*` plugins are build-time
+copies of `native-assets/ios/` — including stale prebuild copies of the two
+pose plugins deleted from native-assets in 12eca28). Removing those too puts
+hand-authored at **≈ 60,496**.
 
-**Working-tree vs tracked:** the 276 files / 65,082 lines is a **working-tree**
-count (files on disk). The git-**tracked** repo is **261 files / 61,369 lines** —
-~15 files are gitignored (chiefly the generated `ios/honeyswing/` Swift, 3,373)
-or untracked. Tracked minus the generated schema = 61,369 − 4,932 = **56,437**,
-consistent with the ≈ 56,777 hand-authored figure above.
+**Working-tree vs tracked:** the 289 files / 68,801 lines is a **working-tree**
+count (files on disk). The git-**tracked** repo is **258 files / 61,790 lines**
+(`git ls-files`, same extensions) — the gap is gitignored/untracked files
+(chiefly the generated `ios/honeyswing/` Swift, 3,373). Tracked minus the
+generated schema = 61,790 − 4,932 = **56,858** hand-authored tracked lines.
 
 Areas missing from the 7-area view:
 
@@ -227,9 +232,9 @@ How one swing moves through the system, end to end:
  ┌─────────────────────────────────────────────────────────────┐
  │ CAPTURE  (record.tsx + useSwingCapture.ts)                   │
  │                                                              │
- │   Camera 240fps ──► HoneyVisionCameraPosePlugin.swift        │
- │                        └─ MediaPipe (BlazePose, 33 joints)   │
- │                            └─► live skeleton overlay          │
+ │   Camera records a plain 240fps clip — NO frame processor   │
+ │   on the record camera (live MediaPipe pose chain removed   │
+ │   in the N1 cleanup, 12eca28)                                │
  │   4-second clip saved ──► VisionCamera temp .mov             │
  │   (Storage object later lands at {userId}/{swingId}.mov)     │
  │   (also: device tilt/gravity + optional Apple Watch IMU)     │
@@ -238,7 +243,10 @@ How one swing moves through the system, end to end:
                                   ▼
  ┌─────────────────────────────────────────────────────────────┐
  │ EXTRACT  (extractPoseFromVideo.ts, via captureProcessing.ts)  │
- │   MOV ──► HoneyRtmwOneShotPlugin.swift (CoreML RTMW)         │
+ │   MOV ──► HoneyAppleVisionBodyConfirmPlugin — body-confirm   │
+ │           gate runs FIRST; no-person clips fail fast         │
+ │           (ed1441a)                                          │
+ │        ──► HoneyRtmwOneShotPlugin.swift (CoreML RTMW)        │
  │        ──► 133-keypoint frames ──► rtmwToPoseFrame()         │
  │        ──► PoseSequence                                       │
  │   ANALYZER_DECIMATION = 2 (cameraFormat.ts) → 120fps         │
@@ -293,10 +301,10 @@ How one swing moves through the system, end to end:
 
 | Component | File | Key symbol |
 |---|---|---|
-| Capture UI | `app/(tabs)/record.tsx` | record screen + live skeleton |
+| Capture UI | `app/(tabs)/record.tsx` | record screen (no frame processor) |
 | Capture orchestration | `lib/useSwingCapture.ts` | `useSwingCapture`, `finalizeCapture` |
 | Capture video pipeline | `lib/captureProcessing.ts` | `processRecordedVideo` (decimated RTMW extraction) |
-| Live native pose | `native-assets/ios/HoneyVisionCameraPosePlugin.swift` | MediaPipe BlazePose |
+| Body-confirm gate | `native-assets/ios/HoneyAppleVisionBodyConfirmPlugin.swift` | `confirmBodyAtVideo` (runs before extraction) |
 | Pose extraction | `lib/extractPoseFromVideo.ts` | `extractPoseFromVideo` (RTMW) |
 | Pose types | `packages/pose/PoseTypes.ts` | `PoseFrame`, `PoseSequence` |
 | Analysis orchestrator | `packages/domain/swing/analysisPipeline.ts` | `analyzePoseSequence` |
@@ -305,7 +313,7 @@ How one swing moves through the system, end to end:
 | Tempo | `packages/domain/swing/tempoAnalysis.ts` | `calculateTempo`, `SwingTempo` |
 | Scoring | `packages/domain/swing/scoring.ts` | `scoreSwing` |
 | In-memory handoff | `lib/swingMotionStore.ts` | `setCurrentSwing*` / `getCurrentSwing*` |
-| Persistence (orchestration) | `lib/persistSwing.ts` | `persistSwing` → `swings` table (now 384 lines; delegates row-building) |
+| Persistence (orchestration) | `lib/persistSwing.ts` | `persistSwing` → `swings` table (now 395 lines; delegates row-building) |
 | Row builders (pure, tested) | `packages/domain/swing/swingRowBuilders.ts` | `buildWatchImuDebug`, `enrichFramesWithVelocity`, `calcPoseSuccessRate`, … |
 | Capture-flow decisions (pure, tested) | `packages/domain/swing/captureFlow.ts` | `computeNavigationBlockReason`, `deriveClassification` |
 | Playback read | `lib/swingStore.ts` | `getSwingById`, `getSwingMotionFrames` |
@@ -390,11 +398,11 @@ The headline `score` is **tempo-only** — a 9-band traffic light over
 `tempoRatio` (`scoring.ts:scoreTempoTrafficLight`). Angles are computed and
 persisted but **do not** feed the headline number.
 
-Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:79`)
-picks the worst-scoring metric to drive the Visual Coach focus cue on the result
-screen, called at `result.tsx:308` (`computeFocus(angles, getCachedAgeTier(),
+Angles are still consumed in-app — `computeFocus` (`lib/swingMotionStore.ts:120`)
+picks the worst-scoring metric to drive the Today's Focus cue on the result
+screen, called at `result.tsx:326` (`computeFocus(angles, getCachedAgeTier(),
 Date.now())`); `record.tsx` displays the saved `FocusData` but does not call
-`computeFocus` itself. `angles` is defined once, at `result.tsx:213`
+`computeFocus` itself. `angles` is defined once, at `result.tsx:230`
 (`analysis?.angles`), and that single definition is the only consumer inside
 `result.tsx` — the live-vs-history resolution the doc previously attributed to
 a second "history display" re-read now happens upstream, inside
@@ -461,7 +469,7 @@ The pipeline's output (`AnalysisResult`, `analysisPipeline.ts:101`):
 
 `persistSwing` (`lib/persistSwing.ts`) flattens `AnalysisResult` into one row.
 The pure row-building helpers were extracted to `packages/domain/swing/swingRowBuilders.ts`
-(unit-tested), so `persistSwing.ts` is now 384 lines (was ~560) and focuses on
+(unit-tested), so `persistSwing.ts` is now 395 lines (was ~560) and focuses on
 orchestration: auth, the insert, the FK-23503 heal-and-retry, and side-effects —
 video upload rides the durable outbox (`lib/outbox.ts`), and late Watch-IMU
 batches attach to an existing row via `capture_seq`
@@ -498,7 +506,7 @@ metadata_probe_ms}`, `extraction_total_ms`, `pipeline_ms` (commit `ec9fcf1`);
 `stop_origin` (`manual` / `window_timer`; null = native-deactivation truncation
 signature, commit `e5f1754`); `capture_seq` + `imu_only` (Watch-IMU late-join
 mapping); `watch_imu` (full alignment object — distinct from the typed
-`watch_imu_present`); `capture_frame_stats`; `fps_estimate/requested/measured`;
+`watch_imu_present`); `fps_estimate/requested/measured`;
 `video_duration_ms` / `video_frame_count`; `classification_reason`;
 `handedness`; `age_tier`; `grip_native` / `grip_cloud`; `session_swing_number`;
 `positiveReinforcement`; `camera_angle_at_start`. Nothing here feeds the score —
