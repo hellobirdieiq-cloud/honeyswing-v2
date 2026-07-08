@@ -75,9 +75,9 @@ export function makeDrivenTransform(width: number, height: number): SkeletonTran
 }
 
 /**
- * Uncontrolled mode: fit the skeleton into the canvas anchored on the
- * first frame's hip midpoint. Returns null when the first frame lacks the
- * anchor joints.
+ * Uncontrolled mode: fit the skeleton into the canvas anchored on the given
+ * frame's hip midpoint. Returns null when the frame lacks the anchor joints —
+ * the caller scans forward to the first frame that has them (T4-97).
  */
 export function makeAnchoredTransform(
   f0: PoseFrame,

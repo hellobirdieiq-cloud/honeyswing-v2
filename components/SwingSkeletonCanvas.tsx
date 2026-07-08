@@ -150,7 +150,14 @@ export default function SwingSkeletonCanvas({
       // in skeletonProjection.ts (moved verbatim with the math).
       return makeDrivenTransform(width, height);
     }
-    return makeAnchoredTransform(frames[0], width, height);
+    // Anchor on the FIRST frame that has the anchor joints — a single bad
+    // frame 0 (occluded hips at capture start) must not blank the whole
+    // panel when 99% of the swing is clean (T4-97).
+    for (const f of frames) {
+      const t = makeAnchoredTransform(f, width, height);
+      if (t) return t;
+    }
+    return null;
   }, [driven, frames, width, height]);
 
   const endIdx = useMemo(() => {
