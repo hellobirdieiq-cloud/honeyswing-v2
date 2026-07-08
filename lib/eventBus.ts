@@ -296,6 +296,19 @@ function fanOut(record: EventRecord): void {
 }
 
 async function enqueue(record: EventRecord): Promise<void> {
+  // Wait for loadQueue to merge the persisted queue before we push + persist.
+  // The first enqueue fires during init (startSession → session.started);
+  // persisting before loadQueue completes would write a queue missing the
+  // on-disk events, losing them if the app dies in that window (G8 init clobber).
+  // fanOut already ran synchronously in emitInternal, so test-16's onAny is
+  // unaffected by this await.
+  if (initPromise) {
+    try {
+      await initPromise;
+    } catch {
+      // loadQueue already logs; continue with in-memory state.
+    }
+  }
   const userId = await getSupabaseAdapter().getUserId();
   const envelope: QueuedEvent = {
     id: randomUUID(),
@@ -407,7 +420,22 @@ export async function drain(): Promise<DrainResult> {
           // loadQueue already logs; continue with in-memory state.
         }
       }
-      const eligible = queue.filter((e) => e.attempts < MAX_ATTEMPTS && e.userId);
+      // Backfill user_id at drain time (G8 / T4-96): events emitted signed-out
+      // carry userId=null and would never drain under `&& e.userId`. Once a user
+      // signs in, stamp them so the pre-auth funnel drains — but ONLY events from
+      // the CURRENT session (this app-launch's sessionId, which links the pre-auth
+      // funnel to the user who signs in). Events from a PRIOR session — persisted
+      // across restarts / a previous user on a shared device — must NOT inherit
+      // the current user's id (that would misattribute a previous kid's events);
+      // they stay queued (QUEUE_CAP-evicted), never draining under the wrong user.
+      // Still-signed-out → both null → stays queued.
+      const currentUserId = await getSupabaseAdapter().getUserId();
+      const stampedUserId = (e: QueuedEvent): string | null =>
+        e.userId ??
+        (e.sessionId != null && e.sessionId === sessionId ? currentUserId : null);
+      const eligible = queue.filter(
+        (e) => e.attempts < MAX_ATTEMPTS && stampedUserId(e),
+      );
       const batch = eligible.slice(0, BATCH_SIZE);
       if (batch.length === 0) {
         return {
@@ -419,7 +447,7 @@ export async function drain(): Promise<DrainResult> {
       }
       const rows: EventRow[] = batch.map((e) => ({
         idempotency_key: e.id,
-        user_id: e.userId!,
+        user_id: stampedUserId(e)!, // non-null: eligibility required it
         type: e.type,
         payload: e.payload,
         session_id: e.sessionId,

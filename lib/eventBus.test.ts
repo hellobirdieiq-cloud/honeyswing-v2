@@ -573,6 +573,138 @@ async function main(): Promise<void> {
     assert(hasEnded, 'endSession() emits session.ended');
   }
 
+  // Test 17: G8(ii) — pre-auth funnel drains on sign-in, but ONLY for the
+  // current session (no cross-user misattribution on a shared device).
+  {
+    group('17. signed-out events drain on sign-in — current session only');
+    __resetForTesting();
+    // A leftover null-userId event from a PRIOR app-launch / previous user,
+    // persisted to disk while signed out (different sessionId from this launch).
+    const seeded = [
+      {
+        id: 'prior-evt',
+        type: 'tip.shown',
+        payload: { swingId: null, metricKey: 'prior', tier: 'full', displayContext: 'visual_coach' },
+        emittedAt: '2026-04-21T00:00:00.000Z',
+        userId: null,
+        sessionId: 'prior-session',
+        appVersion: '1.9.4',
+        attempts: 0,
+      },
+    ];
+    const storage = makeMemoryStorage({
+      [STORAGE_KEYS.eventQueue]: JSON.stringify(seeded),
+    });
+    let currentUser: string | null = null; // signed OUT
+    const upserted: EventRow[][] = [];
+    const supa: SupabaseAdapter = {
+      async upsertEvents(rows) {
+        upserted.push(rows);
+        return { error: null };
+      },
+      async getUserId() {
+        return currentUser;
+      },
+    };
+    __setStorageForTesting(storage);
+    __setSupabaseForTesting(supa);
+
+    // A fresh pre-auth event in THIS session (gets the current sessionId, userId=null).
+    emit('tip.shown', {
+      swingId: null,
+      metricKey: 'current',
+      tier: 'full',
+      displayContext: 'visual_coach',
+    });
+    await flushMicrotasks();
+
+    // Still signed out → nothing drains (both current + prior are null-userId).
+    const r1 = await drain();
+    assertEq(r1.attempted, 0, 'signed-out: nothing drains');
+    assert(upserted.length === 0, 'signed-out: upsertEvents not called');
+
+    // Sign in as user_B → the CURRENT-session pre-auth event drains stamped with
+    // B (pre-G8 `&& e.userId` never drained it — fails there). The PRIOR-session
+    // event must NOT drain: it belongs to a previous user, and inheriting B's id
+    // would misattribute it on a shared device (fails if backfill is unscoped).
+    currentUser = 'user_B';
+    await drain();
+    const rows = upserted.flat();
+
+    const currentRow = rows.find(
+      (r) => (r.payload as { metricKey?: string }).metricKey === 'current',
+    );
+    assert(currentRow != null, 'sign-in: current-session pre-auth event drains');
+    assertEq(currentRow?.user_id, 'user_B', 'sign-in: current-session event stamped with the signed-in user');
+
+    const priorDrained = rows.some((r) => r.idempotency_key === 'prior-evt');
+    assert(!priorDrained, 'MISATTRIBUTION GUARD: prior-session null event does NOT drain under user_B');
+    assert(
+      __getQueueForTesting().some((e) => e.id === 'prior-evt'),
+      'prior-session event stays queued (QUEUE_CAP-evicted, never misattributed)',
+    );
+  }
+
+  // Test 18: G8(i) — init-clobber guard. The first enqueue (session.started)
+  // must NOT persist before loadQueue merges the on-disk queue, or a crash in
+  // that window drops the persisted events. A deferred getItem forces the
+  // interleave (enqueue-ready while loadQueue is still reading).
+  {
+    group('18. G8(i) init clobber: first enqueue waits for loadQueue before persisting');
+    __resetForTesting();
+    const diskRaw = JSON.stringify([
+      {
+        id: 'disk-evt',
+        type: 'tip.shown',
+        payload: { swingId: null, metricKey: 'disk', tier: 'full', displayContext: 'visual_coach' },
+        emittedAt: '2026-04-21T00:00:00.000Z',
+        userId: 'user_test',
+        sessionId: 'prior',
+        appVersion: '1.9.4',
+        attempts: 0,
+      },
+    ]);
+    let resolveGet: (v: string | null) => void = () => {};
+    const getGate = new Promise<string | null>((res) => {
+      resolveGet = res;
+    });
+    const writes: string[] = [];
+    const deferredStorage: StorageAdapter = {
+      getItem(key) {
+        // loadQueue's read is held open until we resolve getGate.
+        return key === STORAGE_KEYS.eventQueue ? getGate : Promise.resolve(null);
+      },
+      async setItem(key, value) {
+        if (key === STORAGE_KEYS.eventQueue) writes.push(value);
+      },
+    };
+    const supa = makeSupabaseAdapter('user_test', () => ({ error: null }));
+    __setStorageForTesting(deferredStorage);
+    __setSupabaseForTesting(supa);
+
+    // Trigger init: loadQueue starts (blocked on getGate); startSession enqueues
+    // session.started; the emit enqueues 'live'. Let their getUserId microtasks
+    // settle — WITHOUT the fix, an enqueue would now persist a queue missing the
+    // on-disk events (the clobber).
+    emit('tip.shown', { swingId: null, metricKey: 'live', tier: 'full', displayContext: 'visual_coach' });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // Fix: every enqueue is blocked awaiting initPromise (loadQueue) → no write
+    // yet. Bug: a clobbering persist already happened in this window.
+    assertEq(writes.length, 0, 'G8(i): no persist before loadQueue merges (no clobber window)');
+
+    // Release loadQueue → merge completes → the blocked enqueues persist safely.
+    resolveGet(diskRaw);
+    await flushMicrotasks();
+
+    const finalRaw = writes[writes.length - 1];
+    assert(finalRaw != null, 'a persist happened once loadQueue merged');
+    const finalQueue = JSON.parse(finalRaw ?? '[]') as Array<{ id: string; type: string }>;
+    assert(finalQueue.some((e) => e.id === 'disk-evt'), 'disk event survives (not clobbered by the first enqueue)');
+    assert(finalQueue.some((e) => e.type === 'session.started'), 'session.started also persisted');
+  }
+
   // ---------------------------------------------------------------------------
   // Summary
   // ---------------------------------------------------------------------------
