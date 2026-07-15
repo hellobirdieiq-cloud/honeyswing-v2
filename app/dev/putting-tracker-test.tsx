@@ -7,6 +7,8 @@ import { getSwingVideoSignedUrl } from '@/lib/getSwingVideoUrl';
 import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
 import {
   trackPuttingObjects,
+  type PuttingBallSeed,
+  type PuttingPosePrior,
   type PuttingTrackResult,
   type PuttingObjectFrame,
 } from '@/modules/vision-camera-pose/src';
@@ -20,7 +22,9 @@ import {
  * Downloads a swing's clip from the swing-videos bucket, runs the native
  * putting tracker on the SAME 8.33ms timestamp grid as pose extraction, then
  * computes the gate metrics and exports <swingId>.json + <swingId>-overlay.mov
- * via the share sheet (manually copied into docs/putting-cv-test/).
+ * + <swingId>-raw.mov (untouched full-res source — the overlay is 480w with
+ * markers burned in) via the share sheet (manually copied into
+ * docs/putting-cv-test/).
  *
  * The rest/stroke windows below are METRIC REPORTING ONLY — this is not phase
  * detection, and putting must NEVER fall back to the wrist/pose phase detector.
@@ -28,22 +32,130 @@ import {
 
 const DEFAULT_SWING_ID = '1d8722b8-618b-4668-baf8-2a90c5aab748';
 
+// Pre-filled ball seed for the current multi-ball fixture clip ("middle
+// ball"). Clearing both inputs runs the tracker unseeded.
+const DEFAULT_SEED_X = '0.55';
+const DEFAULT_SEED_Y = '0.80';
+
+/**
+ * Both fields empty → undefined (no seed sent, unseeded tracker). Both valid
+ * numbers in 0-1 → seed. Anything else (one empty, NaN, out of range) throws
+ * so a typo can't silently fall back to unseeded mode.
+ */
+function parseBallSeed(xText: string, yText: string): PuttingBallSeed | undefined {
+  const xt = xText.trim();
+  const yt = yText.trim();
+  if (xt === '' && yt === '') return undefined;
+  const x = Number(xt);
+  const y = Number(yt);
+  if (
+    xt === '' ||
+    yt === '' ||
+    !Number.isFinite(x) ||
+    !Number.isFinite(y) ||
+    x < 0 ||
+    x > 1 ||
+    y < 0 ||
+    y > 1
+  ) {
+    throw new Error('seed x/y must both be numbers in 0–1 (or both empty for no seed)');
+  }
+  return { x, y };
+}
+
 // EXTERNAL ASSUMPTION — sustained ball movement threshold: a ball detection
 // deviating more than this (full-res px) from the running rest centroid, for
 // >= BALL_MOVE_SUSTAIN_FRAMES consecutive detected frames, ends the rest
-// window. Sized vs the 2px jitter gate; uncalibrated until fixtures.
-const BALL_MOVE_EPS_PX = 4;
+// window. Bumped 4→8: fixture 1d8722b8's rest jitter band reaches ~7px
+// full-res while the real launch moves ~43px/frame — 8 stays far below launch.
+const BALL_MOVE_EPS_PX = 8;
 const BALL_MOVE_SUSTAIN_FRAMES = 2;
 
 // EXTERNAL ASSUMPTION — head motion threshold for the stroke window: the
 // stroke spans first→last frame whose consecutive-frame head displacement
-// exceeds this (full-res px per grid frame). Uncalibrated until fixtures.
-const HEAD_MOTION_EPS_PX = 2;
+// exceeds this (full-res px per grid frame). Bumped 2→4 alongside the ball
+// epsilon (same fixture 1d8722b8 observation: detection noise clears 2px).
+const HEAD_MOTION_EPS_PX = 4;
 
 // EXTERNAL ASSUMPTION — mirrors the plugin's BALL_REST_SAMPLE_FRAMES: movement
 // starting inside this many grid frames means the ball was never at rest
 // (pre-moving decoy) → rest_window "none", rest metrics skipped.
 const REST_ANCHOR_SAMPLE_FRAMES = 24;
+
+// EXTERNAL ASSUMPTION — pose prior calibration: LeadWrist→TrailThumbTip runs
+// +3.0° hot vs the human-measured shaft on fixture 1d8722b8 (+1.85°/+4.22°
+// at f55/f114); subtract the bias before sending. Pair joints below
+// POSE_PRIOR_MIN_CONF → null prior for that frame (pure-CV gates).
+const POSE_SHAFT_CAL_OFFSET_DEG = 3.0;
+const POSE_PRIOR_MIN_CONF = 0.3;
+
+// The 10 hand/wrist joints that survive to motion_frames (adapter drops the
+// other 34 COCO-WholeBody hand points before persist).
+const POSE_HAND_JOINTS = [
+  'leftWrist',
+  'leftThumb',
+  'leftThumbTip',
+  'leftIndex',
+  'leftPinky',
+  'rightWrist',
+  'rightThumb',
+  'rightThumbTip',
+  'rightIndex',
+  'rightPinky',
+] as const;
+
+type MotionFrameLite = {
+  timestampMs?: number;
+  frameWidth?: number;
+  frameHeight?: number;
+  joints?: Record<string, { x: number; y: number; confidence: number } | undefined>;
+};
+
+function foldDeg(a: number): number {
+  let v = a;
+  while (v > 90) v -= 180;
+  while (v <= -90) v += 180;
+  return v;
+}
+
+/**
+ * One prior per motion_frames entry — indices align 1:1 with the video grid
+ * (verified in docs/putting-cv-test/poseAngleScan.ts). angleDeg = folded
+ * leftWrist→rightThumbTip PIXEL-space angle minus the calibration bias;
+ * anchor = mean of the confident hand joints, normalized 0-1 (mean in pixel
+ * space ÷ frame dims — identical since dims are per-frame constant).
+ */
+function buildPosePriors(motionFrames: MotionFrameLite[]): (PuttingPosePrior | null)[] {
+  return motionFrames.map((f) => {
+    const lw = f.joints?.leftWrist;
+    const rt = f.joints?.rightThumbTip;
+    const w = f.frameWidth;
+    const h = f.frameHeight;
+    if (!lw || !rt || !w || !h) return null;
+    if (!(lw.confidence > POSE_PRIOR_MIN_CONF) || !(rt.confidence > POSE_PRIOR_MIN_CONF)) {
+      return null;
+    }
+    const rawAngle = (Math.atan2(rt.x * w - lw.x * w, rt.y * h - lw.y * h) * 180) / Math.PI;
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const name of POSE_HAND_JOINTS) {
+      const j = f.joints?.[name];
+      if (j && j.confidence > POSE_PRIOR_MIN_CONF) {
+        sx += j.x;
+        sy += j.y;
+        n += 1;
+      }
+    }
+    if (n === 0) return null;
+    return {
+      angleDeg: foldDeg(foldDeg(rawAngle) - POSE_SHAFT_CAL_OFFSET_DEG),
+      anchorX: sx / n,
+      anchorY: sy / n,
+      confidence: Math.min(lw.confidence, rt.confidence),
+    };
+  });
+}
 
 type GateMetrics = {
   rest_window: { startIdx: number; endIdx: number } | 'none';
@@ -198,6 +310,9 @@ type Phase = 'idle' | 'running' | 'done' | 'error';
 export default function PuttingTrackerTestScreen(): React.ReactElement {
   const router = useRouter();
   const [swingId, setSwingId] = useState(DEFAULT_SWING_ID);
+  const [seedXText, setSeedXText] = useState(DEFAULT_SEED_X);
+  const [seedYText, setSeedYText] = useState(DEFAULT_SEED_Y);
+  const [headDetector, setHeadDetector] = useState<'shaft' | 'blob'>('shaft');
   const [phase, setPhase] = useState<Phase>('idle');
   const [status, setStatus] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +320,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
   const [roiAnchor, setRoiAnchor] = useState<string | null>(null);
   const [jsonPath, setJsonPath] = useState<string | null>(null);
   const [overlayPath, setOverlayPath] = useState<string | null>(null);
+  const [rawPath, setRawPath] = useState<string | null>(null);
 
   const log = useCallback((line: string) => {
     setStatus((prev) => [...prev, line]);
@@ -219,16 +335,27 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
     setRoiAnchor(null);
     setJsonPath(null);
     setOverlayPath(null);
+    setRawPath(null);
     try {
+      const ballSeed = parseBallSeed(seedXText, seedYText);
+      log(ballSeed ? `ball seed (${ballSeed.x}, ${ballSeed.y})` : 'no ball seed (unseeded)');
+
       log('fetching swings row…');
       const { data, error: rowErr } = await supabase
         .from('swings')
-        .select('video_storage_path')
+        .select('video_storage_path, motion_frames')
         .eq('id', id)
         .single();
       if (rowErr || !data?.video_storage_path) {
         throw new Error(`row fetch failed: ${rowErr?.message ?? 'no video_storage_path'}`);
       }
+
+      // Pose priors from motion_frames (1:1 with the video grid). Missing
+      // motion_frames → empty array → every frame falls back to pure CV.
+      const motionFrames = (data.motion_frames ?? []) as unknown as MotionFrameLite[];
+      const posePriors = buildPosePriors(motionFrames);
+      const priorCount = posePriors.filter((p) => p !== null).length;
+      log(`pose priors: ${priorCount}/${posePriors.length} frames usable`);
 
       log('signing storage URL…');
       const signedUrl = await getSwingVideoSignedUrl(data.video_storage_path);
@@ -243,11 +370,17 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       const stepMs = ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
       log(`tracking (stepMs=${stepMs.toFixed(2)})…`);
       const t0 = Date.now();
-      const result = await trackPuttingObjects(download.uri, stepMs, { writeOverlay: true });
+      const result = await trackPuttingObjects(download.uri, stepMs, {
+        writeOverlay: true,
+        debugCandidates: true, // dev harness: always dump per-frame diagnostics
+        headDetector,
+        posePriors,
+        ...(ballSeed ? { ballSeed } : {}),
+      });
       const wallMs = Date.now() - t0;
       log(
         `tracked ${result.frames.length} frames in ${(wallMs / 1000).toFixed(1)}s ` +
-          `(roiAnchor=${result.roiAnchor})`,
+          `(roiAnchor=${result.roiAnchor}, head=${result.headDetector})`,
       );
 
       const m = computeMetrics(result, wallMs);
@@ -268,6 +401,8 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
         frame_width: result.frameWidth,
         frame_height: result.frameHeight,
         roi_anchor: result.roiAnchor,
+        head_detector: result.headDetector,
+        ball_seed: ballSeed ?? null,
         metrics: m,
         // Harness-side EXTERNAL ASSUMPTION constants (plugin constants are
         // documented in HoneyPuttingTrackerPlugin.swift).
@@ -276,13 +411,26 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
           BALL_MOVE_SUSTAIN_FRAMES,
           HEAD_MOTION_EPS_PX,
           REST_ANCHOR_SAMPLE_FRAMES,
+          POSE_SHAFT_CAL_OFFSET_DEG,
+          POSE_PRIOR_MIN_CONF,
         },
+        pose_priors_usable: priorCount,
+        pose_priors_total: posePriors.length,
+        // Full prior series (anchor normalized 0-1, angle post-calibration —
+        // exactly what was sent to the plugin), for offline smoothness plots.
+        pose_priors: posePriors.map((p, idx) => (p ? { idx, ...p } : null)),
         frames: result.frames,
       };
       await FileSystem.writeAsStringAsync(jsonUri, JSON.stringify(payload, null, 2), {
         encoding: FileSystem.EncodingType.UTF8,
       });
       setJsonPath(jsonUri);
+
+      // Raw source clip (untouched full-res) — copied BEFORE the overlay
+      // branch so a failed overlay writer still exports the raw video.
+      const rawUri = `${exportDir}${id}-raw.mov`;
+      await FileSystem.copyAsync({ from: download.uri, to: rawUri });
+      setRawPath(rawUri);
 
       if (result.overlayUri) {
         const overlayUri = `${exportDir}${id}-overlay.mov`;
@@ -297,7 +445,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       setError(err instanceof Error ? err.message : String(err));
       setPhase('error');
     }
-  }, [swingId, log]);
+  }, [swingId, seedXText, seedYText, headDetector, log]);
 
   const onShare = useCallback(async (uri: string) => {
     try {
@@ -330,6 +478,53 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
         placeholderTextColor="#666"
         editable={phase !== 'running'}
       />
+
+      <View style={styles.seedRow}>
+        <View style={styles.seedField}>
+          <Text style={styles.seedLabel}>Seed x (0-1)</Text>
+          <TextInput
+            style={[styles.input, styles.seedInput]}
+            value={seedXText}
+            onChangeText={setSeedXText}
+            keyboardType="decimal-pad"
+            autoCorrect={false}
+            placeholder="Seed x (0-1)"
+            placeholderTextColor="#666"
+            editable={phase !== 'running'}
+          />
+        </View>
+        <View style={styles.seedField}>
+          <Text style={styles.seedLabel}>Seed y (0-1)</Text>
+          <TextInput
+            style={[styles.input, styles.seedInput]}
+            value={seedYText}
+            onChangeText={setSeedYText}
+            keyboardType="decimal-pad"
+            autoCorrect={false}
+            placeholder="Seed y (0-1)"
+            placeholderTextColor="#666"
+            editable={phase !== 'running'}
+          />
+        </View>
+      </View>
+      <Text style={styles.seedHint}>middle ball, this clip · both empty = no seed</Text>
+
+      <View style={styles.detectorRow}>
+        {(['shaft', 'blob'] as const).map((d) => (
+          <Pressable
+            key={d}
+            onPress={() => setHeadDetector(d)}
+            disabled={phase === 'running'}
+            style={[styles.detectorButton, headDetector === d && styles.detectorButtonActive]}
+          >
+            <Text
+              style={[styles.detectorText, headDetector === d && styles.detectorTextActive]}
+            >
+              {d === 'shaft' ? 'Head: SHAFT' : 'Head: BLOB'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
 
       <Pressable
         onPress={onRun}
@@ -416,6 +611,11 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
             <Text style={styles.shareButtonText}>Share overlay video</Text>
           </Pressable>
         )}
+        {rawPath && (
+          <Pressable onPress={() => onShare(rawPath)} style={styles.shareButton}>
+            <Text style={styles.shareButtonText}>Share raw video</Text>
+          </Pressable>
+        )}
       </ScrollView>
     </View>
   );
@@ -462,6 +662,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     padding: 12,
     marginBottom: 12,
+  },
+  seedRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  seedField: {
+    flex: 1,
+  },
+  seedLabel: {
+    color: '#AAA',
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  seedInput: {
+    marginBottom: 0,
+  },
+  seedHint: {
+    color: '#666',
+    fontSize: 11,
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  detectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  detectorButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  detectorButtonActive: {
+    borderColor: '#0A84FF',
+    backgroundColor: '#0A84FF22',
+  },
+  detectorText: {
+    color: '#888',
+    fontSize: 13,
+    fontFamily: 'Menlo',
+  },
+  detectorTextActive: {
+    color: '#0A84FF',
+    fontWeight: '700',
   },
   primaryButton: {
     backgroundColor: '#0A84FF',

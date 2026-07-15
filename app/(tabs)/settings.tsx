@@ -590,6 +590,15 @@ export default function SettingsScreen() {
       <Text style={styles.versionText}>
         v{Constants.expoConfig?.version ?? '?'} · rt {Updates.runtimeVersion ?? '?'} · {Updates.updateId ? Updates.updateId.slice(0, 8) : 'embedded'}
       </Text>
+
+      {/* TEMPORARY dev nav — remove after putting-tracker go/no-go test */}
+      <TouchableOpacity
+        style={styles.coachModeButton}
+        onPress={() => router.push('/dev/putting-tracker-test' as Href)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.coachModeText}>PUTT TEST</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
