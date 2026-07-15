@@ -40,53 +40,73 @@ export interface CameraGuidanceSnapshot {
   camera_guidance_color: CameraGuidanceColor | null;
 }
 
-export async function persistSwing(
-  frames: PoseFrame[],
-  analysis: AnalysisResult,
-  classification: CaptureClassification | null,
-  cameraGuidance?: CameraGuidanceSnapshot,
-  nativeGrip?: Record<string, unknown>[] | null,
-  requestedFps?: number | null,
-  gravityReadings?: GravityReading[],
-  playerProfileId?: string | null,
-  captureFps?: number | null,
-  videoDurationMs?: number | null,
-  videoFrameCount?: number | null,
-  extractionTotalMs?: number | null,
-  watchImu?: WatchImuPersist | null,
-  isLeftHandedOverride?: boolean,
-  stopOrigin?: StopOrigin | null,
+/** Inputs buildSwingRow needs — persistSwing's params plus the derived durationMs. */
+export interface SwingRowBuildInputs {
+  frames: PoseFrame[];
+  analysis: AnalysisResult;
+  classification: CaptureClassification | null;
+  cameraGuidance?: CameraGuidanceSnapshot;
+  nativeGrip?: Record<string, unknown>[] | null;
+  requestedFps?: number | null;
+  gravityReadings?: GravityReading[];
+  playerProfileId?: string | null;
+  captureFps?: number | null;
+  videoDurationMs?: number | null;
+  videoFrameCount?: number | null;
+  extractionTotalMs?: number | null;
+  watchImu?: WatchImuPersist | null;
+  isLeftHandedOverride?: boolean;
+  stopOrigin?: StopOrigin | null;
   extractionBreakdown?: {
     decode_ms: number | null;
     inference_ms: number | null;
     metadata_probe_ms: number | null;
-  } | null,
-  pipelineMs?: Record<string, number | null> | null,
-): Promise<string | null> {
-  const durationMs =
-    frames.length > 1
-      ? frames[frames.length - 1].timestampMs - frames[0].timestampMs
-      : 0;
+  } | null;
+  pipelineMs?: Record<string, number | null> | null;
+  durationMs: number;
+}
 
-  // Prefer auth user ID, fall back to anonymous profileId
-  const authUserId = await getUserId();
-  if (!authUserId) {
-    console.log("[persistSwing] No user, skipping DB write");
-    // Anonymous swings still advance the local free-swing counter that
-    // checkSwingLimit gates on — without this the counter never increments and
-    // the limit is unenforceable for signed-out users. Real swings only (stub
-    // rows from failed captures carry no frames). try/catch so a storage hiccup
-    // never turns a no-op persist into a thrown rejection.
-    if (frames.length > 0) {
-      try {
-        await incrementLocalSwingCount();
-      } catch (err) {
-        console.error('[HoneySwing] incrementLocalSwingCount (anon) failed', err);
-      }
-    }
-    return null;
-  }
-  const profileId = authUserId;
+export interface BuiltSwingRow {
+  row: Database['public']['Tables']['swings']['Insert'];
+  // Capture-time reads the post-insert side effects reuse — returned rather
+  // than re-read so each read executes exactly once, as before the extraction.
+  coachCode: string | null;
+  isLeftHanded: boolean;
+  ageTier: Awaited<ReturnType<typeof getAgeTier>>;
+}
+
+/**
+ * Assemble the swings insert row (queue-until-login Phase 1). ALL capture-time
+ * live reads live here — coach code, handedness, age tier, grip, primary
+ * profile, tip-frequency/reinforcement debug, session counter — so the row
+ * snapshots capture-time state wherever it is later inserted. authUserId null
+ * → row built without user_id (the caller currently discards it; Phase 2 will
+ * hold it for retroactive persist at sign-in).
+ */
+export async function buildSwingRow(
+  authUserId: string | null,
+  inputs: SwingRowBuildInputs,
+): Promise<BuiltSwingRow> {
+  const {
+    frames,
+    analysis,
+    classification,
+    cameraGuidance,
+    nativeGrip,
+    requestedFps,
+    gravityReadings,
+    playerProfileId,
+    captureFps,
+    videoDurationMs,
+    videoFrameCount,
+    extractionTotalMs,
+    watchImu,
+    isLeftHandedOverride,
+    stopOrigin,
+    extractionBreakdown,
+    pipelineMs,
+    durationMs,
+  } = inputs;
 
   // For the record flow the caller always supplies a concrete id (snapshotted at
   // button-press, after beginRecording hard-blocks a missing profile). Legacy
@@ -125,7 +145,7 @@ export async function persistSwing(
   const watchImuDebug: Json | null = buildWatchImuDebug(watchImu);
 
   const row: Database['public']['Tables']['swings']['Insert'] = {
-    ...(profileId ? { user_id: profileId } : {}),
+    ...(authUserId ? { user_id: authUserId } : {}),
     player_profile_id: resolvedPlayerProfileId ?? null,
     motion_frames: enrichedFrames,
     gravity_vector: gravityVector,
@@ -185,6 +205,99 @@ export async function persistSwing(
       imu_only: frames.length === 0 && hasWatchImu,
     }) as unknown as Json,
   };
+
+  return { row, coachCode, isLeftHanded, ageTier };
+}
+
+export async function persistSwing(
+  frames: PoseFrame[],
+  analysis: AnalysisResult,
+  classification: CaptureClassification | null,
+  cameraGuidance?: CameraGuidanceSnapshot,
+  nativeGrip?: Record<string, unknown>[] | null,
+  requestedFps?: number | null,
+  gravityReadings?: GravityReading[],
+  playerProfileId?: string | null,
+  captureFps?: number | null,
+  videoDurationMs?: number | null,
+  videoFrameCount?: number | null,
+  extractionTotalMs?: number | null,
+  watchImu?: WatchImuPersist | null,
+  isLeftHandedOverride?: boolean,
+  stopOrigin?: StopOrigin | null,
+  extractionBreakdown?: {
+    decode_ms: number | null;
+    inference_ms: number | null;
+    metadata_probe_ms: number | null;
+  } | null,
+  pipelineMs?: Record<string, number | null> | null,
+  // Queue-until-login: invoked ONLY on the signed-out branch with real frames,
+  // handing the caller the fully-built row (no user_id) so it can be held for
+  // retroactive persist at sign-in. Return value stays null for anon — this is
+  // the second channel. Signed-in path never calls it.
+  onHeldRow?: (row: Database['public']['Tables']['swings']['Insert']) => void,
+): Promise<string | null> {
+  const durationMs =
+    frames.length > 1
+      ? frames[frames.length - 1].timestampMs - frames[0].timestampMs
+      : 0;
+
+  // Prefer auth user ID, fall back to anonymous profileId
+  const authUserId = await getUserId();
+
+  // Row construction runs BEFORE the auth gate (queue-until-login Phase 1):
+  // capture-time reads execute at capture time either way, and Phase 2 will
+  // hold the built row for signed-out captures. This phase the anon branch
+  // still discards it exactly as before.
+  const { row, coachCode, isLeftHanded, ageTier } = await buildSwingRow(authUserId, {
+    frames,
+    analysis,
+    classification,
+    cameraGuidance,
+    nativeGrip,
+    requestedFps,
+    gravityReadings,
+    playerProfileId,
+    captureFps,
+    videoDurationMs,
+    videoFrameCount,
+    extractionTotalMs,
+    watchImu,
+    isLeftHandedOverride,
+    stopOrigin,
+    extractionBreakdown,
+    pipelineMs,
+    durationMs,
+  });
+
+  if (!authUserId) {
+    console.log("[persistSwing] No user, skipping DB write");
+    // Queue-until-login: surface the built row to the caller so the reconcile
+    // can hold it. REAL swings only — stub rows (frames=[]) are never held,
+    // same guard as the counter below. try/catch: a hold-channel failure must
+    // not break the anon no-op contract.
+    if (frames.length > 0 && onHeldRow) {
+      try {
+        onHeldRow(row);
+      } catch (err) {
+        console.error('[HoneySwing] onHeldRow callback failed', err);
+      }
+    }
+    // Anonymous swings still advance the local free-swing counter that
+    // checkSwingLimit gates on — without this the counter never increments and
+    // the limit is unenforceable for signed-out users. Real swings only (stub
+    // rows from failed captures carry no frames). try/catch so a storage hiccup
+    // never turns a no-op persist into a thrown rejection.
+    if (frames.length > 0) {
+      try {
+        await incrementLocalSwingCount();
+      } catch (err) {
+        console.error('[HoneySwing] incrementLocalSwingCount (anon) failed', err);
+      }
+    }
+    return null;
+  }
+  const profileId = authUserId;
 
   let data: { id: string } | null = null;
   let insertError: PostgrestError | null = null;

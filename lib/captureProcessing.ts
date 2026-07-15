@@ -28,6 +28,7 @@ import {
   capturePoseOutbox,
   attachSwingId,
   abandonPending,
+  holdSwing,
   outboxEnabled,
 } from './outbox';
 import { classifyCapture } from '@/packages/domain/swing/captureValidity';
@@ -328,6 +329,10 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       intent_to_persist_ms:
         recordIntentAtRef.current != null ? Date.now() - recordIntentAtRef.current : null,
     };
+    // Queue-until-login: persistSwing's anon branch surfaces the built row
+    // here (second channel — its return value stays null); the reconcile
+    // below routes it to holdSwing. Never set on the signed-in path.
+    let heldRowForHold: Record<string, unknown> | null = null;
     swingIdPromiseRef.current = persistSwing(
       poseFrames, // RAW by design — persisted motion_frames are the debug source of truth
       analysis,
@@ -349,6 +354,9 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       stopOriginRef.current,
       result.extractionBreakdown ?? null,
       pipelineMs,
+      (row) => {
+        heldRowForHold = row as unknown as Record<string, unknown>;
+      },
     ).then((swingId) => {
       if (swingId) {
         setCurrentSwingId(swingId, captureToken); // no-op if this capture was superseded
@@ -398,14 +406,35 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
         // newer capture may own by the time this insert resolves). The shared
         // ref is cleared only while it still points at our entry.
         const videoEntryId = videoEntry.abandoned ? null : videoEntry.id;
-        const plan = planOutboxReconcile(poseEntryId, videoEntryId, swingId);
+        const plan = planOutboxReconcile(
+          poseEntryId,
+          videoEntryId,
+          swingId,
+          heldRowForHold !== null,
+        );
         if (videoOutboxEntryIdRef.current === videoEntry.id) {
           videoOutboxEntryIdRef.current = null;
         }
         if (plan.action === 'attach') {
           attachSwingId(plan.ids, plan.swingId); // reconcile: fires one drain
+        } else if (plan.action === 'hold') {
+          // Signed-out real swing: keep the triple (row + video + pose) for
+          // retroactive persist at sign-in. Hold failure degrades to today's
+          // abandon so PENDING entries are never left stranded.
+          holdSwing({
+            row: heldRowForHold!,
+            videoEntryId,
+            poseEntryId,
+          })
+            .then((heldSwingId) =>
+              console.log('[HoneySwing] swing held for sign-in', { heldSwingId }),
+            )
+            .catch((e) => {
+              console.warn('[HoneySwing] holdSwing failed — abandoning', e);
+              abandonPending(plan.ids).catch(() => {});
+            });
         } else if (plan.action === 'abandon') {
-          // insert returned null (anonymous / failed) — these can never
+          // insert returned null (failed / stub) — these can never
           // reconcile; drop them (no dead-letter, no telemetry).
           abandonPending(plan.ids).catch((e) =>
             console.warn('[HoneySwing] abandonPending failed', e),

@@ -36,7 +36,10 @@ export const POSE_SOURCE_TAG = 'rtmw-l-2d-v1';
 // Public types
 // ---------------------------------------------------------------------------
 
-export type OutboxKind = 'video' | 'pose';
+// 'held_row' appears ONLY in dead-letter records (a schema-drifted held swing
+// row) — no outbox ENTRY is ever created with it, so the drain's video/else
+// branch never sees it.
+export type OutboxKind = 'video' | 'pose' | 'held_row';
 
 export type DrainOutcome = 'done' | 'zero_row' | 'retry';
 export type DrainResult2 = { outcome: DrainOutcome; code: string | null };
@@ -45,13 +48,15 @@ export type FailureReason =
   | 'max_attempts'
   | 'zero_rows'
   | 'orphan_pending'
-  | 'incomplete_copy';
+  | 'incomplete_copy'
+  | 'held_schema_drift';
 
 export type Classification =
   | 'network_retryable'
   | 'zero_rows'
   | 'orphan_pending'
-  | 'incomplete_copy';
+  | 'incomplete_copy'
+  | 'held_schema_drift';
 
 export type OutboxMeta = {
   id: string; // entryId === directory name
@@ -66,6 +71,11 @@ export type OutboxMeta = {
   bytes: number | null; // computed ONCE at copy/write completion
   md5: string | null; // computed ONCE (getInfoAsync {md5}) for video; null ok for pose
   code: string | null; // last failing attempt's statusCode / Postgres code; null otherwise
+  // Queue-until-login: true = this pending (swingId:null) entry belongs to a
+  // held signed-out swing (outbox/held/<id>.json references it) and is exempt
+  // from the orphan_pending sweep — the held caps own its lifetime instead.
+  // Optional so pre-existing on-disk metas parse unchanged.
+  held?: boolean;
 };
 
 export type DeadLetterRecord = {
@@ -168,6 +178,7 @@ const CLASSIFICATION: Record<FailureReason, Classification> = {
   zero_rows: 'zero_rows',
   orphan_pending: 'orphan_pending',
   incomplete_copy: 'incomplete_copy',
+  held_schema_drift: 'held_schema_drift',
 };
 
 const VIDEO_PAYLOAD = 'video.mov';
@@ -346,6 +357,15 @@ function deadDir(): string {
 }
 function deadPath(id: string): string {
   return `${deadDir()}${id}.json`;
+}
+// Held-row artifacts (queue-until-login) live OUTSIDE the entry index, as a
+// sibling of dead/ — structurally invisible to the drain loop, name-skipped
+// by the sweeps exactly like dead/.
+function heldDir(): string {
+  return `${outboxRoot()}held/`;
+}
+function heldPath(id: string): string {
+  return `${heldDir()}${id}.json`;
 }
 
 // ---------------------------------------------------------------------------
@@ -719,6 +739,235 @@ export async function abandonPending(entryIds: string[]): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Queue-until-login: held swings (signed-out captures kept for retro-persist)
+// ---------------------------------------------------------------------------
+
+/// EXTERNAL ASSUMPTION — held-swing caps: keep the newest HELD_MAX_COUNT held
+/// swings, none older than HELD_MAX_AGE_MS; eviction is always the complete
+/// triple (held-row JSON + video entry + pose entry). ~4s H.265 clip ≈ 4-8MB
+/// → worst case ≈ 80MB on disk.
+const HELD_MAX_COUNT = 10;
+const HELD_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Self-contained held swing: the built row (no user_id) + linkage. */
+export type HeldSwingRecord = {
+  schemaVersion: 1;
+  heldSwingId: string;
+  capturedAtIso: string;
+  appVersion: string | null;
+  analysisVersion: string | null;
+  videoEntryId: string | null;
+  poseEntryId: string | null;
+  row: Record<string, unknown>;
+  // Stable uuid used as swings.id at retro-insert — the crash-retry
+  // idempotency key (23505 = already inserted). swings.id is a uuid COLUMN
+  // (mintId's base36 format would 22P02), hence a separate field. Optional:
+  // records held before this field existed are backfilled (and rewritten to
+  // disk) by retro-persist BEFORE the first insert attempt.
+  insertId?: string;
+};
+
+/** RFC-4122-shaped v4 uuid. Idempotency key, not security — Math.random ok. */
+function uuidv4(): string {
+  let out = '';
+  for (const ch of 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx') {
+    if (ch === 'x') out += Math.floor(Math.random() * 16).toString(16);
+    else if (ch === 'y') out += (8 + Math.floor(Math.random() * 4)).toString(16);
+    else out += ch;
+  }
+  return out;
+}
+
+/** Mark pending entries as held (exempt from the orphan sweep). */
+async function markHeld(entryIds: Array<string | null>): Promise<void> {
+  for (const id of entryIds) {
+    if (!id) continue;
+    await patchMeta(id, (m) => {
+      if (m.swingId === null) m.held = true;
+    });
+  }
+}
+
+/**
+ * Hold a signed-out swing: write the self-contained held-row artifact FIRST,
+ * then mark the payload entries held. A crash between the two leaves the
+ * entries unmarked → normal orphan dead-letter (no leak); the held row still
+ * retro-persists (it embeds motion_frames — self-contained by design).
+ * captured_at_iso is stamped into swing_debug HERE (hold time, additive) so
+ * signed-in rows are byte-identical to before queue-until-login.
+ */
+export async function holdSwing(args: {
+  row: Record<string, unknown>;
+  videoEntryId: string | null;
+  poseEntryId: string | null;
+}): Promise<string> {
+  const heldSwingId = mintId();
+  const capturedAtIso = nowIso();
+  const existingDebug =
+    args.row.swing_debug && typeof args.row.swing_debug === 'object'
+      ? (args.row.swing_debug as Record<string, unknown>)
+      : {};
+  const record: HeldSwingRecord = {
+    schemaVersion: 1,
+    heldSwingId,
+    capturedAtIso,
+    appVersion: (args.row.app_version as string | undefined) ?? null,
+    analysisVersion: (args.row.analysis_version as string | undefined) ?? null,
+    videoEntryId: args.videoEntryId,
+    poseEntryId: args.poseEntryId,
+    row: {
+      ...args.row,
+      swing_debug: { ...existingDebug, captured_at_iso: capturedAtIso },
+    },
+    insertId: uuidv4(),
+  };
+  await writeHeldRecord(record);
+  await markHeld([args.videoEntryId, args.poseEntryId]);
+  await enforceHeldCaps().catch((err) =>
+    console.warn('[outbox] enforceHeldCaps failed:', err),
+  );
+  return heldSwingId;
+}
+
+/** Write (or overwrite) a held-row record — also the insertId backfill path. */
+export async function writeHeldRecord(record: HeldSwingRecord): Promise<void> {
+  await fs().makeDirectoryAsync(heldDir(), { intermediates: true });
+  await fs().writeAsStringAsync(heldPath(record.heldSwingId), JSON.stringify(record), {
+    encoding: 'utf8',
+  });
+}
+
+/**
+ * Delete ONLY the held-row JSON (retro-persist success path — the payload
+ * entries are attached to the inserted row by then; the drain owns them).
+ */
+export async function deleteHeldRow(heldSwingId: string): Promise<void> {
+  await fs().deleteAsync(heldPath(heldSwingId), { idempotent: true }).catch(() => {});
+}
+
+/**
+ * Schema drift: the held row predates the current swings schema and the
+ * insert can never succeed — dead-letter the whole triple (metadata kept,
+ * payloads dropped, DEAD_CAP applies) instead of retrying forever.
+ */
+export async function deadLetterHeldTriple(rec: HeldSwingRecord): Promise<void> {
+  for (const entryId of [rec.videoEntryId, rec.poseEntryId]) {
+    if (!entryId) continue;
+    const meta = await readMeta(entryId);
+    if (meta) await deadLetter(meta, 'held_schema_drift').catch(() => {});
+  }
+  const record: DeadLetterRecord = {
+    swingId: rec.insertId ?? rec.heldSwingId,
+    kind: 'held_row',
+    failureReason: 'held_schema_drift',
+    classification: CLASSIFICATION.held_schema_drift,
+    code: null,
+    attempts: 0,
+    bytes: null,
+    md5: null,
+  };
+  await fs().makeDirectoryAsync(deadDir(), { intermediates: true });
+  await fs()
+    .writeAsStringAsync(deadPath(rec.heldSwingId), JSON.stringify(record), { encoding: 'utf8' })
+    .catch(() => {});
+  await deleteHeldRow(rec.heldSwingId);
+  await pruneDead();
+}
+
+// Retro-persist hook seam: the retro module registers itself here (a direct
+// import would cycle — it imports outbox back). Lifecycle handlers run the
+// hook BEFORE draining so attach→drain flows in one pass. The hook self-guards
+// (signed-in check + in-flight flag), so this stays a dumb nullable call.
+let heldRetroHook: (() => Promise<void>) | null = null;
+export function registerHeldRetroHook(fn: () => Promise<void>): void {
+  heldRetroHook = fn;
+}
+async function runHeldRetroHook(): Promise<void> {
+  if (heldRetroHook) await heldRetroHook().catch(() => {});
+}
+
+/** Read every held-row record (unparseable files are deleted as junk). */
+export async function listHeldSwings(): Promise<HeldSwingRecord[]> {
+  let names: string[];
+  try {
+    names = await fs().readDirectoryAsync(heldDir());
+  } catch {
+    return []; // held/ not created yet
+  }
+  const records: HeldSwingRecord[] = [];
+  for (const name of names) {
+    if (!name.endsWith('.json')) continue;
+    try {
+      const raw = await fs().readAsStringAsync(`${heldDir()}${name}`, { encoding: 'utf8' });
+      const rec = JSON.parse(raw) as HeldSwingRecord;
+      if (rec && typeof rec.heldSwingId === 'string' && rec.row && typeof rec.row === 'object') {
+        records.push(rec);
+        continue;
+      }
+    } catch {
+      // fall through to junk delete
+    }
+    await fs().deleteAsync(`${heldDir()}${name}`, { idempotent: true }).catch(() => {});
+  }
+  return records;
+}
+
+/** Delete a held triple: held-row JSON + both payload entry dirs. */
+async function deleteHeldTriple(rec: HeldSwingRecord): Promise<void> {
+  await fs().deleteAsync(heldPath(rec.heldSwingId), { idempotent: true }).catch(() => {});
+  if (rec.videoEntryId) await deleteEntryDir(rec.videoEntryId).catch(() => {});
+  if (rec.poseEntryId) await deleteEntryDir(rec.poseEntryId).catch(() => {});
+}
+
+/**
+ * Enforce the held caps (newest HELD_MAX_COUNT, ≤ HELD_MAX_AGE_MS old),
+ * evicting complete triples. Also the crash-window leak guard: any entry
+ * marked held that NO held-row references is deleted (a hold that never
+ * finished writing its references has no future).
+ */
+export async function enforceHeldCaps(): Promise<void> {
+  const records = await listHeldSwings();
+  const now = nowMs();
+  const sorted = [...records].sort(
+    (a, b) => Date.parse(b.capturedAtIso) - Date.parse(a.capturedAtIso), // newest first
+  );
+  const evict: HeldSwingRecord[] = [];
+  const kept: HeldSwingRecord[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const rec = sorted[i];
+    const age = now - Date.parse(rec.capturedAtIso);
+    if (i >= HELD_MAX_COUNT || !Number.isFinite(age) || age >= HELD_MAX_AGE_MS) {
+      evict.push(rec);
+    } else {
+      kept.push(rec);
+    }
+  }
+  for (const rec of evict) {
+    await deleteHeldTriple(rec);
+  }
+  // Leak guard: held-marked entries not referenced by any surviving held-row.
+  const referenced = new Set<string>();
+  for (const rec of kept) {
+    if (rec.videoEntryId) referenced.add(rec.videoEntryId);
+    if (rec.poseEntryId) referenced.add(rec.poseEntryId);
+  }
+  let names: string[];
+  try {
+    names = await fs().readDirectoryAsync(outboxRoot());
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === 'dead' || name === 'held') continue;
+    if (referenced.has(name)) continue;
+    const meta = await readMeta(name);
+    if (meta?.held && meta.swingId === null) {
+      await deleteEntryDir(name).catch(() => {});
+    }
+  }
+}
+
 /**
  * Per-swing delete support: drop every entry reconciled to this swingId so a
  * queued video/pose entry can't re-upload after the row + storage object are
@@ -907,7 +1156,7 @@ async function sweepOrphans(): Promise<void> {
   }
   const now = nowMs();
   for (const name of names) {
-    if (name === 'dead') continue;
+    if (name === 'dead' || name === 'held') continue;
     const meta = await readMeta(name);
     if (!meta) {
       // junk dir from an interrupted write (payload but no meta) — remove
@@ -916,10 +1165,15 @@ async function sweepOrphans(): Promise<void> {
     }
     if (!meta.copyComplete) {
       // temp source is gone, copy unresumable — dead-letter immediately
+      // (applies to held entries too: an unresumable copy is dead regardless).
       await deadLetter(meta, 'incomplete_copy');
       continue;
     }
     if (meta.swingId === null) {
+      // Held entries are exempt from the orphan grace — they are pending BY
+      // DESIGN until retro-persist at sign-in; enforceHeldCaps (count/age,
+      // triple-wise) owns their lifetime.
+      if (meta.held) continue;
       const created = Date.parse(meta.createdAt);
       if (!Number.isFinite(created) || now - created >= ORPHAN_GRACE_MS) {
         await deadLetter(meta, 'orphan_pending');
@@ -957,7 +1211,8 @@ function wireLifecycleListeners(): void {
     };
     AppState.addEventListener('change', (state: string) => {
       if (state === 'active') {
-        void drainOutbox().catch(() => {});
+        // Retro-persist held swings BEFORE draining (attach→drain, one pass).
+        void runHeldRetroHook().then(() => drainOutbox().catch(() => {}));
         drainEventBus();
       }
     });
@@ -975,7 +1230,8 @@ function wireLifecycleListeners(): void {
     NetInfo.addEventListener((s) => {
       const connected = s.isConnected === true;
       if (lastKnownConnected === false && connected) {
-        void drainOutbox().catch(() => {});
+        // Retro-persist held swings BEFORE draining (attach→drain, one pass).
+        void runHeldRetroHook().then(() => drainOutbox().catch(() => {}));
         drainEventBus();
       }
       lastKnownConnected = connected;
@@ -996,6 +1252,11 @@ function wireLifecycleListeners(): void {
 export function bootstrapOutbox(): void {
   void (async () => {
     await sweepOrphans();
+    // Held-swing age cap enforced at app start too (capture-time enforcement
+    // alone would let a dormant install exceed the 30-day cap).
+    await enforceHeldCaps().catch((err) =>
+      console.warn('[outbox] enforceHeldCaps (bootstrap) failed:', err),
+    );
     wireLifecycleListeners();
     drainEventBus();
     await drainOutbox();

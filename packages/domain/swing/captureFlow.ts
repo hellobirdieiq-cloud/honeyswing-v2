@@ -121,6 +121,7 @@ export function planDriftEvent(args: {
 
 export type OutboxReconcilePlan =
   | { action: 'attach'; ids: string[]; swingId: string }
+  | { action: 'hold'; ids: string[] }
   | { action: 'abandon'; ids: string[] }
   | { action: 'none'; ids: string[] };
 
@@ -131,16 +132,24 @@ export type OutboxReconcilePlan =
  * failed — those entries can never reconcile). The caller owns the
  * videoOutboxEntryIdRef read-and-null (mutual exclusion with the failure path)
  * and must read the ref AFTER awaiting the pose entry id, as before.
+ *
+ * Queue-until-login: `held` is true when persistSwing surfaced a built row for
+ * a signed-out REAL swing (frames > 0) — those entries are held on disk for
+ * retroactive persist at sign-in instead of abandoned. Hold fires even with
+ * zero ids: the self-contained held row alone is worth keeping. The signed-in
+ * branch (swingId truthy → attach) is checked FIRST and is unchanged.
  */
 export function planOutboxReconcile(
   poseEntryId: string | null,
   videoEntryId: string | null,
   swingId: string | null,
+  held = false,
 ): OutboxReconcilePlan {
   const ids = [poseEntryId, videoEntryId].filter(
     (x): x is string => typeof x === 'string',
   );
   if (swingId) return { action: 'attach', ids, swingId };
+  if (held) return { action: 'hold', ids };
   if (ids.length > 0) return { action: 'abandon', ids };
   return { action: 'none', ids };
 }

@@ -1,0 +1,1963 @@
+{
+  "user_id": "user_fixture_0001",
+  "player_profile_id": "profile-luca-0001",
+  "motion_frames": [
+    {
+      "timestampMs": 0,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.45,
+          "y": 0.62,
+          "confidence": 0.9
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.47,
+          "y": 0.63,
+          "confidence": 0.9
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 8.33,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.4590909090909091,
+          "y": 0.6018181818181818,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607555,
+          "vy": -0.002182691258321511,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.47909090909090907,
+          "y": 0.6118181818181818,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607555,
+          "vy": -0.002182691258321511,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 16.66,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.4681818181818182,
+          "y": 0.5836363636363636,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607555,
+          "vy": -0.002182691258321511,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.48818181818181816,
+          "y": 0.5936363636363636,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607555,
+          "vy": -0.002182691258321511,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 24.990000000000002,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.4772727272727273,
+          "y": 0.5654545454545454,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607553,
+          "vy": -0.0021826912583215105,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.49727272727272726,
+          "y": 0.5754545454545454,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607553,
+          "vy": -0.0021826912583215105,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 33.32,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.4863636363636364,
+          "y": 0.5472727272727272,
+          "confidence": 0.9,
+          "vx": 0.001091345629160756,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5063636363636363,
+          "y": 0.5572727272727273,
+          "confidence": 0.9,
+          "vx": 0.001091345629160756,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 41.65,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.4954545454545455,
+          "y": 0.5290909090909091,
+          "confidence": 0.9,
+          "vx": 0.001091345629160756,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5154545454545454,
+          "y": 0.5390909090909091,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 49.980000000000004,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.5045454545454545,
+          "y": 0.5109090909090909,
+          "confidence": 0.9,
+          "vx": 0.001091345629160748,
+          "vy": -0.0021826912583215096,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5245454545454545,
+          "y": 0.5209090909090909,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607615,
+          "vy": -0.0021826912583215096,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 58.31,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.5136363636363637,
+          "y": 0.4927272727272727,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607624,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5336363636363636,
+          "y": 0.5027272727272727,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 66.64,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.5227272727272727,
+          "y": 0.4745454545454545,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5427272727272727,
+          "y": 0.4845454545454545,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607624,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 74.97,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.5318181818181819,
+          "y": 0.4563636363636363,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607624,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5518181818181818,
+          "y": 0.4663636363636363,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 83.3,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.5409090909090909,
+          "y": 0.4381818181818182,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321505,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.5609090909090909,
+          "y": 0.4481818181818182,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607624,
+          "vy": -0.002182691258321505,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    },
+    {
+      "timestampMs": 91.63,
+      "joints": {
+        "nose": {
+          "name": "nose",
+          "x": 0.5,
+          "y": 0.2,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftShoulder": {
+          "name": "leftShoulder",
+          "x": 0.42,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightShoulder": {
+          "name": "rightShoulder",
+          "x": 0.58,
+          "y": 0.32,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftElbow": {
+          "name": "leftElbow",
+          "x": 0.4,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightElbow": {
+          "name": "rightElbow",
+          "x": 0.6,
+          "y": 0.45,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftWrist": {
+          "name": "leftWrist",
+          "x": 0.55,
+          "y": 0.42,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607624,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "rightWrist": {
+          "name": "rightWrist",
+          "x": 0.57,
+          "y": 0.43,
+          "confidence": 0.9,
+          "vx": 0.0010913456291607492,
+          "vy": -0.002182691258321512,
+          "vz": 0
+        },
+        "leftHip": {
+          "name": "leftHip",
+          "x": 0.44,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightHip": {
+          "name": "rightHip",
+          "x": 0.56,
+          "y": 0.55,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftKnee": {
+          "name": "leftKnee",
+          "x": 0.44,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightKnee": {
+          "name": "rightKnee",
+          "x": 0.56,
+          "y": 0.72,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "leftAnkle": {
+          "name": "leftAnkle",
+          "x": 0.44,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        },
+        "rightAnkle": {
+          "name": "rightAnkle",
+          "x": 0.56,
+          "y": 0.9,
+          "confidence": 0.9,
+          "vx": 0,
+          "vy": 0,
+          "vz": 0
+        }
+      },
+      "frameWidth": 1080,
+      "frameHeight": 1920
+    }
+  ],
+  "gravity_vector": {
+    "x": 0.015,
+    "y": -0.975,
+    "z": 0.11499999999999999
+  },
+  "watch_imu": [
+    {
+      "t": 0,
+      "ax": 0.01,
+      "ay": -0.98,
+      "az": 0.12,
+      "gx": 0.001,
+      "gy": 0.002,
+      "gz": 0.003
+    },
+    {
+      "t": 10,
+      "ax": 0.02,
+      "ay": -0.97,
+      "az": 0.11,
+      "gx": 0.002,
+      "gy": 0.003,
+      "gz": 0.004
+    },
+    {
+      "t": 20,
+      "ax": 0.03,
+      "ay": -0.96,
+      "az": 0.1,
+      "gx": 0.003,
+      "gy": 0.004,
+      "gz": 0.005
+    }
+  ],
+  "frame_count": 12,
+  "duration_ms": 92,
+  "fps_actual": 130.96147549929063,
+  "score": null,
+  "honey_boom": false,
+  "camera_angle_valid": true,
+  "angles": {
+    "spineAngle": 0,
+    "leftElbowAngle": 107,
+    "rightElbowAngle": 100,
+    "leftKneeAngle": 180,
+    "rightKneeAngle": 180,
+    "hipSpreadDelta": 26,
+    "shoulderTilt": 0,
+    "spineDrift": null
+  },
+  "tempo": null,
+  "phases": [],
+  "trail_points": [
+    {
+      "x": 0.54,
+      "y": 0.625,
+      "timestamp": 0,
+      "leadX": 0.55,
+      "leadY": 0.62,
+      "trailX": 0.53,
+      "trailY": 0.63
+    },
+    {
+      "x": 0.530909090909091,
+      "y": 0.6068181818181818,
+      "timestamp": 8.33,
+      "leadX": 0.5409090909090909,
+      "leadY": 0.6018181818181818,
+      "trailX": 0.520909090909091,
+      "trailY": 0.6118181818181818
+    },
+    {
+      "x": 0.5218181818181817,
+      "y": 0.5886363636363636,
+      "timestamp": 16.66,
+      "leadX": 0.5318181818181817,
+      "leadY": 0.5836363636363636,
+      "trailX": 0.5118181818181818,
+      "trailY": 0.5936363636363636
+    },
+    {
+      "x": 0.5127272727272727,
+      "y": 0.5704545454545454,
+      "timestamp": 24.990000000000002,
+      "leadX": 0.5227272727272727,
+      "leadY": 0.5654545454545454,
+      "trailX": 0.5027272727272727,
+      "trailY": 0.5754545454545454
+    },
+    {
+      "x": 0.5036363636363637,
+      "y": 0.5522727272727272,
+      "timestamp": 33.32,
+      "leadX": 0.5136363636363637,
+      "leadY": 0.5472727272727272,
+      "trailX": 0.49363636363636365,
+      "trailY": 0.5572727272727273
+    },
+    {
+      "x": 0.49454545454545457,
+      "y": 0.5340909090909091,
+      "timestamp": 41.65,
+      "leadX": 0.5045454545454545,
+      "leadY": 0.5290909090909091,
+      "trailX": 0.4845454545454546,
+      "trailY": 0.5390909090909091
+    },
+    {
+      "x": 0.48545454545454547,
+      "y": 0.5159090909090909,
+      "timestamp": 49.980000000000004,
+      "leadX": 0.4954545454545455,
+      "leadY": 0.5109090909090909,
+      "trailX": 0.47545454545454546,
+      "trailY": 0.5209090909090909
+    },
+    {
+      "x": 0.4763636363636364,
+      "y": 0.4977272727272727,
+      "timestamp": 58.31,
+      "leadX": 0.48636363636363633,
+      "leadY": 0.4927272727272727,
+      "trailX": 0.4663636363636364,
+      "trailY": 0.5027272727272727
+    },
+    {
+      "x": 0.4672727272727273,
+      "y": 0.4795454545454545,
+      "timestamp": 66.64,
+      "leadX": 0.4772727272727273,
+      "leadY": 0.4745454545454545,
+      "trailX": 0.4572727272727273,
+      "trailY": 0.4845454545454545
+    },
+    {
+      "x": 0.4581818181818182,
+      "y": 0.4613636363636363,
+      "timestamp": 74.97,
+      "leadX": 0.46818181818181814,
+      "leadY": 0.4563636363636363,
+      "trailX": 0.44818181818181824,
+      "trailY": 0.4663636363636363
+    },
+    {
+      "x": 0.4490909090909091,
+      "y": 0.4431818181818182,
+      "timestamp": 83.3,
+      "leadX": 0.4590909090909091,
+      "leadY": 0.4381818181818182,
+      "trailX": 0.4390909090909091,
+      "trailY": 0.4481818181818182
+    },
+    {
+      "x": 0.44,
+      "y": 0.425,
+      "timestamp": 91.63,
+      "leadX": 0.44999999999999996,
+      "leadY": 0.42,
+      "trailX": 0.43000000000000005,
+      "trailY": 0.43
+    }
+  ],
+  "metric_confidences": {},
+  "category_scores": {
+    "posture": null,
+    "balance": null,
+    "tempo": null,
+    "rotationControl": null
+  },
+  "backswing_ms": null,
+  "downswing_ms": null,
+  "tempo_ratio": null,
+  "pose_success_rate": 1,
+  "phase_source": "none",
+  "failure_reason": null,
+  "capture_validity": "valid",
+  "app_version": "9.9.9-test",
+  "coach_name": "coach-fixture",
+  "analysis_version": "v2",
+  "swing_debug": {
+    "classification_reason": null,
+    "handedness": "right",
+    "frame_selection_method": "mid_frame_fallback",
+    "fallback_gate": "top_search_bounds",
+    "camera_angle": "face_on",
+    "camera_angle_avg_spread": 0.14,
+    "camera_angle_shoulder_spread": 0.16,
+    "camera_angle_hip_spread": 0.12,
+    "scoring_breakdown": [
+      {
+        "metric": "tempo",
+        "score": 0,
+        "weight": 1,
+        "weighted": 0,
+        "dataQuality": "missing"
+      }
+    ],
+    "confidence_overall": 0.772,
+    "confidence_tier": "high",
+    "confidence_components": {
+      "jointVisibility": 1,
+      "cameraAngle": 1,
+      "phaseDetection": 0.3,
+      "frameCoverage": 0.12
+    },
+    "foreshortening": {
+      "applied": true,
+      "estimatedAngleDegrees": 62.2,
+      "reason": "corrected",
+      "corrections": {
+        "spineAngle": {
+          "before": 0,
+          "after": 0
+        },
+        "leftElbowAngle": {
+          "before": 124,
+          "after": 107
+        },
+        "rightElbowAngle": {
+          "before": 111,
+          "after": 100
+        },
+        "leftKneeAngle": {
+          "before": 180,
+          "after": 180
+        },
+        "rightKneeAngle": {
+          "before": 180,
+          "after": 180
+        },
+        "hipSpreadDelta": {
+          "before": 12,
+          "after": 26
+        }
+      }
+    },
+    "tilt_correction": {
+      "phonePitchDeg": 0,
+      "phoneRollDeg": 0,
+      "pitchStdDev": 0,
+      "sampleCount": 0,
+      "rejectedCount": 0,
+      "correctionApplied": false,
+      "reason": "no_tilt_data",
+      "corrections": {}
+    },
+    "angle_gating": {
+      "tableVersion": 1,
+      "cameraAngleDeg": 62.2,
+      "bucket": "dtl",
+      "suppressed": [
+        "shoulderTilt"
+      ],
+      "passed": [
+        "spineAngle",
+        "hipSpreadDelta",
+        "leftElbowAngle",
+        "rightElbowAngle",
+        "leftKneeAngle",
+        "rightKneeAngle"
+      ],
+      "details": {
+        "spineAngle": {
+          "metric": "spineAngle",
+          "accuracy": 0.7441428571428571,
+          "threshold": 0.6,
+          "suppressed": false,
+          "bucket": "dtl"
+        },
+        "shoulderTilt": {
+          "metric": "shoulderTilt",
+          "accuracy": 0.6300285714285714,
+          "threshold": 0.85,
+          "suppressed": true,
+          "bucket": "dtl"
+        },
+        "hipSpreadDelta": {
+          "metric": "hipSpreadDelta",
+          "accuracy": 0.6941428571428572,
+          "threshold": 0.6,
+          "suppressed": false,
+          "bucket": "dtl"
+        },
+        "leftElbowAngle": {
+          "metric": "leftElbowAngle",
+          "accuracy": 0.8147142857142857,
+          "threshold": 0.7,
+          "suppressed": false,
+          "bucket": "dtl"
+        },
+        "rightElbowAngle": {
+          "metric": "rightElbowAngle",
+          "accuracy": 0.8147142857142857,
+          "threshold": 0.7,
+          "suppressed": false,
+          "bucket": "dtl"
+        },
+        "leftKneeAngle": {
+          "metric": "leftKneeAngle",
+          "accuracy": 0.7647142857142857,
+          "threshold": 0.7,
+          "suppressed": false,
+          "bucket": "dtl"
+        },
+        "rightKneeAngle": {
+          "metric": "rightKneeAngle",
+          "accuracy": 0.7647142857142857,
+          "threshold": 0.7,
+          "suppressed": false,
+          "bucket": "dtl"
+        }
+      }
+    },
+    "z_trace": {
+      "z_min": null,
+      "z_max": null,
+      "z_range": null,
+      "use_3d_triggered": false,
+      "z_threshold": 0.02,
+      "sample_count": 0,
+      "window_frame_counts": {
+        "address": 12,
+        "top": 0,
+        "impact": 0
+      }
+    },
+    "keypoint_veto": {
+      "byJoint": {
+        "leftHeel": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "rightHeel": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "leftFootIndex": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "rightFootIndex": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "frameGlitches": [],
+      "stats": {
+        "totalFlagged": 48,
+        "teleport": 0,
+        "missing": 48,
+        "interpolated": 0,
+        "untrusted": 48,
+        "perJointFlagged": {
+          "leftHeel": 12,
+          "rightHeel": 12,
+          "leftFootIndex": 12,
+          "rightFootIndex": 12
+        }
+      }
+    },
+    "keypoint_identity": {
+      "swapped_frames": [],
+      "baseline_sign": 1,
+      "baseline_margin": {
+        "tally": 12,
+        "votes": 12
+      }
+    },
+    "phase_rules": {
+      "detector": "face_on",
+      "swing_start_frame": null,
+      "true_address_frame": null,
+      "reliability": {
+        "swing_start": null,
+        "true_address": null,
+        "takeaway": "medium",
+        "top": null,
+        "impact": null,
+        "finish": null
+      },
+      "external_assumptions_used": [
+        "faceOn.swingStart",
+        "faceOn.impact",
+        "faceOn.top"
+      ],
+      "takeaway_path": "fallback_gate",
+      "takeaway_locked_body_height": null,
+      "takeaway_body_scaled_frame": null,
+      "takeaway_fallback_idx": 2,
+      "takeaway_travel_bh": null,
+      "takeaway_fallback_reason": "trail_too_short",
+      "top_x_extreme": {
+        "frame": null,
+        "mean": null,
+        "reliability": null,
+        "perLandmark": {
+          "nose": null,
+          "leadShoulder": null,
+          "leadEar": null
+        },
+        "median": null,
+        "spread": null,
+        "window": null
+      },
+      "top_velmin_shadow": null
+    },
+    "camera_angle_pre": "face_on",
+    "lead_wrist_hinge": null,
+    "synthetic_clubhead_path": null,
+    "face_to_path": null,
+    "watch_imu_present": false,
+    "tipFrequency": {
+      "windowMin": 60,
+      "ageTier": "youth",
+      "swings": 0,
+      "shown": 0,
+      "suppressed": 0,
+      "blockedByConfidence": 0,
+      "sessionMs": 0,
+      "counts": {}
+    },
+    "positiveReinforcement": {
+      "positiveCardShown": false,
+      "positiveCardType": null,
+      "positiveCardMessage": null,
+      "improvementDetected": [],
+      "sessionPositiveCount": 0,
+      "sessionImprovementCount": 0
+    },
+    "camera_angle_at_start": 12.5,
+    "camera_guidance_color": "green",
+    "session_swing_number": 1,
+    "session_insight_shown": null,
+    "age_tier": "youth",
+    "grip_native": [
+      {
+        "label": "neutral",
+        "score": 0.87
+      }
+    ],
+    "grip_cloud": null,
+    "fps_estimate": 120,
+    "fps_requested": 240,
+    "fps_capture_measured": 118.9,
+    "video_duration_ms": 4000,
+    "video_frame_count": 480,
+    "extraction_total_ms": 11000,
+    "extraction_breakdown": {
+      "decode_ms": 9000,
+      "inference_ms": 1800,
+      "metadata_probe_ms": 200
+    },
+    "pipeline_ms": {
+      "analyze_ms": 50,
+      "persist_ms": null
+    },
+    "stop_origin": "window_timer",
+    "watch_imu": {
+      "sampleCount": 3,
+      "durationMs": 20,
+      "peakAccel": 0.98,
+      "wornWrist": "lead",
+      "clockNote": "watch t is absolute watch-mono ms (CMDeviceMotion.timestamp domain); aligned to video time via clock-sync offset + phoneMonoAtVideoStart (see alignment block, syncConfidence). Impact-spike correction is Phase B.",
+      "alignment": null
+    },
+    "capture_seq": 7,
+    "imu_only": false
+  }
+}

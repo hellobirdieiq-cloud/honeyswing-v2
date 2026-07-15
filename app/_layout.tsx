@@ -17,6 +17,8 @@ import { sessionAccumulator } from '../lib/sessionAccumulator';
 import { STORAGE_KEYS } from '../lib/storageKeys';
 import { getAgeTier } from '../lib/ageTier';
 import { migrateAnonSwings } from '../lib/migrateAnonSwings';
+// Static import also registers the outbox pre-drain retro hook on app mount.
+import { retroPersistHeldSwings } from '../lib/retroPersistHeldSwings';
 import { bootstrapOutbox } from '../lib/outbox';
 
 export { ErrorBoundary } from '../components/ErrorBoundary';
@@ -169,6 +171,10 @@ function AuthListener() {
             invalidateSwingLimitCache();
             await ensureProfile(user!.id);
             await syncAuthState(user!.id);
+            // Cold start already signed in: persist swings held while signed
+            // out (e.g. recorded → app killed → relaunched after sign-in).
+            // After syncAuthState so player_profiles rows exist server-side.
+            await retroPersistHeldSwings();
           } catch (err) {
             console.error('[HoneySwing] AuthListener INITIAL_SESSION error:', err);
           }
@@ -185,6 +191,13 @@ function AuthListener() {
           await ensureProfile(user!.id);
           await commitPendingReferral();
           await syncAuthState(user!.id);
+          // Queue-until-login ordering (deliberate): retro-persist runs AFTER
+          // syncAuthState (player_profiles pushed) and BEFORE migrateAnonSwings
+          // — each successful retro-insert decrements the local anon counter,
+          // so migrateAnonSwings uploads only the remainder and retro-persisted
+          // swings are never double-counted against the free limit
+          // (checkSwingLimit sums swings rows + profiles.anonymous_swing_count).
+          await retroPersistHeldSwings();
           await migrateAnonSwings(user!.id);
           const onboarded = await AsyncStorage.getItem(ONBOARDING_KEY);
           if (!onboarded) router.replace('/onboarding' as Href);

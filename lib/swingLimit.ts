@@ -19,6 +19,18 @@ export async function incrementLocalSwingCount(): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.localSwingCount, String(count + 1));
 }
 
+/**
+ * Queue-until-login: a retro-persisted held swing becomes a real swings row,
+ * so it must leave the anonymous counter (floor 0) BEFORE migrateAnonSwings
+ * uploads the remainder — otherwise it would be double-counted against the
+ * free limit (checkSwingLimit sums rows + profiles.anonymous_swing_count).
+ */
+export async function decrementLocalSwingCount(): Promise<void> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEYS.localSwingCount);
+  const count = raw ? parseInt(raw, 10) : 0;
+  await AsyncStorage.setItem(STORAGE_KEYS.localSwingCount, String(Math.max(0, count - 1)));
+}
+
 let cachedResult: SwingLimitStatus | null = null;
 let cachedAt = 0;
 const CACHE_TTL_MS = 60_000;
