@@ -12,6 +12,7 @@ import {
 } from '../packages/domain/swing/scoring';
 import { GOLD } from '../lib/colors';
 import { getProfiles, getDisplayName, type PlayerProfile } from '../lib/playerProfiles';
+import { reassignSwing } from '../lib/reassignSwing';
 import { parseDbTimestamp } from '../lib/datetime';
 
 type LoadState =
@@ -51,6 +52,45 @@ export default function SwingHistoryList() {
       }).catch((err) => console.error('[HoneySwing]', err));
       return () => { cancelled = true; };
     }, []),
+  );
+
+  // Move-to-profile picker: one Alert button per player (≤4 kids in practice;
+  // switch to an action sheet if profile counts grow). Also the manual fix
+  // for legacy swings with null / orphaned player_profile_id (found in "All").
+  const handleMoveRequest = useCallback(
+    (swingId: string, currentProfileId: string | null) => {
+      const targets = profiles.filter((p) => p.id !== currentProfileId);
+      if (targets.length === 0) {
+        Alert.alert('No other players', 'Add another player in Settings first.');
+        return;
+      }
+      Alert.alert('Move swing', 'Assign this swing to:', [
+        ...targets.map((p) => ({
+          text: getDisplayName(p),
+          onPress: () => {
+            void (async () => {
+              const ok = await reassignSwing(swingId, p.id);
+              if (!ok) {
+                Alert.alert('Move failed', 'Could not move the swing. Please try again.');
+                return;
+              }
+              setState((prev) =>
+                prev.kind === 'ready'
+                  ? {
+                      kind: 'ready',
+                      rows: prev.rows.map((r) =>
+                        r.id === swingId ? { ...r, player_profile_id: p.id } : r,
+                      ),
+                    }
+                  : prev,
+              );
+            })();
+          },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+    },
+    [profiles],
   );
 
   const handleDeleteRequest = useCallback((swingId: string) => {
@@ -169,6 +209,7 @@ export default function SwingHistoryList() {
               profileMap={profileMap}
               isIndividualTab={isIndividualTab}
               onDeleteRequest={handleDeleteRequest}
+              onMoveRequest={handleMoveRequest}
             />
           )}
         />
@@ -194,11 +235,13 @@ function SwingRow({
   profileMap,
   isIndividualTab,
   onDeleteRequest,
+  onMoveRequest,
 }: {
   item: SwingHistoryRecord;
   profileMap: Record<string, string>;
   isIndividualTab: boolean;
   onDeleteRequest: (swingId: string) => void;
+  onMoveRequest: (swingId: string, currentProfileId: string | null) => void;
 }) {
   const router = useRouter();
   const hasTempo = item.tempo_ratio != null && Number.isFinite(item.tempo_ratio);
@@ -222,16 +265,28 @@ function SwingRow({
       rightThreshold={40}
       overshootRight={false}
       renderRightActions={(_progress, _translation, methods) => (
-        <TouchableOpacity
-          style={styles.deleteAction}
-          activeOpacity={0.7}
-          onPress={() => {
-            methods.close();
-            onDeleteRequest(item.id);
-          }}
-        >
-          <Text style={styles.deleteActionText}>Delete</Text>
-        </TouchableOpacity>
+        <View style={styles.rowActions}>
+          <TouchableOpacity
+            style={styles.moveAction}
+            activeOpacity={0.7}
+            onPress={() => {
+              methods.close();
+              onMoveRequest(item.id, item.player_profile_id ?? null);
+            }}
+          >
+            <Text style={styles.moveActionText}>Move</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.deleteAction}
+            activeOpacity={0.7}
+            onPress={() => {
+              methods.close();
+              onDeleteRequest(item.id);
+            }}
+          >
+            <Text style={styles.deleteActionText}>Delete</Text>
+          </TouchableOpacity>
+        </View>
       )}
     >
       <TouchableOpacity
@@ -292,7 +347,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  // marginBottom matches styles.row so the revealed button tracks row height.
+  rowActions: {
+    flexDirection: 'row',
+  },
+  // marginBottom matches styles.row so the revealed buttons track row height.
+  moveAction: {
+    backgroundColor: '#2C2C2E',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 88,
+    marginBottom: 10,
+    marginLeft: 8,
+  },
+  moveActionText: {
+    color: GOLD,
+    fontSize: 15,
+    fontWeight: '700',
+  },
   deleteAction: {
     backgroundColor: '#CC3333',
     borderRadius: 12,

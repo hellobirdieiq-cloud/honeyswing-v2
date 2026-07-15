@@ -1,7 +1,13 @@
 /**
- * playerProfilesSync.ts — one-way device→server sync of kid profiles into
- * public.player_profiles (coach pivot Phase 2). Device is the source of truth;
- * no pull/merge (accepted v1 limit: multi-device last-push-wins).
+ * playerProfilesSync.ts — device→server sync of kid profiles into
+ * public.player_profiles (coach pivot Phase 2). Device is the source of truth
+ * for profile CONTENT (name/handedness/age tier); profile IDENTITY (id)
+ * reconciles server-wins at sign-in when the server id owns swings and the
+ * local id owns none — a bounded exception to last-push-wins added for the
+ * reinstall bug (re-minted local ids orphaned every swing's
+ * player_profile_id; see playerProfilesReconcile.ts). Multi-device: a device
+ * still pushing stale duplicate ids re-creates rows that own no swings, and
+ * converges to the swing-owning ids on its own next sign-in reconcile.
  *
  * Every function is fire-and-forget safe: signed-out calls no-op, errors are
  * logged and swallowed, nothing throws.

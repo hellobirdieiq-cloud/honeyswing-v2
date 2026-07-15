@@ -2,6 +2,7 @@ import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase, getUserId } from './supabase';
 import { ensureProfile } from './ensureProfile';
 import { decrementLocalSwingCount } from './swingLimit';
+import { getProfileIdAdoptions } from './playerProfilesReconcile';
 import type { Database } from './database.types';
 import {
   listHeldSwings,
@@ -51,9 +52,18 @@ async function insertHeld(
   rec: HeldSwingRecord,
   userId: string,
   insertId: string,
+  adoptions: Record<string, string>,
 ): Promise<InsertResult> {
+  // Held rows stamp player_profile_id at CAPTURE time; a profile id adopted
+  // at sign-in (playerProfilesReconcile) is remapped here so the row lands on
+  // the surviving server identity. Unmapped ids insert as-is (no FK on the
+  // column) and stay reassignable via the history Move action.
+  const heldPpid = rec.row.player_profile_id;
+  const remappedPpid =
+    typeof heldPpid === 'string' && adoptions[heldPpid] ? adoptions[heldPpid] : heldPpid;
   const row = {
     ...rec.row,
+    player_profile_id: remappedPpid,
     user_id: userId,
     id: insertId,
   } as Database['public']['Tables']['swings']['Insert'];
@@ -102,11 +112,12 @@ export async function retroPersistHeldSwings(): Promise<void> {
     );
     if (records.length === 0) return;
     console.log(`[retroPersist] ${records.length} held swing(s) to persist`);
+    const adoptions = await getProfileIdAdoptions().catch(() => ({}) as Record<string, string>);
 
     let healedProfile = false;
     for (const rec of records) {
       const insertId = await resolveInsertId(rec);
-      let res = await insertHeld(rec, userId, insertId);
+      let res = await insertHeld(rec, userId, insertId, adoptions);
 
       // FK race: profiles row missing for this session (failed/raced
       // ensureProfile at sign-in) — heal and retry exactly once, no loop.
@@ -114,7 +125,7 @@ export async function retroPersistHeldSwings(): Promise<void> {
       // adds a plain text column), so 23503 can only be user_id → profiles.
       if (!res.ok && res.code === '23503' && !healedProfile) {
         healedProfile = await ensureProfile(userId);
-        if (healedProfile) res = await insertHeld(rec, userId, insertId);
+        if (healedProfile) res = await insertHeld(rec, userId, insertId, adoptions);
       }
 
       if (res.ok || res.code === '23505') {

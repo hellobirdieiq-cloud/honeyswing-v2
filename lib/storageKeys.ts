@@ -17,4 +17,8 @@ export const STORAGE_KEYS = {
   eventQueue: 'honeyswing:eventQueue',
   playerProfiles: 'honeyswing:playerProfiles',
   appleWatchCapture: 'honeyswing:appleWatchCapture',
+  // oldLocalProfileId -> adopted server id (append-only; written by
+  // playerProfilesReconcile at sign-in, read by retroPersistHeldSwings to
+  // remap held rows stamped before adoption).
+  profileIdAdoptions: 'honeyswing:profileIdAdoptions',
 } as const;

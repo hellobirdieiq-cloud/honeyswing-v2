@@ -19,6 +19,7 @@ import { getAgeTier } from '../lib/ageTier';
 import { migrateAnonSwings } from '../lib/migrateAnonSwings';
 // Static import also registers the outbox pre-drain retro hook on app mount.
 import { retroPersistHeldSwings } from '../lib/retroPersistHeldSwings';
+import { reconcileProfilesFromServer } from '../lib/playerProfilesReconcile';
 import { bootstrapOutbox } from '../lib/outbox';
 
 export { ErrorBoundary } from '../components/ErrorBoundary';
@@ -171,9 +172,11 @@ function AuthListener() {
             invalidateSwingLimitCache();
             await ensureProfile(user!.id);
             await syncAuthState(user!.id);
+            // Reconcile local profile ids with the server (reinstall fix)
+            // BEFORE retro-persist so held rows land on adopted ids.
+            await reconcileProfilesFromServer();
             // Cold start already signed in: persist swings held while signed
             // out (e.g. recorded → app killed → relaunched after sign-in).
-            // After syncAuthState so player_profiles rows exist server-side.
             await retroPersistHeldSwings();
           } catch (err) {
             console.error('[HoneySwing] AuthListener INITIAL_SESSION error:', err);
@@ -191,6 +194,9 @@ function AuthListener() {
           await ensureProfile(user!.id);
           await commitPendingReferral();
           await syncAuthState(user!.id);
+          // Reconcile local profile ids with the server (reinstall fix) BEFORE
+          // retro-persist, so held rows land on adopted (swing-owning) ids.
+          await reconcileProfilesFromServer();
           // Queue-until-login ordering (deliberate): retro-persist runs AFTER
           // syncAuthState (player_profiles pushed) and BEFORE migrateAnonSwings
           // — each successful retro-insert decrements the local anon counter,
