@@ -17,6 +17,7 @@ import type { GolfAngles } from '../packages/domain/swing/angles';
 import type { SwingTempo } from '../packages/domain/swing/tempoAnalysis';
 import type { DetectedPhase, SwingTrailPoint } from '../packages/domain/swing/phaseDetection';
 import type { AnalysisResult } from '../packages/domain/swing/analysisPipeline';
+import type { Database } from './database.types';
 
 // Lazy require for ./supabase — that module transitively loads @clerk/expo
 // which can't run under the plain tsx test runner. Matches lib/eventBus.ts:21.
@@ -107,12 +108,31 @@ export type SwingStoreAdapter = {
   getUserId(): Promise<string | null>;
 };
 
-const SWING_RECORD_COLUMNS =
-  'id, user_id, player_profile_id, created_at, score, honey_boom, frame_count, duration_ms, ' +
-  'pose_success_rate, capture_validity, phase_source, failure_reason, ' +
-  'backswing_ms, downswing_ms, tempo_ratio, impact_frame_index, app_version, ' +
-  'coach_name, analysis_version, video_storage_path, video_uploaded_at, swing_debug, ' +
-  'camera_angle_valid, angles, tempo, phases, trail_points, metric_confidences, category_scores';
+// T9-76 manifest: the v1 record projection as ONE ordered list, compile-time
+// anchored to the generated schema (`satisfies` rejects any column that does
+// not exist on swings.Row — a rename/typo becomes a tsc error instead of a
+// silent runtime null). SwingRecord's key set is locked to this list below.
+// The insert side needs no third copy: buildSwingRow's literal is annotated
+// with the schema Insert type directly (lib/persistSwing.ts:147).
+type SwingsRow = Database['public']['Tables']['swings']['Row'];
+const SWING_RECORD_COLUMN_LIST = [
+  'id', 'user_id', 'player_profile_id', 'created_at', 'score', 'honey_boom',
+  'frame_count', 'duration_ms', 'pose_success_rate', 'capture_validity',
+  'phase_source', 'failure_reason', 'backswing_ms', 'downswing_ms',
+  'tempo_ratio', 'impact_frame_index', 'app_version', 'coach_name',
+  'analysis_version', 'video_storage_path', 'video_uploaded_at', 'swing_debug',
+  'camera_angle_valid', 'angles', 'tempo', 'phases', 'trail_points',
+  'metric_confidences', 'category_scores',
+] as const satisfies readonly (keyof SwingsRow)[];
+type SwingRecordKey = (typeof SWING_RECORD_COLUMN_LIST)[number];
+
+// Compile-time set-equality guard: SwingRecord may neither miss a projected
+// column nor declare one the projection doesn't fetch. Erased at runtime.
+type AssertKeysEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _swingRecordKeysMatchProjection: AssertKeysEqual<keyof SwingRecord, SwingRecordKey> = true;
+void _swingRecordKeysMatchProjection;
+
+const SWING_RECORD_COLUMNS = SWING_RECORD_COLUMN_LIST.join(', ');
 
 const GRIP_HISTORY_COLUMNS =
   'id, created_at, ' +
