@@ -49,8 +49,7 @@
       ],
       "infoPlist": {
         "NSCameraUsageDescription": "HoneySwing uses the camera to record and analyze your golf swing.",
-        "NSLocationWhenInUseUsageDescription": "HoneySwing does not use your location. This message may appear because of underlying system components.",
-        "NSMotionUsageDescription": "Allow $(PRODUCT_NAME) to access your device motion",
+        "NSMotionUsageDescription": "HoneySwing uses device motion to check your camera is level and improve swing analysis.",
         "CADisableMinimumFrameDurationOnPhone": true,
         "ITSAppUsesNonExemptEncryption": false
       },
