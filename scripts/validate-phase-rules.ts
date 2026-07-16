@@ -15,10 +15,6 @@
  * EXPO_PUBLIC_SUPABASE_ANON_KEY (.env auto-loaded).
  */
 
-import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { PoseFrame, PoseSequence } from "../packages/pose/PoseTypes";
 import { analyzePoseSequence } from "../packages/domain/swing/analysisPipeline";
@@ -78,37 +74,8 @@ const VALIDATED: ValidatedSwing[] = [
 
 const TOLERANCE_FRAMES = 3;
 
-// ---------------------------------------------------------------------------
-// .env loader (same pattern as scripts/replayCorpusDigest.ts)
-// ---------------------------------------------------------------------------
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const REPO_ROOT = resolve(__dirname, "..");
-const ENV_PATH = join(REPO_ROOT, ".env");
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...process.env } as Record<string, string>;
-  let text = "";
-  try {
-    text = readFileSync(ENV_PATH, "utf8");
-  } catch {
-    return env;
-  }
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 0) continue;
-    const k = trimmed.slice(0, eq).trim();
-    let v = trimmed.slice(eq + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-      v = v.slice(1, -1);
-    }
-    if (env[k] === undefined) env[k] = v;
-  }
-  return env;
-}
+// Env loader + client come from the shared scaffold (T9-71).
+import { loadEnv, makeClient } from "./lib/replayCommon";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -201,19 +168,7 @@ function evaluate(frames: PoseFrame[], spec: ValidatedSwing): {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const env = loadEnv();
-  const url = env.EXPO_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_SERVICE_ROLE_KEY ?? env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    console.error(
-      "[validate-phase-rules] Missing EXPO_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY/EXPO_PUBLIC_SUPABASE_ANON_KEY in .env",
-    );
-    process.exit(1);
-  }
-
-  const sb = createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const sb = makeClient(loadEnv());
 
   let totalSwings = 0;
   let passingSwings = 0;

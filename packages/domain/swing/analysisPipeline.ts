@@ -158,7 +158,9 @@ export function computeFrameCountSuppression(
   return [...out];
 }
 
-function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
+// Exported for replay scripts via scripts/lib/replayCommon.ts (T9-71) — app
+// code keeps calling it internally; no app-side import should be added.
+export function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
   const points: SwingTrailPoint[] = [];
 
   for (const frame of sequence.frames) {

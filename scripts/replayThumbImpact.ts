@@ -23,14 +23,9 @@
  * scripts/debugPhaseDetection.ts. Usage: npx --yes tsx scripts/replayThumbImpact.ts
  */
 
-import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import type { PoseFrame, PoseSequence } from "../packages/pose/PoseTypes";
 import type { Rtmw133Frame } from "../packages/pose/rtmw/Rtmw133Frame";
-import type { SwingTrailPoint, DetectedPhase } from "../packages/domain/swing/phaseDetection";
+import type { DetectedPhase } from "../packages/domain/swing/phaseDetection";
 import { rtmwToPoseFrame } from "../packages/pose/rtmw/rtmwAdapter";
 import { correctLowerBodyIdentity } from "../packages/domain/swing/lowerBodyIdentity";
 import { vetoAndInterpolateKeypoints } from "../packages/domain/swing/keypointVeto";
@@ -41,55 +36,11 @@ import {
   detectFaceOnThumbCrossing,
 } from "../packages/domain/swing/phaseDetectionFaceOn";
 
-// ---------------------------------------------------------------------------
-// .env loader (mirrors scripts/debugPhaseDetection.ts)
-// ---------------------------------------------------------------------------
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, "..");
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = { ...process.env } as Record<string, string>;
-  let text = "";
-  try {
-    text = readFileSync(join(REPO_ROOT, ".env"), "utf8");
-  } catch {
-    return env;
-  }
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const eq = t.indexOf("=");
-    if (eq < 0) continue;
-    const k = t.slice(0, eq).trim();
-    let v = t.slice(eq + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-      v = v.slice(1, -1);
-    }
-    if (env[k] === undefined) env[k] = v;
-  }
-  return env;
-}
-
-// Trail builder — identical to analysisPipeline.ts:136-157 (kept in sync).
-function buildTrailPoints(sequence: PoseSequence): SwingTrailPoint[] {
-  const points: SwingTrailPoint[] = [];
-  for (const frame of sequence.frames) {
-    const lw = frame.joints.leftWrist;
-    const rw = frame.joints.rightWrist;
-    if (!lw || !rw) continue;
-    points.push({
-      x: (lw.x + rw.x) / 2,
-      y: (lw.y + rw.y) / 2,
-      timestamp: frame.timestampMs,
-      leadX: rw.x,   // canonical LEAD = right* (CANONICAL_LEAD); TRAIL = left*
-      leadY: rw.y,
-      trailX: lw.x,
-      trailY: lw.y,
-    });
-  }
-  return points;
-}
+// Env loader + client + trail builder now come from the shared scaffold
+// (T9-71). buildTrailPoints is the PRODUCTION implementation re-exported from
+// analysisPipeline — the previous local copy was verified semantically
+// identical before migrating (canonical LEAD = right*, TRAIL = left*).
+import { loadEnv, makeClient, buildTrailPoints } from "./lib/replayCommon";
 
 function phaseIdx(phases: unknown, name: string): number | null {
   if (!Array.isArray(phases)) return null;
@@ -143,14 +94,7 @@ type Row = {
 };
 
 async function main() {
-  const env = loadEnv();
-  const url = env.EXPO_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_SERVICE_ROLE_KEY ?? env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    console.error("[replayThumbImpact] Missing Supabase URL/key in .env");
-    process.exit(1);
-  }
-  const sb = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const sb = makeClient(loadEnv());
 
   const { data: list, error: e1 } = await sb
     .from("swings")
