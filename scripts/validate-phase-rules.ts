@@ -11,8 +11,8 @@
  * Usage:
  *   npx --yes tsx scripts/validate-phase-rules.ts
  *
- * Env: same as scripts/export-faceon-phase-analysis.ts — EXPO_PUBLIC_SUPABASE_URL
- * plus SUPABASE_SERVICE_ROLE_KEY or EXPO_PUBLIC_SUPABASE_ANON_KEY.
+ * Env: EXPO_PUBLIC_SUPABASE_URL plus SUPABASE_SERVICE_ROLE_KEY or
+ * EXPO_PUBLIC_SUPABASE_ANON_KEY (.env auto-loaded).
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -79,7 +79,7 @@ const VALIDATED: ValidatedSwing[] = [
 const TOLERANCE_FRAMES = 3;
 
 // ---------------------------------------------------------------------------
-// .env loader (mirrors scripts/export-faceon-phase-analysis.ts)
+// .env loader (same pattern as scripts/replayCorpusDigest.ts)
 // ---------------------------------------------------------------------------
 
 const __filename = fileURLToPath(import.meta.url);

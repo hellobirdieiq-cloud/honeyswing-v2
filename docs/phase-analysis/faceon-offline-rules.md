@@ -1,6 +1,14 @@
 # Face-On Offline Phase Rules
 
-Canonical rules for `scripts/export-faceon-phase-analysis.ts`. This is **research tooling**, not production. The script does not import production phase code; it reimplements the rules below from scratch and writes CSV-only output.
+> **⚠️ RETIRED (2026-07-16, T9-70).** The script this doc describes,
+> `scripts/export-faceon-phase-analysis.ts`, was deleted — it was a 1,512-line
+> stale parallel reimplementation of the detector (36fps-era constants, drifted
+> impact rule) whose replay reports could no longer be trusted. This doc is
+> kept as the historical record of the rules it implemented. Future replay
+> tooling builds on the REAL detector via the shared scaffold (`scripts/lib/`)
+> instead of reimplementing rules.
+
+Canonical rules for the retired `scripts/export-faceon-phase-analysis.ts`. This was **research tooling**, not production. The script did not import production phase code; it reimplemented the rules below from scratch and wrote CSV-only output.
 
 ## Why this exists
 
