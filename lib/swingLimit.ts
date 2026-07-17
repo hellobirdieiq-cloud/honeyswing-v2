@@ -102,7 +102,10 @@ async function doCheckSwingLimit(): Promise<SwingLimitStatus> {
     return { allowed: true, remaining: 9999, reason: 'ok' };
   }
 
-  // Authenticated — check swing count
+  // Authenticated — check swing count.
+  // Phase C (D1-b): putt rows (analysis_version 'putt-v1') COUNT toward this
+  // limit — ACCEPTED v1 behavior (owner directive); this query is deliberately
+  // NOT filtered, unlike the History/coach list queries.
   const { count, error } = await supabase
     .from('swings')
     .select('*', { count: 'exact', head: true })

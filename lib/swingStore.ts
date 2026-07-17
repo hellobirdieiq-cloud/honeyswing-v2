@@ -151,6 +151,7 @@ type SupabaseResult<T> = { data: T; error: SupabaseError | null };
 type QueryChain = {
   select(cols: string): QueryChain;
   eq(col: string, val: string): QueryChain;
+  neq(col: string, val: string): QueryChain;
   in(col: string, vals: readonly string[]): QueryChain;
   gte(col: string, val: string): QueryChain;
   not(col: string, op: 'is', val: null): QueryChain;
@@ -212,6 +213,10 @@ function getAdapter(): SwingStoreAdapter {
           .from('swings')
           .select(SWING_HISTORY_COLUMNS)
           .eq('user_id', userId)
+          // Phase C (D1-b): putt rows (analysis_version 'putt-v1') are hidden
+          // from the full-swing History/gallery lists — putt history UI is a
+          // future phase. The row itself is durable; only the list filters.
+          .neq('analysis_version', 'putt-v1')
           .gte('created_at', sinceIso)
           .order('created_at', { ascending: false });
         return {

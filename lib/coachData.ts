@@ -73,6 +73,9 @@ export async function getCoachSwings(): Promise<SwingHistoryRecord[]> {
       .from('swings')
       .select(SWING_HISTORY_COLUMNS)
       .neq('user_id', userId)
+      // Phase C (D1-b): putt rows are hidden from the coach feed (full-swing
+      // review surface); putt review UI is a future phase.
+      .neq('analysis_version', 'putt-v1')
       .order('created_at', { ascending: false })
       .limit(COACH_SWINGS_FETCH_LIMIT);
     if (error) {

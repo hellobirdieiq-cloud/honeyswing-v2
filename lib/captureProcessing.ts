@@ -41,6 +41,8 @@ import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-
 import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { runPuttingPipeline } from './puttingPipeline';
 import { setCurrentPuttResult } from './puttResultStore';
+import { persistPutt } from './persistPutt';
+import { APP_VERSION } from './appVersion';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
@@ -558,15 +560,45 @@ async function processPuttCapture(args: {
     });
     ctx.updateCapturePhase('complete');
     ctx.analysisReadyRef.current = true;
-    // Persistence lands in Phase C (3/3) and will reconcile this entry to the
-    // putt row; until then a putt's durable video copy has no row to attach to
-    // — abandon it so it isn't stranded pending until the orphan sweep.
-    if (videoEntry.id && !videoEntry.abandoned) {
-      videoEntry.abandoned = true;
-      abandonPending([videoEntry.id]).catch((e) =>
-        console.warn('[HoneySwing] abandonPending (putt video) failed', e),
-      );
-    }
+
+    // Persist the putt row (D1 option b: swings row, analysis_version
+    // 'putt-v1', filtered from full-swing UI queries). Navigation does NOT
+    // await the insert (same as full-swing); the video outbox entry
+    // reconciles to the row on success, abandons otherwise (anon putts are
+    // not persisted in v1 — no hold path).
+    ctx.swingIdPromiseRef.current = persistPutt({
+      playerProfileId: ctx.activeProfileSnapshotRef.current?.id ?? null,
+      appVersion: APP_VERSION,
+      classification,
+      frames: correctedFrames,
+      durationMs: video.duration * 1000,
+      fpsActual: ctx.targetFps ?? null,
+      detectors: pipeline.detectors,
+      score: pipeline.score,
+      smoothed: pipeline.smoothed,
+      shaftLenPx: pipeline.shaftLenPx,
+      analysisWidth: pipeline.analysisWidth,
+      barCalibration: pipeline.barCalibration,
+      timings: pipeline.timings,
+    }).catch((e) => {
+      console.error('[HoneySwing] persistPutt failed', e);
+      return null;
+    });
+    ctx.swingIdPromiseRef.current.then((swingId) => {
+      if (!videoEntry.id || videoEntry.abandoned) return;
+      if (ctx.videoOutboxEntryIdRef.current === videoEntry.id) {
+        ctx.videoOutboxEntryIdRef.current = null;
+      }
+      if (swingId) {
+        attachSwingId([videoEntry.id], swingId); // reconcile: fires one drain
+      } else {
+        videoEntry.abandoned = true;
+        abandonPending([videoEntry.id]).catch((e) =>
+          console.warn('[HoneySwing] abandonPending (putt video) failed', e),
+        );
+      }
+    });
+
     ctx.tryNavigate();
   } catch (e) {
     console.warn('[HoneySwing] putt pipeline threw:', e instanceof Error ? e.message : String(e));
