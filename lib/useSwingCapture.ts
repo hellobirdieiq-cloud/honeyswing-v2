@@ -57,6 +57,11 @@ interface UseSwingCaptureOptions {
   // Optional: legacy callers (clinic) omit it and keep the persist-time fallback.
   getActiveProfile?: () => ActiveProfileSnapshot | null;
   onMissingProfile?: () => void;
+  // Phase C: synchronous read of the Swing·Putt mode pill, sampled at
+  // button-press (same snapshot discipline as the profile — a mid-extraction
+  // toggle can't re-classify the capture). Omitted (clinic/coach callers) →
+  // 'swing', keeping the full-swing path byte-equivalent.
+  getSwingMode?: () => 'swing' | 'putt';
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -79,6 +84,7 @@ export function useSwingCapture({
   skipResultNavigation = false,
   getActiveProfile,
   onMissingProfile,
+  getSwingMode,
 }: UseSwingCaptureOptions) {
   const [capturePhase, setCapturePhase] = useState<CapturePhase>('idle');
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -109,6 +115,11 @@ export function useSwingCapture({
   const getActiveProfileRef = useRef(getActiveProfile);
   getActiveProfileRef.current = getActiveProfile;
   const activeProfileSnapshotRef = useRef<ActiveProfileSnapshot | null>(null);
+  // Phase C: mode snapshot taken at beginRecording (F3 pattern) — read by
+  // tryNavigate for the result route and threaded into the pipeline context.
+  const getSwingModeRef = useRef(getSwingMode);
+  getSwingModeRef.current = getSwingMode;
+  const swingModeSnapshotRef = useRef<'swing' | 'putt'>('swing');
   const recordingStopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   // What ended THIS capture's recording (window timer vs manual stop) — persisted
@@ -174,7 +185,11 @@ export function useSwingCapture({
     if (videoUriRef.current === 'pending') return;
     if (navigatedRef.current) return;
     navigatedRef.current = true;
-    setCurrentSwingVideoUri(videoUriRef.current);
+    // Putt captures own their video in puttResultStore — leaving the swing
+    // store untouched keeps a later swing-mode capture's state clean.
+    if (swingModeSnapshotRef.current !== 'putt') {
+      setCurrentSwingVideoUri(videoUriRef.current);
+    }
 
     if (skipResultNavigation) {
       // Coach/watch mode: the callback contract delivers the RESOLVED id, so
@@ -197,7 +212,9 @@ export function useSwingCapture({
     if (recordIntentAtRef.current != null) {
       console.log('[KPI] intent-to-result-ms', Date.now() - recordIntentAtRef.current);
     }
-    router.push('/analysis/result' as Href);
+    router.push(
+      (swingModeSnapshotRef.current === 'putt' ? '/putting/result' : '/analysis/result') as Href,
+    );
   }
 
   // rtmw: raw frames retained for debugging when extraction DID produce a stream
@@ -384,6 +401,11 @@ export function useSwingCapture({
       activeProfileSnapshotRef.current = null;
     }
 
+    // Phase C: snapshot the Swing·Putt mode at button-press (same discipline
+    // as the profile snapshot above). Default 'swing' for callers without the
+    // provider — full-swing path byte-equivalent.
+    swingModeSnapshotRef.current = getSwingModeRef.current?.() ?? 'swing';
+
     // Mint THIS capture's generation. Everything armed below (window timer,
     // recording callbacks, pipeline context) carries it and no-ops once a
     // newer capture has minted a higher one.
@@ -411,7 +433,8 @@ export function useSwingCapture({
     startTiltCapture();
     // Watch-primary: a watch-initiated capture is ALREADY recording — do not re-arm it.
     // The phone warm/legacy path opportunistically arms a reachable watch (IMU absent if not).
-    if (origin === 'phone') {
+    // Putt mode never arms the watch — watch IMU is a full-swing feature (Phase C scope).
+    if (origin === 'phone' && swingModeSnapshotRef.current !== 'putt') {
       watch.startCapture().catch(() => {});
     }
     const recordIntentAt = Date.now();
@@ -437,6 +460,7 @@ export function useSwingCapture({
       discardRequestedRef,
       watch,
       targetFps,
+      mode: swingModeSnapshotRef.current,
       updateCapturePhase,
       // Bind the failure route to THIS capture's generation; the pipeline adds
       // its video entry (by value) as the third argument.

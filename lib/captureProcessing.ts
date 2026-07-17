@@ -39,6 +39,9 @@ import type { CameraGuidanceColor } from './cameraGuidance';
 import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
 import { extractPoseFromVideo } from './extractPoseFromVideo';
+import { runPuttingPipeline } from './puttingPipeline';
+import { setCurrentPuttResult } from './puttResultStore';
+import type { PoseFrame } from '../packages/pose/PoseTypes';
 import { persistPoseFull } from './persistPoseFull';
 import { recordDriftEvent } from './frameDriftGuard';
 import { CAPTURE_FPS, CAPTURE_HEIGHT, CAPTURE_WIDTH, ANALYZER_DECIMATION } from './cameraFormat';
@@ -105,6 +108,12 @@ export interface CaptureProcessingContext {
   discardRequestedRef: MutableRefObject<boolean>;
   watch: WatchCaptureApi;
   targetFps: number | undefined;
+  /**
+   * Phase C: capture mode snapshotted at button-press (beginRecording). By
+   * value deliberately — a mid-extraction pill toggle must not re-classify
+   * the capture. 'putt' forks the pipeline after pose extraction.
+   */
+  mode: 'swing' | 'putt';
   updateCapturePhase: (phase: CapturePhase) => void;
   // The hook binds this to the capture's generation; the pipeline passes its
   // video entry so a failure abandons THIS capture's entry, never the shared ref's.
@@ -242,6 +251,24 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
     //     truth; historical reads re-apply this pure pass at fetch time
     //     (lib/swingStore.ts getSwingMotionFrames/Batch).
     const correctedFrames = correctLowerBodyIdentity(poseFrames).frames;
+
+    // ── PUTT MODE FORK (Phase C) ─────────────────────────────────────────
+    // Everything above (outbox video capture, extraction, body-confirm,
+    // identity correction) is shared; everything below (watch IMU, full-swing
+    // analysis, grip, swing stores, persistSwing) is full-swing-only. The putt
+    // branch runs the putting pipeline and returns — mode 'swing' falls
+    // through byte-equivalent.
+    if (ctx.mode === 'putt') {
+      await processPuttCapture({
+        video,
+        ctx,
+        correctedFrames,
+        rtmwForFailure,
+        videoEntry,
+      });
+      return;
+    }
+
     const sequence: PoseSequence = {
       frames: poseFrames, // RAW → analysis (corrects internally; see above)
       source: 'rtmw-l-2d-v1',
@@ -471,5 +498,78 @@ export async function processRecordedVideo(video: VideoFile, ctx: CaptureProcess
       console.warn('[HoneySwing] extract-or-analyze threw:', msg);
     }
     handleCaptureFailure('extract-or-analyze-threw', rtmwForFailure, videoEntry);
+  }
+}
+
+// EXTERNAL ASSUMPTION — putt-pipeline timeout: three bar decode passes + the
+// windowed refine over a ≤4s clip; unmeasured on device until the batch
+// session logs pipeline.timings. Sized like the extraction race, generous.
+const PUTT_PIPELINE_TIMEOUT_MS = 60000;
+
+/**
+ * Putt-mode post-extraction branch (Phase C). Consumes the shared front half
+ * of processRecordedVideo (outbox capture + extraction + identity correction)
+ * and runs the putting pipeline instead of full-swing analysis/grip/persist.
+ *
+ * classifyCapture still applies (validity floors unchanged — the validated
+ * putt clips passed them); an invalid classification is recorded in the putt
+ * store's pipeline warnings rather than blocking the result screen.
+ */
+async function processPuttCapture(args: {
+  video: VideoFile;
+  ctx: CaptureProcessingContext;
+  correctedFrames: PoseFrame[];
+  rtmwForFailure: Rtmw133Frame[] | null;
+  videoEntry: PipelineVideoEntry;
+}): Promise<void> {
+  const { video, ctx, correctedFrames, rtmwForFailure, videoEntry } = args;
+  try {
+    const stepMs = ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
+    const pipeline = await Promise.race([
+      runPuttingPipeline({
+        videoUri: video.path,
+        // Corrected frames: hands (the prior source) are identity-invariant;
+        // legs render better in the playback skeleton.
+        poseFrames: correctedFrames,
+        stepMs,
+      }),
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error('putt-pipeline-timeout')), PUTT_PIPELINE_TIMEOUT_MS),
+      ),
+    ]);
+
+    const classification = classifyCapture(correctedFrames);
+    if (classification.validity !== 'valid') {
+      pipeline.detectors.intermediates.warnings.push(
+        `capture_${classification.validity}${classification.reason ? `_${classification.reason}` : ''}`,
+      );
+    }
+    console.log('[HoneySwing] putt pipeline', {
+      timings: pipeline.timings,
+      score: pipeline.score,
+      warnings: pipeline.detectors.intermediates.warnings,
+    });
+
+    setCurrentPuttResult({
+      poseFrames: correctedFrames,
+      videoUri: video.path,
+      recordedAt: Date.now(),
+      pipeline,
+    });
+    ctx.updateCapturePhase('complete');
+    ctx.analysisReadyRef.current = true;
+    // Persistence lands in Phase C (3/3) and will reconcile this entry to the
+    // putt row; until then a putt's durable video copy has no row to attach to
+    // — abandon it so it isn't stranded pending until the orphan sweep.
+    if (videoEntry.id && !videoEntry.abandoned) {
+      videoEntry.abandoned = true;
+      abandonPending([videoEntry.id]).catch((e) =>
+        console.warn('[HoneySwing] abandonPending (putt video) failed', e),
+      );
+    }
+    ctx.tryNavigate();
+  } catch (e) {
+    console.warn('[HoneySwing] putt pipeline threw:', e instanceof Error ? e.message : String(e));
+    ctx.handleCaptureFailure('putt-pipeline-error', rtmwForFailure, videoEntry);
   }
 }

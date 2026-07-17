@@ -33,6 +33,7 @@ export default function FaceOnSetupOverlay({
   height,
   mirrored,
   ageTier,
+  mode = 'swing',
 }: {
   height: number;
   mirrored: boolean;
@@ -41,6 +42,13 @@ export default function FaceOnSetupOverlay({
   // legacy rows, so runtime callers always pass one; undefined falls back to
   // the adult (pre-tier) size.
   ageTier?: AgeTier;
+  /**
+   * Putt mode PLACEHOLDER (Phase C, decision C-1a): no putting-posture asset
+   * exists, so putt mode hides the swing silhouette PNG and shows putting
+   * caption text only. A real putting asset drops in later as a pure swap
+   * (add the source + a putting fraction map beside faceOnGuideSizing.ts).
+   */
+  mode?: 'swing' | 'putt';
 }) {
   const insets = useSafeAreaInsets(); // hook before the early return (rules of hooks)
   if (height <= 0) return null;
@@ -48,15 +56,21 @@ export default function FaceOnSetupOverlay({
   const bottomOffset = insets.bottom + CONTROL_BAR_HEIGHT + BOTTOM_GAP;
   return (
     <View style={[styles.container, { paddingBottom: bottomOffset }]} pointerEvents="none">
-      <Image
-        source={require('../assets/images/faceOnGuide.png')}
-        style={[
-          { height: guideHeight, width: guideHeight * GUIDE_ASPECT, opacity: GUIDE_OPACITY },
-          mirrored && styles.mirrored,
-        ]}
-        resizeMode="contain"
-      />
-      <Text style={styles.caption}>Stand so your whole body is on screen</Text>
+      {mode === 'swing' && (
+        <Image
+          source={require('../assets/images/faceOnGuide.png')}
+          style={[
+            { height: guideHeight, width: guideHeight * GUIDE_ASPECT, opacity: GUIDE_OPACITY },
+            mirrored && styles.mirrored,
+          ]}
+          resizeMode="contain"
+        />
+      )}
+      <Text style={styles.caption}>
+        {mode === 'putt'
+          ? 'Face-on — whole body and ball on screen'
+          : 'Stand so your whole body is on screen'}
+      </Text>
     </View>
   );
 }

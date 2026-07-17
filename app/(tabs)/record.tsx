@@ -20,6 +20,7 @@ import type { CameraGuidanceColor } from '../../lib/cameraGuidance';
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { useTiltCapture } from '../../lib/useTiltCapture';
 import { useSwingCapture } from '../../lib/useSwingCapture';
+import { getWatchCaptureEnabled } from '../../lib/watchCaptureSetting';
 import { GOLD } from '../../lib/colors';
 import {
   getProfiles,
@@ -108,8 +109,34 @@ export default function RecordTab() {
 
   const [captureMode, setCaptureMode] = useState<'instant' | 'countdown'>('instant');
 
+  // Phase C: Swing·Putt mode pill (D2 — no new tab). Snapshotted at
+  // button-press via getSwingMode below; putt routes the post-capture pipeline
+  // to the putting detectors + /putting/result.
+  const [swingMode, setSwingMode] = useState<'swing' | 'putt'>('swing');
+  const swingModeRef = useRef(swingMode);
+  swingModeRef.current = swingMode;
+
+  // Phase C: the "Ready (watch)" pill renders only when watch capture is
+  // actually in play. The ONLY existing JS-side signal is the settings toggle
+  // (getWatchCaptureEnabled — toggle OFF means every watch path no-ops and
+  // WCSession is never activated, lib/useWatchImuCapture.ts header). TRUE
+  // WCSession paired/reachable state is not exposed by HoneyWatchImuModule;
+  // surfacing it would be new native behavior (out of Phase C scope).
+  // Conservative default false = hidden. Re-resolved on focus so a settings
+  // change is picked up without a remount.
+  const [watchPillVisible, setWatchPillVisible] = useState(false);
+
   // #11 face-on setup guide — per-session show/hide (resets ON each mount; not persisted).
   const [showGuide, setShowGuide] = useState(true);
+
+  useEffect(() => {
+    if (!isFocused) return;
+    let cancelled = false;
+    getWatchCaptureEnabled()
+      .then((v) => { if (!cancelled) setWatchPillVisible(v); })
+      .catch(() => { if (!cancelled) setWatchPillVisible(false); });
+    return () => { cancelled = true; };
+  }, [isFocused]);
 
   // Active-kid chip — second UI entry point to the SAME primary-profile switch
   // (setPrimaryProfile / getPrimaryProfile) that Settings + swing attribution use.
@@ -214,6 +241,7 @@ export default function RecordTab() {
         'Select a player',
         'Choose a player profile before recording so the swing is saved to the right kid.',
       ),
+    getSwingMode: () => swingModeRef.current,
   });
 
   // Live refs so the tab-bar-registered shutter/stop closures always re-read the
@@ -474,6 +502,7 @@ export default function RecordTab() {
               height={containerH}
               mirrored={!!activeProfile?.isLeftHanded}
               ageTier={activeProfile?.ageTier}
+              mode={swingMode}
             />
           )}
           {capturePhase === 'idle' && cameraReady && (
@@ -584,8 +613,10 @@ export default function RecordTab() {
       )}
 
       {/* Watch-primary pre-arm: tap Ready, then tap Start on the watch. A fresh watch
-          `started` auto-starts video; otherwise the chip just reminds you to start there. */}
-      {capturePhase === 'idle' && cameraReady && (
+          `started` auto-starts video; otherwise the chip just reminds you to start there.
+          Phase C: HIDDEN (not deleted) unless watch capture is enabled — frees the
+          top:102 slot for the Swing·Putt pill (which stacks below when both show). */}
+      {capturePhase === 'idle' && cameraReady && watchPillVisible && (
         <TouchableOpacity
           style={styles.preArmChip}
           onPress={() => (preArmed ? exitReady() : enterReady())}
@@ -602,6 +633,31 @@ export default function RecordTab() {
             </Text>
           </View>
         </TouchableOpacity>
+      )}
+
+      {/* Swing·Putt mode pill (Phase C, D2) — Putt lit ORANGE when active. Takes
+          the watch pill's slot when that pill is hidden; stacks below otherwise. */}
+      {capturePhase === 'idle' && cameraReady && (
+        <View style={[styles.modeSegmentControl, { top: watchPillVisible ? 144 : 102 }]}>
+          <TouchableOpacity
+            style={[styles.modeSegment, swingMode === 'swing' && styles.modeSegmentActive]}
+            onPress={() => setSwingMode('swing')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modeSegmentText, swingMode === 'swing' && styles.modeSegmentTextActive]}>
+              Swing
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeSegment, swingMode === 'putt' && localStyles.puttSegmentActive]}
+            onPress={() => setSwingMode('putt')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.modeSegmentText, swingMode === 'putt' && styles.modeSegmentTextActive]}>
+              Putt
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* Active-kid chip (top-right) — shows who the next swing is attributed to;
@@ -688,6 +744,11 @@ export default function RecordTab() {
 }
 
 const localStyles = StyleSheet.create({
+  // Putt segment active state — ORANGE (Phase C, D2 owner directive); the
+  // Swing segment keeps the shared white modeSegmentActive.
+  puttSegmentActive: {
+    backgroundColor: '#FF9500',
+  },
   guideToggle: {
     position: 'absolute',
     top: 102, // below kidChip (top:60 right:16, ~34px tall); mirrors preArmChip's offset on the right rail

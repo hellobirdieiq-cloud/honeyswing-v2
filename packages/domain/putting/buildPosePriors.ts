@@ -41,7 +41,9 @@ export type MotionFrameLite = {
   timestampMs?: number;
   frameWidth?: number;
   frameHeight?: number;
-  joints?: Record<string, { x: number; y: number; confidence: number } | undefined>;
+  /** confidence optional for PoseFrame compatibility — a missing confidence
+   * fails the > POSE_PRIOR_MIN_CONF gate below, yielding a null prior. */
+  joints?: Record<string, { x: number; y: number; confidence?: number } | undefined>;
 };
 
 /** Concrete prior shape — assignable to both the native wrapper's
@@ -67,7 +69,9 @@ export function buildPosePriors(motionFrames: readonly MotionFrameLite[]): Built
     const w = f.frameWidth;
     const h = f.frameHeight;
     if (!lw || !rt || !w || !h) return null;
-    if (!(lw.confidence > POSE_PRIOR_MIN_CONF) || !(rt.confidence > POSE_PRIOR_MIN_CONF)) {
+    const lwConf = lw.confidence ?? 0;
+    const rtConf = rt.confidence ?? 0;
+    if (!(lwConf > POSE_PRIOR_MIN_CONF) || !(rtConf > POSE_PRIOR_MIN_CONF)) {
       return null;
     }
     const rawAngle = (Math.atan2(rt.x * w - lw.x * w, rt.y * h - lw.y * h) * 180) / Math.PI;
@@ -76,7 +80,7 @@ export function buildPosePriors(motionFrames: readonly MotionFrameLite[]): Built
     let n = 0;
     for (const name of POSE_HAND_JOINTS) {
       const j = f.joints?.[name];
-      if (j && j.confidence > POSE_PRIOR_MIN_CONF) {
+      if (j && (j.confidence ?? 0) > POSE_PRIOR_MIN_CONF) {
         sx += j.x;
         sy += j.y;
         n += 1;
@@ -87,7 +91,7 @@ export function buildPosePriors(motionFrames: readonly MotionFrameLite[]): Built
       angleDeg: foldDeg(foldDeg(rawAngle) - POSE_SHAFT_CAL_OFFSET_DEG),
       anchorX: sx / n,
       anchorY: sy / n,
-      confidence: Math.min(lw.confidence, rt.confidence),
+      confidence: Math.min(lwConf, rtConf),
     };
   });
 }
