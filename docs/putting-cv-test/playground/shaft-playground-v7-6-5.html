@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Shaft Fit Playground v7.6.5</title>
+<style>
+body{background:#0b0b0b;color:#ddd;font-family:-apple-system,Menlo,monospace;margin:0;display:flex}
+#left{position:relative}
+canvas{display:block}
+#panel{padding:12px 16px;width:440px;font-size:12px;overflow-y:auto;height:100vh}
+h2{margin:2px 0 8px;font-size:15px}
+.row{margin:5px 0}
+label{display:inline-block;width:200px}
+input[type=range]{width:136px;vertical-align:middle}
+.val{display:inline-block;width:44px;text-align:right;color:#7fd}
+button{background:#2563eb;color:#fff;border:0;border-radius:6px;padding:5px 12px;margin-right:6px;cursor:pointer}
+.filebtn{background:#333}
+#frameLbl{color:#fd5}
+#metrics{background:#1b1b1b;border-radius:8px;padding:8px;margin:8px 0;line-height:1.5}
+.pass{color:#5f5}.fail{color:#f66}
+small{color:#888}
+h4{margin:10px 0 2px;color:#9cf}
+h4.new{color:#f9a}
+textarea{width:100%;height:96px;background:#181818;color:#7fd;border:1px solid #333;font-size:10px}
+#bgStat{color:#fd5}
+#freeOut,#oracleOut{background:#181818;border-radius:8px;padding:6px 8px;margin:6px 0;font-size:10px;line-height:1.6;white-space:pre;overflow-x:auto}
+#truthStat,#oracleStat,#calStat{color:#fd5}
+</style></head><body>
+<div id="left"><canvas id="cv" width="480" height="852"></canvas></div>
+<div id="panel">
+<h2>Shaft Fit Playground v7.6.5 — Length-Aware Tube</h2>
+<div class="row">
+  <button class="filebtn" onclick="movInput.click()">Load video</button>
+  <button class="filebtn" onclick="jsonInput.click()">Load JSON</button>
+  <input type="file" id="movInput" hidden><input type="file" id="jsonInput" hidden>
+  <button id="playBtn">Play</button> <span id="frameLbl">load video + json</span>
+</div>
+<div class="row"><input type="range" id="scrub" min="0" max="287" value="60" style="width:400px"></div>
+
+<h4 class="new">Bar (twin-edge) scoring (NEW v7.6.3)</h4>
+<div class="row"><label><b>Bar (twin-edge) scoring</b></label><input type="checkbox" id="useBar" checked></div>
+<div class="row"><label>Bar: min edge gradient</label><input type="range" id="barGrad" min="4" max="40" value="12"><span class="val" id="barGradV"></span></div>
+<div class="row"><label>Bar width min (px)</label><input type="range" id="barWMin" min="1" max="6" value="2"><span class="val" id="barWMinV"></span></div>
+<div class="row"><label>Bar width max (px)</label><input type="range" id="barWMax" min="4" max="16" value="8"><span class="val" id="barWMaxV"></span></div>
+<div class="row"><label><b>Bar min coverage (hard gate)</b></label><input type="range" id="barCov" min="0.2" max="0.9" step="0.05" value="0.6"><span class="val" id="barCovV"></span></div>
+<div class="row"><label>Width stdev divisor</label><input type="range" id="barWDiv" min="0.5" max="5" step="0.25" value="2"><span class="val" id="barWDivV"></span></div>
+<div class="row"><label><b>Grip connection gate</b></label><input type="checkbox" id="gripGate" checked></div>
+<div class="row"><label>Grip connect window (px)</label><input type="range" id="gripWin" min="8" max="40" value="20"><span class="val" id="gripWinV"></span></div>
+<div class="row"><label><b>Ignore overlay colors</b></label><input type="checkbox" id="ignoreOv" checked></div>
+
+<h4 class="new">Length-aware tube (NEW v7.6.5)</h4>
+<div class="row"><button id="calBtn">Calibrate SHAFT_LEN (rest window)</button> <span id="calStat">uncalibrated</span></div>
+<div class="row"><label><b>Length weight</b></label><input type="range" id="lenW" min="0" max="200" step="5" value="80"><span class="val" id="lenWV"></span></div>
+<div class="row"><label>Manual SHAFT_LEN px (0=auto)</label><input type="range" id="lenOv" min="0" max="500" step="5" value="0"><span class="val" id="lenOvV"></span></div>
+<div class="row"><label><b>Overshoot penalty (×0.5 past 1.25L)</b></label><input type="checkbox" id="overPen" checked></div>
+
+<h4 class="new">Diagnostics (v7.6.3 + v7.6.4 oracle)</h4>
+<div class="row"><label><b>Pivot max offset (px)</b></label><input type="range" id="pivMax" min="0" max="20" step="2" value="12"><span class="val" id="pivMaxV"></span></div>
+<div class="row"><button id="freeBtn">FREE SWEEP this frame</button></div>
+<div id="freeOut">free sweep: −25°..+25° × pivots, anchor-pinned, all live scoring, no gates/rate/mode</div>
+<div class="row"><button id="oracleBtn">SWEEP ALL (oracle)</button> <button id="oracleExport" class="filebtn">Export oracle</button> <span id="oracleStat">not run</span></div>
+<div id="oracleOut">oracle: free sweep on EVERY frame (no gates, no memory) — best line per frame, drawn orange during playback</div>
+<div class="row"><label><b>Draw truth (2 clicks: grip, head)</b></label><input type="checkbox" id="truthMode"></div>
+<div class="row"><button id="truthExport" class="filebtn">Export truths</button> <span id="truthStat">0 truths</span></div>
+
+<h4 class="new">Tracker state (v7.6 — angVel · blend · recovery · hysteresis)</h4>
+<div class="row"><label><b>angVel EMA alpha</b></label><input type="range" id="emaA" min="0" max="1" step="0.05" value="0.5"><span class="val" id="emaAV"></span></div>
+<div class="row"><label><b>Pre-impact pose blend</b></label><input type="range" id="blendP" min="0" max="1" step="0.05" value="0.65"><span class="val" id="blendPV"></span></div>
+<div class="row"><label><b>Innovation trigger (°)</b></label><input type="range" id="innovT" min="1" max="15" step="0.5" value="6"><span class="val" id="innovTV"></span></div>
+<div class="row"><label><b>Recovery support factor</b></label><input type="range" id="recFac" min="1" max="2" step="0.05" value="1.4"><span class="val" id="recFacV"></span></div>
+<div class="row"><label><b>Post-impact tol (°)</b></label><input type="range" id="postTol" min="1" max="10" step="0.5" value="3"><span class="val" id="postTolV"></span></div>
+<div class="row"><label><b>Switch margin</b></label><input type="range" id="swMargin" min="1" max="2" step="0.05" value="1.3"><span class="val" id="swMarginV"></span></div>
+<div class="row"><label><b>Switch confirm frames</b></label><input type="range" id="swConfirm" min="1" max="5" step="1" value="2"><span class="val" id="swConfirmV"></span></div>
+
+<h4 class="new">Ridge scoring (legacy pinned scorer — Bar toggle OFF)</h4>
+<div class="row"><label>Ridge: min contrast</label><input type="range" id="ridgeT" min="4" max="40" value="14"><span class="val" id="ridgeTV"></span></div>
+<div class="row"><label>Perp sample offset (px)</label><input type="range" id="perpOff" min="3" max="10" value="5"><span class="val" id="perpOffV"></span></div>
+<div class="row"><label><b>Strict ridge (both sides, same sign)</b></label><input type="checkbox" id="strictR" checked></div>
+<div class="row"><label>Min support density</label><input type="range" id="minSup" min="0.2" max="0.9" step="0.05" value="0.55"><span class="val" id="minSupV"></span></div>
+<div class="row"><label>Proximal window below grip (px)</label><input type="range" id="proxLen" min="10" max="60" value="28"><span class="val" id="proxLenV"></span></div>
+<div class="row"><label>Proximal min support</label><input type="range" id="proxMin" min="0.1" max="0.9" step="0.05" value="0.5"><span class="val" id="proxMinV"></span></div>
+<div class="row"><label><b>Top-half min support (grip side)</b></label><input type="range" id="topMin" min="0" max="0.8" step="0.05" value="0.3"><span class="val" id="topMinV"></span></div>
+<div class="row"><label><b>Pivot penalty (off-anchor cost)</b></label><input type="range" id="pivPen" min="0" max="1" step="0.05" value="0.5"><span class="val" id="pivPenV"></span></div>
+<div class="row"><label>Max gap along line (px)</label><input type="range" id="gapMax" min="8" max="60" value="24"><span class="val" id="gapMaxV"></span></div>
+<div class="row"><label>Mat cutoff below seed (px)</label><input type="range" id="matCut" min="0" max="200" value="30"><span class="val" id="matCutV"></span></div>
+<div class="row"><label>Show line support dots</label><input type="checkbox" id="showSup" checked></div>
+
+<h4 class="new">Background subtraction (static tripod)</h4>
+<div class="row"><button id="bgBtn">Build BG (median f0–40)</button> <span id="bgStat">not built</span></div>
+<div class="row"><label>Use foreground score</label><input type="checkbox" id="useFG" checked></div>
+<div class="row"><label>Foreground weight (soft, bonus-only)</label><input type="range" id="fgW" min="0" max="1" step="0.05" value="0.5"><span class="val" id="fgWV"></span></div>
+
+<h4 class="new">Velocity coupling (soft, deadband)</h4>
+<div class="row"><label>Coupling weight</label><input type="range" id="velW" min="0" max="0.5" step="0.05" value="0.15"><span class="val" id="velWV"></span></div>
+<div class="row"><label>Deadband (px/frame hand speed)</label><input type="range" id="velDead" min="0" max="2" step="0.1" value="0.5"><span class="val" id="velDeadV"></span></div>
+
+<h4>Pose prior (from JSON)</h4>
+<div class="row"><label>Use pose gates</label><input type="checkbox" id="usePose" checked></div>
+<div class="row"><label><b>Pose bias correction (°)</b></label><input type="range" id="poseBias" min="-20" max="20" step="0.5" value="0"><span class="val" id="poseBiasV"></span></div>
+<div class="row"><label><b>Smooth anchor (median of 3)</b></label><input type="checkbox" id="ancSmooth" checked></div>
+<div class="row"><label>Angle tolerance (°)</label><input type="range" id="angTol" min="2" max="18" step="0.5" value="6"><span class="val" id="angTolV"></span></div>
+<div class="row"><label>Anchor tolerance (px)</label><input type="range" id="ancTol" min="5" max="40" value="17"><span class="val" id="ancTolV"></span></div>
+<div class="row"><label><b>PIN line through anchor</b></label><input type="checkbox" id="pin" checked></div>
+<div class="row"><label><b>CAP: no pixels above grip</b></label><input type="checkbox" id="capGrip" checked></div>
+<div class="row"><label><b>No head past ball pre-impact</b></label><input type="checkbox" id="ballBound" checked></div>
+<div class="row"><label><b>Endpoint dark head check (pre-impact)</b></label><input type="checkbox" id="headCheck" checked></div>
+<div class="row"><label><b>Pose-line fallback (pre-impact, no fit → pose)</b></label><input type="checkbox" id="poseFB" checked></div>
+<div class="row"><label>Pose-weighted scoring (unpinned)</label><input type="checkbox" id="poseW" checked></div>
+
+<h4>Fit</h4>
+<div class="row"><label>Min span (px)</label><input type="range" id="minSpan" min="30" max="160" value="79"><span class="val" id="minSpanV"></span></div>
+<div class="row"><label>Continuity weight</label><input type="range" id="contW" min="0" max="1" step="0.05" value="0.4"><span class="val" id="contWV"></span></div>
+<div class="row"><label><b>Max angle jump (°/frame)</b></label><input type="range" id="maxJump" min="0.5" max="6" step="0.25" value="2"><span class="val" id="maxJumpV"></span></div>
+
+<h4>Legacy masks (unpinned mode + head check only)</h4>
+<div class="row"><label>Dark: luma below</label><input type="range" id="darkT" min="40" max="140" value="70"><span class="val" id="darkTV"></span></div>
+<div class="row"><label>Motion: Δluma above</label><input type="range" id="motT" min="6" max="60" value="25"><span class="val" id="motTV"></span></div>
+<div class="row"><label>Edge: gradient above</label><input type="range" id="edgeT" min="10" max="90" value="42"><span class="val" id="edgeTV"></span></div>
+<div class="row"><label>Use edge mask</label><input type="checkbox" id="useEdge" checked></div>
+<div class="row"><label>Thin filter</label><input type="checkbox" id="thin" checked></div>
+<div class="row"><label>RANSAC inlier band (px)</label><input type="range" id="band" min="1" max="6" step="0.5" value="3"><span class="val" id="bandV"></span></div>
+<div class="row"><label>Min inliers (unpinned)</label><input type="range" id="minInl" min="8" max="60" value="25"><span class="val" id="minInlV"></span></div>
+<div class="row"><label>Show candidate pixels</label><input type="checkbox" id="showPix"></div>
+
+<div id="metrics">load files…</div>
+<div class="row">
+  <button id="evalBtn144">Evaluate 54–144 (tempo)</button>
+  <button id="evalBtn165">Evaluate 54–165</button>
+</div>
+<h4>Constants to bake (copy to Claude Code)</h4>
+<textarea id="consts" readonly></textarea>
+
+<p><small><b style="color:#00ff44">THICK BRIGHT GREEN = the APP's final shaft line</b> — always on
+top, always labeled "APP x.x°" with its source: <b style="color:#26e0e0">cv</b> ·
+<b style="color:#ff6ea8">recovery</b> · <b style="color:#ffb432">pose fallback</b>
+(pre-impact only) · <b style="color:#b478ff">predicted</b> (post-impact hold).
+<b style="color:#fff">WHITE 3px = your TRUTH line</b> (Draw truth: click grip
+end, then head end). <b style="color:#ff9d2e">ORANGE = FREE SWEEP #1 / ORACLE line</b> (after SWEEP
+ALL, every frame shows its memoryless best next to the live green), dashed
+= free-sweep #2–5. Anything cyan with no label is baked into your video — with "Ignore
+overlay colors" ON it can't score. Gray dashed = pose guess · magenta circle =
+pose anchor · magenta dot = pivot used · white dots = supported samples · red
+dots = unsupported. Innovation = |pose − predicted|, red-flagged past the
+trigger. Calibrate until white dots run the shaft, then Evaluate.</small></p>
+</div>
+
+<video id="vid" width="480" height="852" muted playsinline style="display:none"></video>
+<script>
+const vid=document.getElementById('vid'), cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const off=document.createElement('canvas'); off.width=480; off.height=852;
+const octx=off.getContext('2d',{willReadFrequently:true});
+const $=id=>document.getElementById(id);
+let J=null, priors=null, ballByFrame=null, playing=false, prevLuma=null, curLuma=null, prevLine=null, prevAng=null, BG=null, lastVeto=null, W=480, H=852, S=480/1080;
+// ---- v7.6 tracker state ----
+// angVel: EMA of accepted-angle frame deltas → predictedAngle = prevAng + angVel.
+// prevMatX: accepted track's x at mat level (switch hysteresis reference).
+// pendingSwitch: off-track candidate awaiting SWITCH_CONFIRM_FRAMES.
+let angVel=0, pendingSwitch=null, prevMatX=null, lastFi=-1;
+// ---- v7.6.1 launch detection ----
+// Mode keys on launchFrame computed from persisted ball positions (the
+// rolling ball stays detected ~50 frames after contact, so ball presence is
+// NOT an impact signal). preImpact = (fi < launchFrame).
+let launchFrame=null;       // null = no launch found → preImpact always true
+// COORDINATE SPACE: launch detection runs on RAW frames[].ball x/y, which
+// are FULL-RESOLUTION (1080-wide) pixels — NOT the 480-wide overlay space
+// (ballByFrame is the scaled copy; we deliberately don't use it here).
+// LAUNCH_DIST_PX=8 is therefore a full-res threshold, used unscaled.
+const LAUNCH_DIST_PX=8;
+const SWITCH_DIST=8;        // px at mat level — beyond this = a track switch
+const REC_PRED_TOL=3;       // recovery sweep: predictedAngle ± this
+const REC_POSE_TOL=10;      // recovery sweep: poseAngle ± this
+// ---- v7.6.3 state ----
+let ovMask=null;            // overlay-artifact mask for the CURRENT frame (480x852)
+let freeSweep=null;         // {fi, rows:[top5], ax, ay} — diagnostic only
+let truths={}, truthPending=null;   // truths[fi]={angleDeg, points:[[x,y],[x,y]]} in 480x852 canvas px
+// ---- v7.6.4 oracle ----
+// oracle[fi] = per-frame FREE-SWEEP winner (full ±25° × all pivots, no
+// gates, no memory) — the "what would a memoryless oracle pick" series.
+let oracle=null, oracleRunning=false;
+// ---- v7.6.5 shaft length calibration ----
+// A shaft is RIGID: its image length is constant per swing. shaftLenAuto =
+// median contiguous tube extent (spanT) of accepted pinned fits over the
+// rest window. Slider lenOv overrides (0 = auto). Null + no override →
+// legacy span scoring (uncalibrated fallback).
+let shaftLenAuto=null;
+function effShaftLen(){const ov=+$('lenOv').value; return ov>0?ov:shaftLenAuto;}
+function medianOf(a){if(!a.length)return null;const s=a.slice().sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+const LEN_INLIER_CUTOFF=1.15;   // inliers beyond this ×L from grip don't count
+const LEN_OVERSHOOT_AT=1.25;    // passing samples past this ×L → ×0.5 penalty
+const IDS=['lenW','lenOv','pivMax','barGrad','barWMin','barWMax','barCov','barWDiv','gripWin','emaA','blendP','innovT','recFac','postTol','swMargin','swConfirm','ridgeT','perpOff','minSup','proxLen','proxMin','topMin','pivPen','gapMax','matCut','fgW','velW','velDead','poseBias','darkT','motT','edgeT','angTol','ancTol','band','minInl','minSpan','contW','maxJump'];
+// bias-corrected prior: ALL consumers read pose through this
+function med3(a,b,c){return Math.max(Math.min(a,b),Math.min(Math.max(a,b),c));}
+function getPrior(fi){
+  if(!priors||!priors[fi]) return null;
+  const p=priors[fi];
+  let ax=p.ax, ay=p.ay;
+  // median-3 anchor smoothing: a single-frame anchor jump gets voted
+  // out by its neighbors; real motion passes through with no lag
+  if($('ancSmooth').checked){
+    const m=priors[fi-1], n=priors[fi+1];
+    if(m&&n){ ax=med3(m.ax,p.ax,n.ax); ay=med3(m.ay,p.ay,n.ay); }
+  }
+  return {ang:p.ang + (+$('poseBias').value), ax, ay, c:p.c};
+}
+const CHK=['useBar','gripGate','ignoreOv','truthMode','overPen','strictR','showSup','useFG','useEdge','thin','usePose','poseW','showPix','pin','capGrip','ballBound','headCheck','poseFB','ancSmooth'];
+
+function resetTrack(){prevLuma=null;prevLine=null;prevAng=null;angVel=0;pendingSwitch=null;prevMatX=null;lastFi=-1;}
+// launchFrame from persisted ball positions, computed once at JSON load.
+// Same 120fps analysis grid as frames[] — no frame-index mixing. Full-res
+// (1080-wide) pixel space throughout (see LAUNCH_DIST_PX comment).
+function computeLaunch(){
+  launchFrame=null;
+  if(!J||!J.frames) return;
+  const balls=J.frames.map(fr=>fr.ball?{x:fr.ball.x,y:fr.ball.y}:null);
+  const idx=[]; for(let i=0;i<balls.length;i++) if(balls[i]) idx.push(i);
+  if(idx.length<4) return;
+  // restPos = median ball (x,y) over the first 60% of ball-present frames
+  const med=a=>{const s=a.slice().sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+  const restIdx=idx.slice(0,Math.max(1,Math.floor(idx.length*0.6)));
+  const rest={x:med(restIdx.map(i=>balls[i].x)), y:med(restIdx.map(i=>balls[i].y))};
+  const d=i=>Math.hypot(balls[i].x-rest.x, balls[i].y-rest.y);
+  // first i with dist>threshold on 2 CONSECUTIVE frames AND moving farther
+  // (monotonic — real launch, not detection jitter)
+  for(let k=0;k<idx.length;k++){
+    const i=idx[k];
+    if(!balls[i+1]) continue;
+    const di=d(i), dn=d(i+1);
+    if(di>LAUNCH_DIST_PX && dn>LAUNCH_DIST_PX && dn>di){ launchFrame=i; return; }
+  }
+}
+function isPreImpact(fi){return launchFrame===null || fi<launchFrame;}
+function matYOf(){return (J&&J.ball_seed?J.ball_seed.y:0.8)*1920*S;}
+function lineMatX(ax,ay,angDeg){const t=angDeg*Math.PI/180;return ax+Math.sin(t)*(matYOf()-ay)/Math.cos(t);}
+// accept an angle into the track: EMA the delta, move the state forward
+function commitTrack(ang,matX,fit){
+  const a=+$('emaA').value;
+  if(prevAng!==null) angVel=a*(ang-prevAng)+(1-a)*angVel;
+  prevAng=ang; prevLine=fit; prevMatX=matX;
+}
+function truthDelta(fi,ang){
+  const t=truths[fi];
+  return t?(' · Δtruth '+Math.abs(ang-t.angleDeg).toFixed(1)+'°'):'';
+}
+
+function loadFile(f, isJson){
+  if(!f) return;
+  if(isJson){ const r=new FileReader(); r.onload=()=>{ J=JSON.parse(r.result);
+    priors=(J.pose_priors||[]).map(p=>p&&{ang:p.angleDeg, ax:p.anchorX*1080*S, ay:p.anchorY*1920*S, c:p.confidence});
+    ballByFrame=J.frames.map(fr=>fr.ball?{x:fr.ball.x*S,y:fr.ball.y*S,r:Math.max(6,fr.ball.radiusPx*S)}:null);
+    if(!J.pose_priors) $('usePose').checked=false;
+    computeLaunch(); dumpConsts();
+    setStatus('json loaded'+(J.pose_priors?' (pose priors ✓)':' (NO pose_priors — pose gates off)')
+      +(launchFrame!==null?' · launch f'+launchFrame:' · launch NONE (always PRE)')); render(); }; r.readAsText(f); }
+  else { vid.src=URL.createObjectURL(f); vid.load();
+    vid.onloadeddata=()=>{ setStatus('video loaded · press Play or scrub'); resetTrack(); BG=null; $('bgStat').textContent='not built'; render(); }; }
+}
+$('movInput').onchange=e=>loadFile(e.target.files[0],false);
+$('jsonInput').onchange=e=>loadFile(e.target.files[0],true);
+document.body.addEventListener('dragover',e=>e.preventDefault());
+document.body.addEventListener('drop',e=>{e.preventDefault();
+  const f=e.dataTransfer.files[0]; loadFile(f, /json$/i.test(f.name));});
+function setStatus(t){$('frameLbl').textContent=t;}
+IDS.forEach(id=>$(id).oninput=()=>{ $(id+'V').textContent=$(id).value; render(false); dumpConsts(); });
+CHK.forEach(id=>$(id).onchange=()=>{render(false);dumpConsts();});
+$('scrub').oninput=()=>{ if(!vid.videoWidth) return; resetTrack();
+  vid.currentTime=($('scrub').value*8.333)/1000; vid.onseeked=()=>render(); };
+$('playBtn').onclick=()=>{ if(!vid.videoWidth) return; playing=!playing;
+  $('playBtn').textContent=playing?'Pause':'Play'; vid.playbackRate=0.1;
+  if(playing){vid.play();loop();} else vid.pause(); };
+function loop(){ if(!playing) return; $('scrub').value=Math.round(vid.currentTime*120); render(); requestAnimationFrame(loop); }
+
+// OVERLAY-ARTIFACT GUARD (v7.6.3): grabLuma also builds ovMask marking
+// saturated overlay colors (cyan G>170∧B>170∧R<120, plus saturated yellow and
+// magenta). Masked pixels are treated as NEUTRAL by candidate + bar/ridge
+// sampling so baked-in overlay lines from overlay-video sessions can't score.
+// Raw clips have ~no such pixels — unaffected.
+function grabLuma(){
+  octx.drawImage(vid,0,0,W,H);
+  const d=octx.getImageData(0,0,W,H).data;
+  const L=new Float32Array(W*H);
+  const wantMask=$('ignoreOv').checked;
+  ovMask=wantMask?new Uint8Array(W*H):null;
+  for(let i=0,p=0;i<d.length;i+=4,p++){
+    const r=d[i], g=d[i+1], b=d[i+2];
+    L[p]=(r+g+b)/3;
+    if(wantMask){
+      if((g>170&&b>170&&r<120)||(r>170&&g>170&&b<120)||(r>170&&b>170&&g<120)) ovMask[p]=1;
+    }
+  }
+  return L;
+}
+
+// ---- temporal median background (static tripod) ----
+$('bgBtn').onclick=async()=>{
+  if(!vid.videoWidth){ $('bgStat').textContent='load video first'; return; }
+  playing=false; vid.pause(); $('playBtn').textContent='Play';
+  const frames=[0,5,10,15,20,25,30,35,40], acc=[];
+  for(const fi of frames){
+    vid.currentTime=fi*8.333/1000;
+    await new Promise(r=>{vid.onseeked=r;});
+    acc.push(grabLuma());
+    $('bgStat').textContent='building '+acc.length+'/'+frames.length;
+  }
+  BG=new Float32Array(W*H);
+  const tmp=new Float32Array(9);
+  for(let p=0;p<W*H;p++){
+    for(let i=0;i<9;i++)tmp[i]=acc[i][p];
+    tmp.sort(); BG[p]=tmp[4];
+  }
+  $('bgStat').textContent='BG built ✓ (median f0–40)';
+  resetTrack();
+  vid.currentTime=(+$('scrub').value*8.333)/1000;
+  vid.onseeked=()=>render();
+};
+
+// ---- smoothed hand x-velocity from pose anchors ----
+function handVx(fi){
+  if(!priors) return null;
+  const p2=priors[fi+2], m2=priors[fi-2];
+  if(p2&&m2) return (p2.ax-m2.ax)/4;
+  const p1=priors[fi+1], m1=priors[fi-1];
+  if(p1&&m1) return (p1.ax-m1.ax)/2;
+  return null;
+}
+
+function candidates(L, prevL, fi){
+  const darkT=+$('darkT').value, motT=+$('motT').value, edgeT=+$('edgeT').value;
+  const useEdge=$('useEdge').checked, thin=$('thin').checked;
+  const ball=ballByFrame&&ballByFrame[fi];
+  const seed=J? {x:(J.ball_seed?J.ball_seed.x:0.55)*1080*S, y:(J.ball_seed?J.ball_seed.y:0.8)*1920*S}:{x:262,y:682};
+  const ax=(ball?ball.x:seed.x);
+  const pr0=($('usePose').checked&&priors)?getPrior(fi):null;
+  const x0=Math.max(1,ax-0.22*W|0), x1=Math.min(W-2,ax+0.22*W|0);
+  let y0=Math.max(1,(seed.y-0.45*H)|0);
+  if($('capGrip').checked && pr0) y0=Math.max(y0,(pr0.ay-10)|0);
+  const y1=Math.min(H-2,(seed.y+30)|0);
+  const m=new Uint8Array(W*H);
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const p=y*W+x;
+    if(ovMask&&ovMask[p]) continue;   // overlay artifact = neutral, never a candidate
+    if(ball){const dx=x-ball.x,dy=y-ball.y; if(dx*dx+dy*dy < (2.2*ball.r)**2) continue;}
+    const dark=L[p]<darkT;
+    const mot=prevL?Math.abs(L[p]-prevL[p])>motT:false;
+    const edge=useEdge?(Math.abs(L[p+1]-L[p-1])+Math.abs(L[p+W]-L[p-W]))>edgeT:false;
+    if(dark||mot||edge) m[p]=1;
+  }
+  const pts=[];
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const p=y*W+x; if(!m[p])continue;
+    if(thin){ let n=0;
+      for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){ if(!dx&&!dy)continue; if(m[p+dy*W+dx])n++; }
+      if(n<2||n>7) continue; }
+    pts.push(x,y);
+  }
+  return pts;
+}
+
+function angleRange(c,tol){const a=[];for(let x=c-tol;x<=c+tol+1e-6;x+=0.25)a.push(x);return a;}
+function angleUnion(r1,r2){
+  const seen=new Set(),out=[];
+  for(const x of r1.concat(r2)){const k=Math.round(x*4);if(!seen.has(k)){seen.add(k);out.push(x);}}
+  return out;
+}
+
+// shared per-fitLine environment (also used by the FREE SWEEP diagnostic)
+function buildEnv(fi){
+  const seed=J? {y:(J.ball_seed?J.ball_seed.y:0.8)*1920*S}:{y:682};
+  return {
+    useBar:$('useBar').checked,
+    barGrad:+$('barGrad').value, barWMin:+$('barWMin').value, barWMax:+$('barWMax').value,
+    barWDiv:+$('barWDiv').value, gripWin:+$('gripWin').value,
+    ridgeT:+$('ridgeT').value, perp:+$('perpOff').value, strict:$('strictR').checked,
+    proxLen:+$('proxLen').value, gapMax:+$('gapMax').value,
+    yLim:Math.min(H-2, seed.y + +$('matCut').value),
+    maxT:H*0.45,
+    ball:ballByFrame&&ballByFrame[fi],
+    ov:$('ignoreOv').checked?ovMask:null,
+    shaftLen:effShaftLen(),               // null = uncalibrated → span scoring
+    lenW:+$('lenW').value,
+    overPen:$('overPen').checked,
+  };
+}
+// LENGTH-AWARE base score (bar mode + calibrated); uncalibrated or ridge
+// mode falls back to the legacy span base. Replaces the raw span term —
+// paying linearly for length is exactly what let 450px leg edges outbid the
+// ~260px shaft. All multiplicative factors (supTop, width consistency,
+// pivot penalty, fg bonus, head check, vel, continuity) stay outside.
+function baseScore(E,env){
+  if(env.useBar&&env.shaftLen){
+    const L=env.shaftLen;
+    const lengthMatch=1-Math.min(1,Math.abs(E.spanT-L)/L);
+    let b=(E.inlWithin + env.lenW*lengthMatch)*(0.5+E.supTop);
+    if(env.overPen&&E.overshoot) b*=0.5;   // tube continuing past 1.25L ≠ shaft
+    return b;
+  }
+  return E.sup*E.spanT*(0.5+E.supTop);
+}
+function lengthMatchOf(spanT,L){return L?1-Math.min(1,Math.abs(spanT-L)/L):null;}
+
+// ============ CORE PER-LINE EVALUATOR (v7.6.3) ============
+// Walks the ray from (px0,py0) at `ang`, scoring each sample with either the
+// TWIN-EDGE BAR test (default) or the legacy ridge test. NO hard gates here —
+// callers gate. Used identically by the live sweep and FREE SWEEP so the
+// diagnostic scores with the real stack.
+//
+// TWIN-EDGE BAR: a shaft = two parallel opposite-sign edges 2–8px apart with
+// constant width, emerging from the grip; a leg = single edge or a wide pair.
+// Angle-agnostic — the luma profile is sampled PERPENDICULAR to the candidate
+// line (−9..+9px, adjacent-pixel diffs). A sample passes iff the max positive
+// and max negative gradients both exceed barGrad, their separation w is in
+// [barWMin,barWMax], and the line lies BETWEEN the edges (positions straddle
+// 0). Passing samples record w for the width-consistency multiplier.
+function evalLine(px0,py0,ang,env){
+  const th=ang*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+  const pnx=uy, pny=-ux;   // perpendicular unit
+  const border=env.useBar?10:env.perp+1;
+  const samples=[];
+  let fgSum=0,fgN=0, proxTot=0,proxGood=0, gripTot=0,gripGood=0;
+  for(let t=8;t<=env.maxT;t+=2){
+    const x=px0+ux*t, y=py0+uy*t;
+    if(x<border||y<border||x>=W-border||y>=H-border||y>env.yLim) break;
+    if(env.ball){const dx=x-env.ball.x,dy=y-env.ball.y; if(dx*dx+dy*dy<(2.2*env.ball.r)**2){samples.push({t,skip:true});continue;}}
+    let g=false, w;
+    if(env.useBar){
+      // perpendicular luma profile −9..+9; overlay-masked px hold the last
+      // valid value (neutral — creates no gradient, passes nothing)
+      const prof=new Array(19); let last=null, firstIdx=-1;
+      for(let k=-9;k<=9;k++){
+        const p=((y+pny*k)|0)*W+((x+pnx*k)|0);
+        let v=curLuma[p];
+        if(env.ov&&env.ov[p]) v=last;   // neutral
+        if(v===null||v===undefined){ prof[k+9]=null; continue; }
+        prof[k+9]=v; last=v;
+        if(firstIdx<0) firstIdx=k+9;
+      }
+      if(firstIdx>0){ for(let k=0;k<firstIdx;k++) prof[k]=prof[firstIdx]; }
+      if(firstIdx>=0){
+        let maxP=-1e9,maxN=1e9,posP=0,posN=0;
+        for(let k=0;k<18;k++){
+          const dd=prof[k+1]-prof[k], pos=k-9+0.5;
+          if(dd>maxP){maxP=dd;posP=pos;}
+          if(dd<maxN){maxN=dd;posN=pos;}
+        }
+        // both magnitudes over threshold (opposite signs by construction),
+        // width in band, line between the edges
+        if(maxP>=env.barGrad && -maxN>=env.barGrad){
+          const wid=Math.abs(posP-posN);
+          if(wid>=env.barWMin && wid<=env.barWMax
+             && Math.min(posP,posN)<=0 && Math.max(posP,posN)>=0){ g=true; w=wid; }
+        }
+      }
+    } else {
+      // legacy dual-polarity ridge (kept behind the Bar toggle for A/B)
+      const p=(y|0)*W+(x|0);
+      const pl=((y-pny*env.perp)|0)*W+((x-pnx*env.perp)|0);
+      const prr=((y+pny*env.perp)|0)*W+((x+pnx*env.perp)|0);
+      if(!(env.ov&&(env.ov[p]||env.ov[pl]||env.ov[prr]))){   // masked = neutral, no support
+        const c=curLuma[p], dl=c-curLuma[pl], dr=c-curLuma[prr];
+        let ridge;
+        if(env.strict) ridge=((dl>0)===(dr>0)) ? Math.min(Math.abs(dl),Math.abs(dr))*2 : 0;
+        else ridge=Math.abs(dl)+Math.abs(dr);
+        g=ridge>=env.ridgeT;
+      }
+    }
+    if(t<=8+env.proxLen){proxTot++; if(g)proxGood++;}
+    if(t<=8+env.gripWin){gripTot++; if(g)gripGood++;}
+    if(g&&BG){const p=(y|0)*W+(x|0); fgSum+=Math.abs(curLuma[p]-BG[p]); fgN++;}
+    samples.push(w!==undefined?{t,g,w}:{t,g});
+  }
+  // SPAN: extend through good samples, tolerate gaps ≤ gapMax px
+  let spanT=0, lastGood=8, brokenGap=false;
+  for(const s of samples){
+    if(s.skip) continue;
+    if(s.g){
+      if(!brokenGap && s.t-lastGood<=env.gapMax) spanT=s.t;
+      else brokenGap=true;
+      lastGood=s.t;
+    } else if(s.t-lastGood>env.gapMax) brokenGap=true;
+  }
+  // support densities over the span; top half (grip side) is boss.
+  // v7.6.5: inlWithin counts only passing samples within 1.15×SHAFT_LEN of
+  // the grip (a tube that keeps going past the head is not the shaft);
+  // overshoot = ANY passing sample past 1.25×SHAFT_LEN (span-chain or not —
+  // leg edges run to the frame bottom).
+  let cg=0, ct=0, cgT=0, ctT=0, inlWithin=0, overshoot=false; const ws=[];
+  const L=env.shaftLen;
+  const mid=(8+spanT)/2;
+  for(const s of samples){
+    if(s.skip) continue;
+    if(s.g && L && s.t>LEN_OVERSHOOT_AT*L) overshoot=true;
+    if(s.t>spanT) continue;
+    ct++; if(s.g){cg++; if(!L||s.t<=LEN_INLIER_CUTOFF*L)inlWithin++; if(s.w!==undefined)ws.push(s.w);}
+    if(s.t<=mid){ ctT++; if(s.g)cgT++; }
+  }
+  const sup=ct?cg/ct:0, supTop=ctT?cgT/ctT:0;
+  const prox=proxTot?proxGood/proxTot:0;
+  const grip=gripTot?gripGood/gripTot:0;   // GRIP CONNECTION coverage (first gripWin px)
+  // WIDTH CONSISTENCY: score *= (1 − clamp(stdev(w)/divisor, 0, 0.5))
+  let meanW=null, sdW=null, wMul=1;
+  if(env.useBar&&ws.length){
+    meanW=ws.reduce((a,b)=>a+b,0)/ws.length;
+    sdW=Math.sqrt(ws.reduce((a,b)=>a+(b-meanW)*(b-meanW),0)/ws.length);
+    wMul=1-Math.min(0.5,Math.max(0,sdW/env.barWDiv));
+  }
+  const fgNorm=fgN?Math.min(1,(fgSum/fgN)/40):0;
+  return {samples,spanT,sup,supTop,prox,grip,cg,ct,inlWithin,overshoot,meanW,sdW,wMul,fgNorm,ux,uy};
+}
+
+// fitLine returns {fit, src, innov, predicted, note} — commit=true means this
+// call is a real frame advance (hysteresis counters may mutate).
+function fitLine(pts, fi, commit){
+  const angTol=+$('angTol').value, ancTol=+$('ancTol').value;
+  const usePose=$('usePose').checked&&priors&&priors[fi];
+  const poseW=$('poseW').checked, contW=+$('contW').value, band=+$('band').value;
+  const pr=usePose?getPrior(fi):null;
+  let best=null;
+
+  // ================= PINNED MODE (v7.6.3 = tracker state + bar scoring) =================
+  //   Stage 1 pre-impact: center = blend*pose + (1-blend)*predicted, ±angTol.
+  //   Recovery (pre-impact): no stage-1 fit OR innovation > trigger → union
+  //     sweep predicted±3° ∪ pose±10°, recFac× support gates, rate-limited
+  //     to predicted.
+  //   Post-impact: pose angle DROPPED; sweep predicted ± postTol, anchor PIN
+  //     stays; no fit → hold prediction.
+  //   Switch hysteresis: off-track candidate (>8px at mat) must beat the
+  //     on-track incumbent by swMargin for swConfirm consecutive frames;
+  //     recovery fits exempt from margin, not from confirm.
+  //   Bar scoring (v7.6.3): barSupport replaces ridge-support everywhere
+  //     (density, proximal, top-half) + BAR_MIN_COVERAGE hard gate + width
+  //     consistency multiplier + GRIP CONNECTION hard gate. Foreground stays
+  //     bonus-only, never required, anywhere.
+  if(pr&&$('pin').checked){
+    const preImpact=isPreImpact(fi);
+    const env=buildEnv(fi);
+    const seed=J? {y:(J.ball_seed?J.ball_seed.y:0.8)*1920*S}:{y:682};
+    const matY=seed.y;
+    const predicted=(prevAng!==null)? prevAng+angVel : null;
+    const innov=(predicted!==null)? Math.abs(pr.ang-predicted) : null;
+
+    const minSup0=+$('minSup').value, proxMin0=+$('proxMin').value;
+    const topMin=+$('topMin').value, pivPen=+$('pivPen').value;
+    const minSpan=+$('minSpan').value, maxJump=+$('maxJump').value;
+    const barCov=+$('barCov').value, gripGate=env.useBar&&$('gripGate').checked;
+    const fgW=(BG&&$('useFG').checked)?+$('fgW').value:0;
+    const velW=+$('velW').value, dead=+$('velDead').value;
+    const vx=(velW>0)?handVx(fi):null;
+    const ball=env.ball;
+    // v7.6.4 PIVOT OFFSET: the pose anchor sits ~8-12px off the true grip on
+    // real clips, so every candidate angle also tries perpendicular pivots
+    // −pivMax..+pivMax in 2px steps (was ±ancTol at coarse step)
+    const pivMax=+$('pivMax').value;
+
+    function sweep(angles, supMul, rateRef){
+      const V={swept:0,rate:0,ball:0,prox:0,grip:0,span:0,sup:0,cov:0,top:0,head:0};
+      const minSup=Math.min(0.95,minSup0*supMul), proxMin=Math.min(0.95,proxMin0*supMul);
+      let sBest=null, sStay=null;
+      for(const ang of angles){
+        if(rateRef!==null && Math.abs(ang-rateRef)>maxJump){V.rate++;continue;}   // hard rate limit
+        const th=ang*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+        const pnx=uy, pny=-ux;
+        // PIVOT OFFSET SWEEP (soft pin): pivots up to ±pivMax perpendicular
+        for(let o=-pivMax;o<=pivMax;o+=2){
+        V.swept++;
+        const px0=pr.ax+pnx*o, py0=pr.ay+pny*o;
+        // BALL BOUNDARY: pre-impact, mat-level x may not pass the ball
+        if(preImpact && ball && $('ballBound').checked){
+          const tMat=(ball.y-py0)/uy;
+          if(px0+ux*tMat > ball.x + ball.r*0.8){V.ball++;continue;}
+        }
+        const E=evalLine(px0,py0,ang,env);
+        // PROXIMAL GRIP SUPPORT: shaft evidence must begin at the hands
+        if(E.prox<proxMin){V.prox++;continue;}
+        // GRIP CONNECTION (bar mode, hard gate): the first gripWin px below
+        // the anchor must THEMSELVES reach bar coverage — tube emerges FROM
+        // the grip, not from somewhere down-line
+        if(gripGate && E.grip<barCov){V.grip++;continue;}
+        if(E.spanT<minSpan){V.span++;continue;}
+        if(E.ct<10 || E.sup<minSup){V.sup++;continue;}
+        // BAR_MIN_COVERAGE hard gate (bar mode; NOT scaled by recovery)
+        if(env.useBar && E.sup<barCov){V.cov++;continue;}
+        if(E.supTop<topMin){V.top++;continue;}
+        let score=baseScore(E,env);   // v7.6.5: length-aware when calibrated
+        // HEAD CHECK (pre-impact only): line must end on something dark
+        if(preImpact && $('headCheck').checked){
+          const ex=px0+ux*E.spanT, ey=py0+uy*E.spanT;
+          let dark=0, tot=0;
+          for(let dy=-6;dy<=6;dy+=2)for(let dx=-6;dx<=6;dx+=2){
+            const xx=(ex+dx)|0, yy=(ey+dy)|0;
+            if(xx<0||yy<0||xx>=W||yy>=H) continue;
+            tot++; if(curLuma[yy*W+xx] < +$('darkT').value+15) dark++;
+          }
+          const df=tot?dark/tot:0;
+          if(df<0.25){V.head++;continue;}
+          score*=(0.5+df);
+        }
+        // WIDTH CONSISTENCY (bar mode): constant-width tube scores full
+        score*=E.wMul;
+        // SOFT FOREGROUND: moving-structure BONUS only, never a gate
+        score*=(1+fgW*E.fgNorm);
+        // SOFT VELOCITY COUPLING with deadband
+        if(vx!==null && prevAng!==null && Math.abs(vx)>=dead){
+          const dAng=ang-prevAng;
+          if(Math.abs(dAng)>0.01){
+            const m=((dAng>0)===(vx>0))?1:-1;
+            score*=(1+velW*m);
+          }
+        }
+        // continuity (angle-based, from v6)
+        if(prevLine&&contW>0){
+          const dA=prevLine.ang!==undefined?Math.abs(ang-prevLine.ang):0;
+          score*=Math.max(1-contW, 1-contW*dA/10);
+        }
+        // pivot penalty: wandering off the pose anchor costs points
+        score*=(1-pivPen*Math.abs(o)/Math.max(1,pivMax));
+        if(score<=0) continue;
+        const matX=px0+ux*(matY-py0)/uy;
+        const cand={score,ux,uy,ang,off:o,px0,py0,inl:E.cg,span:E.spanT,hi:E.spanT,lo:0,x1:px0,y1:py0,pinned:true,
+                    samples:E.samples,support:E.sup,supTop:E.supTop,prox:E.prox,grip:E.grip,
+                    meanW:E.meanW,sdW:E.sdW,fg:E.fgNorm,matX,
+                    lenM:lengthMatchOf(E.spanT,env.shaftLen),overshoot:E.overshoot};
+        if(!sBest||score>sBest.score) sBest=cand;
+        if(prevMatX!==null && Math.abs(matX-prevMatX)<=SWITCH_DIST && (!sStay||score>sStay.score)) sStay=cand;
+        }
+      }
+      return {best:sBest,stay:sStay,V};
+    }
+
+    // ---- STAGE 1 ----
+    let center, tol;
+    if(preImpact){
+      const blend=+$('blendP').value;
+      center=(predicted!==null)? blend*pr.ang+(1-blend)*predicted : pr.ang;
+      tol=angTol;
+    } else {
+      // POST-IMPACT: pose angle dropped entirely (measured decoupling)
+      center=(predicted!==null)? predicted : pr.ang;
+      tol=+$('postTol').value;
+    }
+    const s1=sweep(angleRange(center,tol), 1, prevAng);
+
+    // ---- RECOVERY (pre-impact only): no stage-1 fit OR innovation spike ----
+    let rec=null;
+    if(preImpact && (!s1.best || (innov!==null && innov>+$('innovT').value))){
+      let angs=angleRange(pr.ang,REC_POSE_TOL);
+      if(predicted!==null) angs=angleUnion(angleRange(predicted,REC_PRED_TOL),angs);
+      rec=sweep(angs, +$('recFac').value, predicted);
+    }
+    lastVeto={s1:s1.V, rec:rec?rec.V:null};
+
+    // ---- candidate pick + SWITCH HYSTERESIS ----
+    let cand=s1.best?Object.assign({isRec:false},s1.best):null;
+    if(rec&&rec.best&&(!cand||rec.best.score>cand.score)) cand=Object.assign({isRec:true},rec.best);
+    let note='';
+    if(cand && prevMatX!==null && Math.abs(cand.matX-prevMatX)>SWITCH_DIST){
+      // off-track candidate: needs margin (unless recovery) + confirm frames
+      const stays=[s1.stay, rec&&rec.stay].filter(Boolean);
+      const inc=stays.length?stays.reduce((a,b)=>b.score>a.score?b:a):null;
+      const marginOK=cand.isRec || !inc || cand.score>+$('swMargin').value*inc.score;
+      if(!marginOK){
+        note='switch rejected (margin)'; cand=inc?Object.assign({isRec:false},inc):null;
+        if(commit) pendingSwitch=null;
+      } else {
+        const same=pendingSwitch&&Math.abs(pendingSwitch.matX-cand.matX)<=SWITCH_DIST;
+        const count=same?pendingSwitch.count+1:1;
+        if(count>=+$('swConfirm').value){
+          note='switch confirmed ('+count+'f)';
+          if(commit) pendingSwitch=null;
+        } else {
+          if(commit) pendingSwitch={matX:cand.matX,count};
+          note='switch pending '+count+'/'+$('swConfirm').value;
+          cand=inc?Object.assign({isRec:false},inc):null;
+        }
+      }
+    } else if(commit) pendingSwitch=null;
+
+    if(cand) cand.px=(t)=>[cand.px0+cand.ux*t, cand.py0+cand.uy*t];
+    return {fit:cand, src:cand?(cand.isRec?'recovery':'cv'):null, innov, predicted, note};
+  }
+
+  // ================= UNPINNED MODE (legacy, unchanged from v6) =================
+  lastVeto=null;
+  const N=pts.length/2;
+  if(N<+$('minInl').value) return {fit:null,src:null,innov:null,predicted:null,note:''};
+  const stride=Math.max(1,(N/60)|0);
+  for(let a=0;a<N;a+=stride){
+    const b=(a+(N>>1))%N;
+    const x1=pts[2*a],y1=pts[2*a+1],x2=pts[2*b],y2=pts[2*b+1];
+    const dx=x2-x1,dy=y2-y1, len=Math.hypot(dx,dy);
+    if(len<40) continue;
+    let ux=dx/len,uy=dy/len; if(uy<0){ux=-ux;uy=-uy;}
+    const ang=Math.atan2(ux,uy)*180/Math.PI;
+    if(pr){ if(Math.abs(ang-pr.ang)>angTol) continue; }
+    else if(Math.abs(ang)>18) continue;
+    const nx=-uy, ny=ux, c=-(nx*x1+ny*y1);
+    if(pr){ if(Math.abs(nx*pr.ax+ny*pr.ay+c)>ancTol) continue; }
+    let inl=0, lo=1e9, hi=-1e9;
+    for(let k=0;k<N;k++){
+      const px=pts[2*k],py=pts[2*k+1];
+      if(Math.abs(nx*px+ny*py+c)<=band){ inl++; const t=px*ux+py*uy; if(t<lo)lo=t; if(t>hi)hi=t; }
+    }
+    const span=hi-lo;
+    if(inl<+$('minInl').value||span<+$('minSpan').value) continue;
+    let score=inl+0.8*span;
+    if(pr&&poseW){
+      score*=Math.max(0,1-Math.abs(ang-pr.ang)/angTol);
+      score*=Math.max(0,1-Math.abs(nx*pr.ax+ny*pr.ay+c)/ancTol);
+    }
+    if(prevLine&&contW>0){
+      const d0=Math.abs(prevLine.nx*x1+prevLine.ny*y1+prevLine.c);
+      score*=Math.max(1-contW, 1-contW*d0/30);
+    }
+    if(!best||score>best.score) best={score,ux,uy,nx,ny,c,ang,inl,span,lo,hi,x1,y1};
+  }
+  return {fit:best,src:best?'cv':null,innov:null,predicted:null,note:''};
+}
+
+// ============ FREE SWEEP diagnostic (v7.6.3, read-only) ============
+// Current frame only: −25°..+25° in 0.25° steps, every line pinned exactly
+// through the pose anchor (o=0). IGNORES pose angle, prediction, rate limit,
+// hysteresis, ball boundary, PRE/POST mode. Scores with the live evalLine
+// stack (bar/ridge + width consistency + fg bonus); hard gates are NOT
+// applied — their inputs are reported per row instead. Never touches
+// tracking state.
+// Shared free-sweep core (v7.6.4): −25°..+25° × pivot offsets −pivMax..
+// +pivMax (2px steps, perpendicular to each candidate). Per angle keeps the
+// best offset; pivot penalty applied exactly as in the live sweep. NO hard
+// gates, NO memory. Returns rows sorted by score (row = per-angle best).
+function sweepFrameFree(fi){
+  const pr=($('usePose').checked&&priors)?getPrior(fi):null;
+  if(!pr) return null;
+  const env=buildEnv(fi);
+  const fgW=(BG&&$('useFG').checked)?+$('fgW').value:0;
+  const pivPen=+$('pivPen').value, pivMax=+$('pivMax').value;
+  const rows=[];
+  for(let ang=-25;ang<=25.0001;ang+=0.25){
+    const th=ang*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+    const pnx=uy, pny=-ux;
+    let best=null;
+    for(let o=-pivMax;o<=pivMax;o+=2){
+      const px0=pr.ax+pnx*o, py0=pr.ay+pny*o;
+      const E=evalLine(px0,py0,ang,env);
+      const score=baseScore(E,env)*E.wMul*(1+fgW*E.fgNorm)
+        *(1-pivPen*Math.abs(o)/Math.max(1,pivMax));
+      if(!best||score>best.score)
+        best={ang,off:o,px0,py0,score,sup:E.sup,meanW:E.meanW,sdW:E.sdW,prox:E.prox,fg:E.fgNorm,
+              span:E.spanT,grip:E.grip,lenM:lengthMatchOf(E.spanT,env.shaftLen)};
+    }
+    if(best) rows.push(best);
+  }
+  rows.sort((a,b)=>b.score-a.score);
+  return rows;
+}
+$('freeBtn').onclick=()=>{
+  if(!vid.videoWidth||!curLuma){ $('freeOut').textContent='load video + scrub to a frame first'; return; }
+  const fi=+$('scrub').value;
+  const rows=sweepFrameFree(fi);
+  if(!rows){ $('freeOut').textContent='no pose anchor this frame — free sweep needs the anchor pivot'; return; }
+  freeSweep={fi, rows:rows.slice(0,5)};
+  renderFreeOut();
+  render(false);
+};
+
+// ============ SHAFT LENGTH CALIBRATION (v7.6.5) ============
+// Rest window = ball-present frames before launch (all ball frames if no
+// launch), first 60% — the same window computeLaunch uses for restPos. Run
+// the LIVE tracker over those frames; tubeLen of each accepted pinned fit is
+// its spanT (contiguous bar-passing extent from the grip, gaps ≤ gapMax).
+// SHAFT_LEN_PX = median. First run is uncalibrated → span scoring, so the
+// calibration itself never depends on a prior length.
+$('calBtn').onclick=async()=>{
+  if(!vid.videoWidth||!ballByFrame){ $('calStat').textContent='load video + json first'; return; }
+  playing=false; vid.pause(); $('playBtn').textContent='Play';
+  const ballFrames=[];
+  for(let i=0;i<ballByFrame.length;i++)
+    if(ballByFrame[i]&&(launchFrame===null||i<launchFrame)) ballFrames.push(i);
+  const calFrames=ballFrames.slice(0,Math.max(1,Math.floor(ballFrames.length*0.6)));
+  if(calFrames.length<3){ $('calStat').textContent='no rest window (<3 ball frames) — staying uncalibrated'; return; }
+  resetTrack();
+  const lens=[];
+  for(let k=0;k<calFrames.length;k++){
+    const fi=calFrames[k];
+    vid.currentTime=fi*8.333/1000;
+    await new Promise(r=>{vid.onseeked=r;});
+    curLuma=grabLuma();
+    const pr=($('usePose').checked&&priors)?getPrior(fi):null;
+    const pinnedMode=$('pin').checked&&pr;
+    const R=fitLine(pinnedMode?[]:candidates(curLuma,prevLuma,fi),fi,true);
+    if(R.fit&&R.fit.pinned){ lens.push(R.fit.span); commitTrack(R.fit.ang,R.fit.matX,R.fit); }
+    prevLuma=curLuma;
+    if(k%5===0) $('calStat').textContent='calibrating '+k+'/'+calFrames.length+'…';
+  }
+  shaftLenAuto=lens.length?Math.round(medianOf(lens)):null;
+  $('calStat').textContent=shaftLenAuto
+    ?('SHAFT_LEN='+shaftLenAuto+'px (median of '+lens.length+'/'+calFrames.length+' rest fits)')
+    :'calibration failed — no accepted pinned fits in rest window';
+  dumpConsts();
+  resetTrack();
+  vid.currentTime=(+$('scrub').value*8.333)/1000;
+  vid.onseeked=()=>render();
+};
+
+// ============ SWEEP ALL (oracle mode, v7.6.4) ============
+// Free sweep on EVERY frame 0..end — no gates, no memory. oracle[fi] = that
+// frame's #1. The oracle series answers "is per-frame evidence alone enough,
+// and where does the memoryless best contradict physics (identity flips)?"
+$('oracleBtn').onclick=async()=>{
+  if(!vid.videoWidth){ $('oracleStat').textContent='load video first'; return; }
+  if(oracleRunning) return;
+  oracleRunning=true;
+  playing=false; vid.pause(); $('playBtn').textContent='Play';
+  const end=+$('scrub').max;
+  oracle={};
+  const t0=performance.now();
+  for(let fi=0;fi<=end;fi++){
+    vid.currentTime=fi*8.333/1000;
+    await new Promise(r=>{vid.onseeked=r;});
+    curLuma=grabLuma();
+    const rows=sweepFrameFree(fi);
+    if(rows&&rows.length&&rows[0].score>0){
+      const b=rows[0];
+      oracle[fi]={ang:+b.ang.toFixed(2), offset:b.off, score:+b.score.toFixed(2),
+                  barSup:+b.sup.toFixed(3), tubeLen:b.span|0,
+                  lengthMatch:b.lenM!==null&&b.lenM!==undefined?+b.lenM.toFixed(3):null,
+                  px0:+b.px0.toFixed(1), py0:+b.py0.toFixed(1)};
+    }
+    if(fi%5===0) $('oracleStat').textContent='oracle f'+fi+'/'+end+' · '+(((performance.now()-t0)/1000)|0)+'s';
+  }
+  $('oracleStat').textContent='oracle ✓ '+Object.keys(oracle).length+'/'+(end+1)+' frames · '+(((performance.now()-t0)/1000)|0)+'s';
+  oracleSummary();
+  oracleRunning=false;
+  // restore the live view (tracker state was untouched, but luma/seek moved)
+  resetTrack();
+  vid.currentTime=(+$('scrub').value*8.333)/1000;
+  vid.onseeked=()=>render();
+};
+function oracleSummary(){
+  const fis=Object.keys(oracle).map(Number).sort((a,b)=>a-b);
+  if(!fis.length){ $('oracleOut').textContent='oracle: no frames scored (no pose anchors?)'; return; }
+  const jumps=[]; let viol=0;
+  for(let k=1;k<fis.length;k++){
+    if(fis[k]===fis[k-1]+1){
+      const j=Math.abs(oracle[fis[k]].ang-oracle[fis[k-1]].ang);
+      jumps.push(j); if(j>3) viol++;
+    }
+  }
+  const mean=jumps.length?jumps.reduce((a,b)=>a+b,0)/jumps.length:0;
+  const mx=jumps.length?Math.max.apply(null,jumps):0;
+  let tSum=0,tN=0;
+  for(const fi of fis){ if(truths[fi]){ tSum+=Math.abs(oracle[fi].ang-truths[fi].angleDeg); tN++; } }
+  $('oracleOut').innerHTML='ORACLE '+fis.length+' frames · frame-to-frame jump mean '+mean.toFixed(2)+'° · max '+mx.toFixed(2)+'°\n'
+    +'<b class="'+(viol?'fail':'pass')+'">'+viol+' frames |jump|>3°</b> (physics violations = identity flips)'
+    +(tN?('\nmean |Δ| oracle vs truth = '+(tSum/tN).toFixed(2)+'° over '+tN+' labeled frames'):'\n(no truths drawn — no truth comparison)');
+}
+$('oracleExport').onclick=()=>{
+  if(!oracle){ $('oracleStat').textContent='run SWEEP ALL first'; return; }
+  // {frameIdx: {ang, offset, score, barSup, px0, py0}} — px in 480x852 canvas space
+  const blob=new Blob([JSON.stringify(oracle,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='shaft-oracle.json'; a.click();
+};
+function drawOracle(fi){
+  if(!oracle||!oracle[fi]) return;
+  const o=oracle[fi];
+  const th=o.ang*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+  ctx.strokeStyle='#ff9d2e'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(o.px0-ux*15, o.py0-uy*15);
+  ctx.lineTo(o.px0+ux*(H*0.42), o.py0+uy*(H*0.42));
+  ctx.stroke();
+  label(o.px0+ux*(H*0.36)+8, o.py0+uy*(H*0.36)-4,
+        'ORACLE '+(o.ang>=0?'+':'')+o.ang.toFixed(1)+'° ('+(o.offset>0?'+':'')+o.offset+'px)', '#ff9d2e');
+}
+function renderFreeOut(){
+  if(!freeSweep){ $('freeOut').textContent=''; return; }
+  const barCov=+$('barCov').value;
+  const truth=truths[freeSweep.fi];
+  let bestDk=-1;
+  if(truth){
+    let bd=1e9;
+    freeSweep.rows.forEach((r,k)=>{const d=Math.abs(r.ang-truth.angleDeg); if(d<bd){bd=d;bestDk=k;}});
+  }
+  let html='FREE SWEEP f'+freeSweep.fi+' (no gates — raw diagnostic)'+(truth?' · truth '+truth.angleDeg.toFixed(2)+'°':'')+'\n';
+  freeSweep.rows.forEach((r,k)=>{
+    const line='#'+(k+1)+' '+(r.ang>=0?'+':'')+r.ang.toFixed(2)+'° off '+(r.off>0?'+':'')+r.off+'px score '+r.score.toFixed(1)
+      +' barSup '+(100*r.sup|0)+'%'
+      +' w '+(r.meanW!==null?r.meanW.toFixed(1)+'±'+(r.sdW||0).toFixed(1):'—')
+      +' prox '+(100*r.prox|0)+'%'
+      +' fg '+(100*r.fg|0)+'%'
+      +' tubeLen '+(r.span|0)
+      +(r.lenM!==null&&r.lenM!==undefined?' lenM '+r.lenM.toFixed(2):'')
+      +' grip'+(r.grip>=barCov?'✓':'✗')
+      +(truth?' Δ'+Math.abs(r.ang-truth.angleDeg).toFixed(2)+'°':'');
+    html+=(k===bestDk?'<span style="color:#5f5">'+line+'</span>':line)+'\n';
+  });
+  $('freeOut').innerHTML=html;
+}
+
+// ============ DRAW TRUTH mode (v7.6.3) ============
+// Two clicks (grip end, then head end) make a white 3px truth line for the
+// current frame. Stored in truths[fi] in 480x852 CANVAS px (angle is
+// scale-invariant; divide points by S=0.4444 for full-res). + = head end
+// toward target (+x), 0° = straight down — same convention as APP/POSE.
+cv.addEventListener('click',e=>{
+  if(!$('truthMode').checked||!vid.videoWidth) return;
+  const r=cv.getBoundingClientRect();
+  const x=(e.clientX-r.left)*(cv.width/r.width), y=(e.clientY-r.top)*(cv.height/r.height);
+  const fi=+$('scrub').value;
+  if(!truthPending||truthPending.fi!==fi){
+    truthPending={fi,x,y};   // first click = grip end
+  } else {
+    const dx=x-truthPending.x, dy=y-truthPending.y;
+    if(Math.hypot(dx,dy)>4){
+      const ang=Math.atan2(dx,dy)*180/Math.PI;
+      truths[fi]={angleDeg:+ang.toFixed(2),
+                  points:[[+truthPending.x.toFixed(1),+truthPending.y.toFixed(1)],[+x.toFixed(1),+y.toFixed(1)]]};
+    }
+    truthPending=null;
+    updateTruthStat(); renderFreeOut();
+  }
+  render(false);
+});
+function updateTruthStat(){ $('truthStat').textContent=Object.keys(truths).length+' truths'; }
+$('truthExport').onclick=()=>{
+  // {frameIdx: {angleDeg, points}} — points in 480x852 canvas px
+  const blob=new Blob([JSON.stringify(truths,null,1)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='shaft-truths.json'; a.click();
+};
+function drawTruth(fi){
+  const t=truths[fi];
+  if(t){
+    const [p1,p2]=t.points;
+    const dx=p2[0]-p1[0], dy=p2[1]-p1[1], len=Math.hypot(dx,dy)||1;
+    const ux=dx/len, uy=dy/len;
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(p1[0]-ux*30, p1[1]-uy*30);
+    ctx.lineTo(p2[0]+ux*60, p2[1]+uy*60);
+    ctx.stroke();
+    label(p2[0]+ux*60+8, p2[1]+uy*60, 'TRUTH '+(t.angleDeg>=0?'+':'')+t.angleDeg.toFixed(2)+'°', '#ffffff');
+  }
+  if(truthPending&&truthPending.fi===fi){
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(truthPending.x-6,truthPending.y); ctx.lineTo(truthPending.x+6,truthPending.y);
+    ctx.moveTo(truthPending.x,truthPending.y-6); ctx.lineTo(truthPending.x,truthPending.y+6);
+    ctx.stroke();
+    label(truthPending.x+9,truthPending.y-6,'grip — click head end','#ffffff');
+  }
+}
+function drawFreeSweep(fi){
+  if(!freeSweep||freeSweep.fi!==fi) return;
+  const len=H*0.42;
+  for(let k=freeSweep.rows.length-1;k>=0;k--){
+    const r=freeSweep.rows[k];
+    const th=r.ang*Math.PI/180, ux=Math.sin(th), uy=Math.cos(th);
+    if(k===0){ ctx.strokeStyle='#ff9d2e'; ctx.lineWidth=3; ctx.setLineDash([]); }
+    else{ ctx.strokeStyle='rgba(255,157,46,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([6,5]); }
+    ctx.beginPath();
+    ctx.moveTo(r.px0-ux*15, r.py0-uy*15);   // each row draws from ITS pivot
+    ctx.lineTo(r.px0+ux*len, r.py0+uy*len);
+    ctx.stroke();
+    label(r.px0+ux*len+6, r.py0+uy*len+12*k-18, '#'+(k+1)+' '+r.ang.toFixed(2)+'°',
+          k===0?'#ff9d2e':'rgba(255,157,46,0.8)');
+  }
+  ctx.setLineDash([]);
+}
+
+function label(x,y,txt,color){
+  ctx.font='bold 13px Menlo';
+  ctx.fillStyle='rgba(0,0,0,0.8)';
+  ctx.fillText(txt, x+1, y+1);
+  ctx.fillStyle=color;
+  ctx.fillText(txt, x, y);
+}
+function vetoStr(){
+  if(!lastVeto) return '';
+  const f=V=>'swept '+V.swept+' → rate '+V.rate+' · ball '+V.ball
+    +' · prox '+V.prox+' · grip '+V.grip+' · span '+V.span+' · sup '+V.sup
+    +' · cov '+V.cov+' · top '+V.top+' · head '+V.head;
+  let s='<br><small>stage1: '+f(lastVeto.s1);
+  if(lastVeto.rec) s+='<br>recovery: '+f(lastVeto.rec);
+  return s+'</small>';
+}
+// INNOVATION debug: |pose − predicted| per frame, red-flagged past trigger
+function trackDbg(R){
+  let s=' · angVel '+angVel.toFixed(2)+'°/f';
+  if(R.predicted!==null&&R.predicted!==undefined) s+=' · pred '+R.predicted.toFixed(1)+'°';
+  if(R.innov!==null&&R.innov!==undefined){
+    const red=R.innov>+$('innovT').value;
+    s+=' · innov '+(red?'<b style="color:#f66">':'')+R.innov.toFixed(1)+'°'+(red?' ⚑</b>':'');
+  }
+  if(R.note) s+=' · <span style="color:#fd5">'+R.note+'</span>';
+  return s;
+}
+function drawPoseLine(pr,srcTxt,srcColor){
+  const t=pr.ang*Math.PI/180, ux=Math.sin(t), uy=Math.cos(t);
+  ctx.strokeStyle='#00ff44'; ctx.lineWidth=4;
+  ctx.beginPath(); ctx.moveTo(pr.ax-ux*20,pr.ay-uy*20);
+  ctx.lineTo(pr.ax+ux*(H*0.42),pr.ay+uy*(H*0.42)); ctx.stroke();
+  label(pr.ax+ux*(H*0.42)+8, pr.ay+uy*(H*0.42)-4, 'APP '+pr.ang.toFixed(1)+'° · '+srcTxt, srcColor);
+}
+
+function render(advance=true){
+  if(!vid.videoWidth) return;
+  const fi=+$('scrub').value;
+  // commit only on a NEW frame: repeated renders of the same frame (RAF
+  // during slow playback, slider tweaks) must not decay the angVel EMA
+  const commit=advance&&fi!==lastFi;
+  const _L=effShaftLen();
+  setStatus('f'+fi+' · '+(fi*8.33|0)+'ms'
+    +' · launch '+(launchFrame!==null?'f'+launchFrame:'—')
+    +' · '+(isPreImpact(fi)?'PRE':'POST')
+    +' · L='+(_L?_L+'px'+(+$('lenOv').value>0?'(man)':''):'—')+(BG?' · BG✓':''));
+  const L=grabLuma();
+  curLuma=L;
+  ctx.drawImage(vid,0,0,W,H);
+  ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(0,0,W,H);
+  const pr=($('usePose').checked&&priors)?getPrior(fi):null;
+  const pinnedMode=$('pin').checked&&pr;
+  const pts=pinnedMode&&!$('showPix').checked?[]:candidates(L,prevLuma,fi);
+  if($('showPix').checked){ ctx.fillStyle='rgba(0,255,0,0.5)';
+    for(let k=0;k<pts.length;k+=2) ctx.fillRect(pts[k],pts[k+1],1,1); }
+  if(pr){ ctx.strokeStyle='#ff44ff'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(pr.ax,pr.ay,7,0,7); ctx.stroke();
+    const t=pr.ang*Math.PI/180; ctx.strokeStyle='rgba(220,220,220,0.55)'; ctx.lineWidth=1.5; ctx.setLineDash([5,5]);
+    ctx.beginPath(); ctx.moveTo(pr.ax-Math.sin(t)*200,pr.ay-Math.cos(t)*200);
+    ctx.lineTo(pr.ax+Math.sin(t)*260,pr.ay+Math.cos(t)*260); ctx.stroke(); ctx.setLineDash([]);
+    label(pr.ax+Math.sin(t)*260+8, pr.ay+Math.cos(t)*260, 'POSE '+pr.ang.toFixed(1)+'°', '#cccccc'); }
+  const R=fitLine(pts,fi,commit);
+  const fit=R.fit;
+  const preImpact=isPreImpact(fi), mode=preImpact?'PRE':'POST';
+
+  if(fit){
+    const px=fit.pinned?fit.px:(t)=>[fit.ux*t - fit.nx*fit.c, fit.uy*t - fit.ny*fit.c];
+    // dots FIRST (white = supported, red = not), line drawn on top
+    if(fit.pinned&&fit.samples&&$('showSup').checked){
+      for(const s of fit.samples){
+        if(s.skip) continue;
+        const q=px(s.t), past=s.t>fit.hi;
+        ctx.fillStyle=s.g?(past?'rgba(255,255,255,0.3)':'rgba(255,255,255,0.95)')
+                         :(past?'rgba(255,70,70,0.25)':'rgba(255,70,70,0.8)');
+        ctx.fillRect(q[0]-1.5,q[1]-1.5,3,3);
+      }
+    }
+    // FINAL APP LINE: always thick bright green, always on top
+    ctx.strokeStyle='#00ff44'; ctx.lineWidth=4;
+    const p1=px(fit.pinned?-25:fit.lo-15), p2=px(fit.hi+15);
+    ctx.beginPath(); ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.stroke();
+    const hp=px(fit.hi);
+    ctx.strokeStyle='#00ff44'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.arc(hp[0],hp[1],6,0,7); ctx.stroke();
+    // magenta filled dot = pivot actually used (vs magenta circle = raw pose)
+    if(fit.pinned){ ctx.fillStyle='#ff44ff'; ctx.beginPath(); ctx.arc(fit.px0,fit.py0,3.5,0,7); ctx.fill(); }
+    const srcColor=R.src==='recovery'?'#ff6ea8':'#26e0e0';
+    label(p2[0]+8, p2[1]-4, 'APP '+fit.ang.toFixed(1)+'° · '+R.src+' · '+mode, srcColor);
+    if(commit) commitTrack(fit.ang, fit.matX!==undefined?fit.matX:null, fit);
+    $('metrics').innerHTML='<span style="color:'+srcColor+'">'+(R.src==='recovery'?'recovery':'cv_refined')+' ['+mode+']</span>: ang '+fit.ang.toFixed(1)+'°'
+      +truthDelta(fi,fit.ang)
+      +(fit.pinned?(' · support '+(100*fit.support|0)+'% · top '+(100*(fit.supTop||0)|0)+'%'
+        +(fit.meanW!==null&&fit.meanW!==undefined?(' · w '+fit.meanW.toFixed(1)+'±'+(fit.sdW||0).toFixed(1)):'')
+        +' · grip '+(100*(fit.grip||0)|0)+'%'
+        +' · prox '+(100*fit.prox|0)+'% · fg '+(100*(fit.fg||0)|0)+'% · pivot '+(fit.off>0?'+':'')+fit.off+'px'):(' · inliers '+fit.inl))
+      +' · span '+(fit.span|0)+'px'
+      +(fit.lenM!==null&&fit.lenM!==undefined?(' · lenM '+fit.lenM.toFixed(2)+(fit.overshoot?' <span style="color:#f66">overshoot</span>':'')):'')
+      +(pr?(' · pose '+pr.ang.toFixed(1)+'° (Δ'+Math.abs(fit.ang-pr.ang).toFixed(1)+'°)'):'')
+      +trackDbg(R)+vetoStr();
+  }
+  else if(pr && $('poseFB').checked && (preImpact || !pinnedMode)){
+    // POSE FALLBACK (pre-impact only in pinned mode): no CV fit passed
+    drawPoseLine(pr,'pose fallback · '+mode,'#ffb432');
+    if(commit) commitTrack(pr.ang, lineMatX(pr.ax,pr.ay,pr.ang), null);
+    $('metrics').innerHTML='<span style="color:#ffb432">pose_fallback ['+mode+']</span> — no passing CV fit'+truthDelta(fi,pr.ang)+trackDbg(R)+vetoStr();
+  }
+  else if(pinnedMode && !preImpact && R.predicted!==null){
+    // POST-IMPACT HOLD: pose dropped, no fit → the prediction IS the line
+    drawPoseLine({ang:R.predicted,ax:pr.ax,ay:pr.ay},'predicted · POST','#b478ff');
+    if(commit) commitTrack(R.predicted, lineMatX(pr.ax,pr.ay,R.predicted), null);
+    $('metrics').innerHTML='<span style="color:#b478ff">predicted_hold [POST]</span> — post-impact, no passing fit; holding prevAng+angVel'+truthDelta(fi,R.predicted)+trackDbg(R)+vetoStr();
+  }
+  else{
+    if($('pin').checked && !pr){
+      ctx.fillStyle='rgba(200,30,30,0.85)'; ctx.fillRect(0,H/2-24,W,48);
+      ctx.fillStyle='#fff'; ctx.font='14px Menlo';
+      ctx.fillText('PIN INACTIVE — this JSON has no pose_priors', 30, H/2+5);
+    }
+    $('metrics').innerHTML='<span class="fail">no fit this frame ['+mode+']</span>'+trackDbg(R)+vetoStr();
+  }
+  drawOracle(fi);      // oracle line (orange) alongside the live green
+  drawFreeSweep(fi);   // diagnostic overlays on top of everything
+  drawTruth(fi);
+  if(commit){ prevLuma=L; lastFi=fi; }
+}
+
+async function evalRange(a,b){
+  if(!vid.videoWidth) return;
+  let cvN=0,recN=0,fb=0,predN=0,miss=0,tot=0,dSum=0,dN=0,innovMax=0,tSum=0,tN=0;
+  playing=false; vid.pause(); $('playBtn').textContent='Play';
+  resetTrack();
+  $('metrics').innerHTML='evaluating '+a+'–'+b+'…';
+  for(let fi=a;fi<=b;fi++){
+    vid.currentTime=fi*8.333/1000;
+    await new Promise(r=>{vid.onseeked=r;});
+    const L=grabLuma();
+    curLuma=L;
+    const pr=($('usePose').checked&&priors)?getPrior(fi):null;
+    const pinnedMode=$('pin').checked&&pr;
+    const R=fitLine(pinnedMode?[]:candidates(L,prevLuma,fi),fi,true);
+    const fit=R.fit;
+    const preImpact=isPreImpact(fi);
+    tot++;
+    if(R.innov!==null&&R.innov!==undefined&&R.innov>innovMax)innovMax=R.innov;
+    let accepted=null;
+    if(fit){
+      if(R.src==='recovery')recN++; else cvN++;
+      commitTrack(fit.ang, fit.matX!==undefined?fit.matX:null, fit);
+      accepted=fit.ang;
+      if(pr&&preImpact){dSum+=Math.abs(fit.ang-pr.ang); dN++;}
+    }
+    else if(pr&&$('poseFB').checked&&(preImpact||!pinnedMode)){fb++; commitTrack(pr.ang, lineMatX(pr.ax,pr.ay,pr.ang), null); accepted=pr.ang;}
+    else if(pinnedMode&&!preImpact&&R.predicted!==null){predN++; commitTrack(R.predicted, lineMatX(pr.ax,pr.ay,R.predicted), null); accepted=R.predicted;}
+    else miss++;
+    if(accepted!==null&&truths[fi]){tSum+=Math.abs(accepted-truths[fi].angleDeg); tN++;}
+    prevLuma=L;
+  }
+  const found=cvN+recN+fb+predN, rate=100*found/tot;
+  $('metrics').innerHTML='stroke '+a+'–'+b+' · launch '+(launchFrame!==null?'f'+launchFrame:'NONE (all PRE)')
+    +': <b class="'+(rate>95?'pass':'fail')+'">'+rate.toFixed(1)+'%</b> ('+found+'/'+tot+')'
+    +'<br>cv_refined '+cvN+' · recovery '+recN+' · pose_fallback '+fb+' · predicted_hold '+predN+' · miss '+miss
+    +(dN?('<br>mean |Δ cv vs pose| (pre-impact) = '+(dSum/dN).toFixed(2)+'°'):'')
+    +(tN?('<br>mean |Δ vs truth| = '+(tSum/tN).toFixed(2)+'° over '+tN+' truth frames'):'')
+    +'<br>max innovation = '+innovMax.toFixed(1)+'°';
+}
+$('evalBtn144').onclick=()=>evalRange(54,144);
+$('evalBtn165').onclick=()=>evalRange(54,165);
+
+function dumpConsts(){
+  $('consts').value=
+`SCALE: all px values at 480x852 canvas (S=0.4444 of 1080x1920) EXCEPT launch detection (full-res)
+LAUNCH_DIST_PX=8 (FULL-RES 1080-wide px, raw frames[].ball) LAUNCH_REST=median(x,y) over first 60% of ball frames LAUNCH_RULE=dist>thr 2 consecutive frames AND monotonic (d[i+1]>d[i]) PRE_IMPACT=fi<launchFrame NO_LAUNCH=always PRE${launchFrame!==null?' [this clip: launch f'+launchFrame+']':' [this clip: NONE]'}
+SHAFT_LEN_PX=${(()=>{const l=effShaftLen();return l?l+(+$('lenOv').value>0?' (manual)':' (auto median, rest window)'):'UNCALIBRATED (span scoring)';})()} LENGTH_WEIGHT=${$('lenW').value} LEN_INLIER_CUTOFF=1.15 LEN_OVERSHOOT_AT=1.25 OVERSHOOT_PENALTY_X0.5=${$('overPen').checked} LENGTH_BASE=inliers_within_1.15L + LENGTH_WEIGHT*(1-clamp(|tubeLen-L|/L,0,1))
+BAR_SCORING=${$('useBar').checked} BAR_EDGE_MIN_GRAD=${$('barGrad').value} BAR_W_MIN=${$('barWMin').value} BAR_W_MAX=${$('barWMax').value} BAR_MIN_COVERAGE=${$('barCov').value} BAR_W_STDEV_DIV=${$('barWDiv').value} BAR_PROFILE_HALF_PX=9 GRIP_CONNECT_GATE=${$('gripGate').checked} GRIP_CONNECT_WIN_PX=${$('gripWin').value} IGNORE_OVERLAY_COLORS=${$('ignoreOv').checked} OVERLAY_MASK=cyan(G>170&B>170&R<120)|yellow(R>170&G>170&B<120)|magenta(R>170&B>170&G<120)
+ANGVEL_EMA_ALPHA=${$('emaA').value} PRE_IMPACT_POSE_BLEND=${$('blendP').value} INNOV_TRIGGER_DEG=${$('innovT').value} RECOVERY_SUPPORT_FACTOR=${$('recFac').value} RECOVERY_PRED_TOL_DEG=3 RECOVERY_POSE_TOL_DEG=10 POST_IMPACT_TOL_DEG=${$('postTol').value} POST_IMPACT_POSE=dropped POST_IMPACT_NO_FIT=hold_predicted SWITCH_DIST_MAT_PX=8 SWITCH_MARGIN=${$('swMargin').value} SWITCH_CONFIRM_FRAMES=${$('swConfirm').value}
+RIDGE_MIN_CONTRAST=${$('ridgeT').value} RIDGE_PERP_OFFSET_PX=${$('perpOff').value} STRICT_RIDGE=${$('strictR').checked} MIN_SUPPORT_DENSITY=${$('minSup').value} PROX_WINDOW_PX=${$('proxLen').value} PROX_MIN_SUPPORT=${$('proxMin').value} TOP_HALF_MIN_SUPPORT=${$('topMin').value} PIVOT_PENALTY=${$('pivPen').value} MAX_GAP_PX=${$('gapMax').value} MAT_CUTOFF_OFFSET_PX=${$('matCut').value}
+USE_FOREGROUND=${$('useFG').checked} FG_SOFT_WEIGHT=${$('fgW').value} FG_IS_BONUS_ONLY_NEVER_REQUIRED=true BG=median(f0..40,step5)
+VEL_COUPLING_WEIGHT=${$('velW').value} VEL_DEADBAND_PX_PER_FRAME=${$('velDead').value}
+ANCHOR_SMOOTH_MEDIAN3=${$('ancSmooth').checked} PIVOT_MAX_OFFSET_PX=±${$('pivMax').value} PIVOT_STEP_PX=2 POSE_ANGLE_BIAS_DEG=${$('poseBias').value} POSE_ANGLE_TOL_DEG=${$('angTol').value} POSE_ANCHOR_PASS_PX=${$('ancTol').value} PIN_THROUGH_ANCHOR=${$('pin').checked} CAP_ABOVE_GRIP=${$('capGrip').checked} BALL_BOUNDARY_PRE_IMPACT=${$('ballBound').checked} ENDPOINT_DARK_HEAD_CHECK_PRE_IMPACT=${$('headCheck').checked} POSE_LINE_FALLBACK_PRE_IMPACT=${$('poseFB').checked}
+MIN_SPAN=${$('minSpan').value} CONTINUITY_WEIGHT=${$('contW').value} MAX_ANGLE_JUMP_DEG_PER_FRAME=${$('maxJump').value}
+legacy(unpinned+headcheck): HEAD_MAX_LUMA=${$('darkT').value} MOTION_DIFF_MIN_LUMA=${$('motT').value} EDGE_MIN_GRAD=${$('edgeT').value} useEdge=${$('useEdge').checked} thin=${$('thin').checked} RANSAC_BAND=${$('band').value} MIN_INLIERS=${$('minInl').value}`;
+}
+IDS.forEach(id=>$(id+'V').textContent=$(id).value); dumpConsts();
+</script>
+</body></html>

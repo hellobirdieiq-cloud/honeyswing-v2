@@ -27,3 +27,22 @@ All detection thresholds are uncalibrated EXTERNAL ASSUMPTIONS until the
 Phase 0 fixture corpus (10–20 varied putts + 2–3 decoys) exists. Phases 2–4
 (putting phase detection, tempo bands, mode flag / Putt tab) are gated on
 these targets passing and stay unbuilt until explicitly approved.
+
+## playground/ (rescued 2026-07-16)
+
+Browser playgrounds from the putting-CV marathon sessions, copied here verbatim
+from `~/Downloads` because they are the only durable record of the validated
+algorithms and constants (a scratchpad copy lived on ephemeral `/private/tmp`):
+
+- `shaft-playground-v7-6-5.html` — the winning v7.6.5 shaft tracker (twin-edge
+  bar scoring, pinned pose-anchored sweep, SHAFT_LEN rest-window calibration,
+  ball-launch impact detector). Its embedded JS is the porting source for the
+  Phase A2 Swift bar fitter; its `dumpConsts` panel documents the constant set.
+- `head-refinement-test-v8.html` — the fine-takeaway refiner (greenness-ellipse
+  head refinement, hard-cross + ramp-foot onset). Its baked `DATA` blob holds
+  both validation clips' smoothed shaft series, per-frame displacements, event
+  labels, and SHAFT_LEN=194 — golden fixtures for Phase A2.
+
+Both are self-contained: open in a browser, load a `-raw.mov` clip + harness
+JSON export. Validation clips: `51b07a6b-…` (labels 77/120/152) and
+`a347efc8-…` (labels 56/118/150); the exports live outside the repo.
