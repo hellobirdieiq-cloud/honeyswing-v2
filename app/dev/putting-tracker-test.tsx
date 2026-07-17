@@ -12,6 +12,8 @@ import {
   type PuttingTrackResult,
   type PuttingObjectFrame,
 } from '@/modules/vision-camera-pose/src';
+import { runPuttingDetectors } from '@/packages/domain/putting/runPuttingDetectors';
+import type { PuttingDetectorsResult } from '@/packages/domain/putting/types';
 
 /**
  * Putting CV go/no-go gate (Phase 1) — dev-only eyeball harness.
@@ -29,6 +31,12 @@ import {
  *
  * The rest/stroke windows below are METRIC REPORTING ONLY — this is not phase
  * detection, and putting must NEVER fall back to the wrist/pose phase detector.
+ *
+ * Phase A1: after tracking, the pure putting tempo detectors
+ * (packages/domain/putting) run over the pose priors + ball series and their
+ * result is shown as chips and embedded in the export JSON (schema_version 2,
+ * additive `putting_detectors` field). Display + export only — nothing
+ * persists to the DB.
  */
 
 const DEFAULT_SWING_ID = '1d8722b8-618b-4668-baf8-2a90c5aab748';
@@ -319,6 +327,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
   const [status, setStatus] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<GateMetrics | null>(null);
+  const [detectors, setDetectors] = useState<PuttingDetectorsResult | null>(null);
   const [roiAnchor, setRoiAnchor] = useState<string | null>(null);
   const [jsonPath, setJsonPath] = useState<string | null>(null);
   const [overlayPath, setOverlayPath] = useState<string | null>(null);
@@ -334,6 +343,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
     setStatus([]);
     setError(null);
     setMetrics(null);
+    setDetectors(null);
     setRoiAnchor(null);
     setJsonPath(null);
     setOverlayPath(null);
@@ -390,13 +400,25 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       setMetrics(m);
       setRoiAnchor(result.roiAnchor);
 
+      // Phase A1 tempo detectors — pure series math over what was tracked.
+      const det = runPuttingDetectors({
+        posePriors,
+        balls: result.frames.map((f) => (f.ball ? { x: f.ball.x, y: f.ball.y } : null)),
+        stepMs,
+      });
+      setDetectors(det);
+      log(
+        `detectors: TA ${det.takeawayFrame ?? '—'} · TOP ${det.topFrame ?? '—'} · ` +
+          `IMP ${det.impactFrame ?? '—'} · tempo ${det.tempo?.ratio ?? '—'}`,
+      );
+
       log('exporting artifacts…');
       const exportDir = `${FileSystem.documentDirectory}putting-cv-test/`;
       await FileSystem.makeDirectoryAsync(exportDir, { intermediates: true });
 
       const jsonUri = `${exportDir}${id}.json`;
       const payload = {
-        schema_version: 1,
+        schema_version: 2, // v2 = v1 + additive putting_detectors field
         swing_id: id,
         exported_at_ms: Date.now(),
         step_ms: stepMs,
@@ -407,6 +429,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
         head_detector: result.headDetector,
         ball_seed: ballSeed ?? null,
         metrics: m,
+        putting_detectors: det,
         // Harness-side EXTERNAL ASSUMPTION constants (plugin constants are
         // documented in HoneyPuttingTrackerPlugin.swift).
         external_assumptions_used: {
@@ -566,6 +589,34 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
             {line}
           </Text>
         ))}
+
+        {detectors && (
+          <View style={styles.metricsBox}>
+            <Text style={styles.chipLine}>
+              TA {detectors.takeawayFrame != null ? `f${detectors.takeawayFrame}` : '—'} · TOP{' '}
+              {detectors.topFrame != null ? `f${detectors.topFrame}` : '—'} · IMP{' '}
+              {detectors.impactFrame != null ? `f${detectors.impactFrame}` : '—'} · tempo{' '}
+              {detectors.tempo
+                ? `${detectors.tempo.ratio} (${detectors.tempo.backswingMs}/${detectors.tempo.downswingMs}ms)`
+                : '—'}
+            </Text>
+            <Text style={styles.metricLine}>
+              sentinels dropped {detectors.intermediates.sentinel_filtered_count} · crossing{' '}
+              {detectors.intermediates.crossing_frame != null
+                ? `f${detectors.intermediates.crossing_frame}`
+                : '—'}{' '}
+              · plateau{' '}
+              {detectors.intermediates.plateau
+                ? `f${detectors.intermediates.plateau.start}–${detectors.intermediates.plateau.end}`
+                : '—'}
+            </Text>
+            {detectors.intermediates.warnings.length > 0 && (
+              <Text style={styles.gateFail}>
+                warnings: {detectors.intermediates.warnings.join(', ')}
+              </Text>
+            )}
+          </View>
+        )}
 
         {metrics && (
           <View style={styles.metricsBox}>
@@ -783,6 +834,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: 'Menlo',
     marginBottom: 4,
+  },
+  chipLine: {
+    color: '#FFD60A',
+    fontSize: 14,
+    fontFamily: 'Menlo',
+    fontWeight: '700',
+    marginBottom: 6,
   },
   gatePass: {
     color: '#32D74B',
