@@ -23,12 +23,17 @@ import {
   trackPuttingObjects,
   refinePutterHead,
   type PuttingBallSeed,
-  type PuttingPosePrior,
   type PuttingTrackResult,
   type PuttingObjectFrame,
   type PuttingRefinedPoint,
 } from '@/modules/vision-camera-pose/src';
 import { runPuttingDetectors } from '@/packages/domain/putting/runPuttingDetectors';
+import {
+  buildPosePriors,
+  POSE_SHAFT_CAL_OFFSET_DEG,
+  POSE_PRIOR_MIN_CONF,
+  type MotionFrameLite,
+} from '@/packages/domain/putting/buildPosePriors';
 import { smoothShaftSeries } from '@/packages/domain/putting/smoothShaftSeries';
 import { computeRefineWindow } from '@/packages/domain/putting/detectFineTakeaway';
 import { applyFineTakeaway } from '@/packages/domain/putting/applyFineTakeaway';
@@ -114,80 +119,9 @@ const HEAD_MOTION_EPS_PX = 4;
 // (pre-moving decoy) → rest_window "none", rest metrics skipped.
 const REST_ANCHOR_SAMPLE_FRAMES = 24;
 
-// EXTERNAL ASSUMPTION — pose prior calibration: LeadWrist→TrailThumbTip runs
-// +3.0° hot vs the human-measured shaft on fixture 1d8722b8 (+1.85°/+4.22°
-// at f55/f114); subtract the bias before sending. Pair joints below
-// POSE_PRIOR_MIN_CONF → null prior for that frame (pure-CV gates).
-const POSE_SHAFT_CAL_OFFSET_DEG = 3.0;
-const POSE_PRIOR_MIN_CONF = 0.3;
-
-// The 10 hand/wrist joints that survive to motion_frames (adapter drops the
-// other 34 COCO-WholeBody hand points before persist).
-const POSE_HAND_JOINTS = [
-  'leftWrist',
-  'leftThumb',
-  'leftThumbTip',
-  'leftIndex',
-  'leftPinky',
-  'rightWrist',
-  'rightThumb',
-  'rightThumbTip',
-  'rightIndex',
-  'rightPinky',
-] as const;
-
-type MotionFrameLite = {
-  timestampMs?: number;
-  frameWidth?: number;
-  frameHeight?: number;
-  joints?: Record<string, { x: number; y: number; confidence: number } | undefined>;
-};
-
-function foldDeg(a: number): number {
-  let v = a;
-  while (v > 90) v -= 180;
-  while (v <= -90) v += 180;
-  return v;
-}
-
-/**
- * One prior per motion_frames entry — indices align 1:1 with the video grid
- * (verified in docs/putting-cv-test/poseAngleScan.ts). angleDeg = folded
- * leftWrist→rightThumbTip PIXEL-space angle minus the calibration bias;
- * anchor = mean of the confident hand joints, normalized 0-1 (mean in pixel
- * space ÷ frame dims — identical since dims are per-frame constant).
- */
-function buildPosePriors(motionFrames: MotionFrameLite[]): (PuttingPosePrior | null)[] {
-  return motionFrames.map((f) => {
-    const lw = f.joints?.leftWrist;
-    const rt = f.joints?.rightThumbTip;
-    const w = f.frameWidth;
-    const h = f.frameHeight;
-    if (!lw || !rt || !w || !h) return null;
-    if (!(lw.confidence > POSE_PRIOR_MIN_CONF) || !(rt.confidence > POSE_PRIOR_MIN_CONF)) {
-      return null;
-    }
-    const rawAngle = (Math.atan2(rt.x * w - lw.x * w, rt.y * h - lw.y * h) * 180) / Math.PI;
-    let sx = 0;
-    let sy = 0;
-    let n = 0;
-    for (const name of POSE_HAND_JOINTS) {
-      const j = f.joints?.[name];
-      if (j && j.confidence > POSE_PRIOR_MIN_CONF) {
-        sx += j.x;
-        sy += j.y;
-        n += 1;
-      }
-    }
-    if (n === 0) return null;
-    return {
-      angleDeg: foldDeg(foldDeg(rawAngle) - POSE_SHAFT_CAL_OFFSET_DEG),
-      anchorX: sx / n,
-      anchorY: sy / n,
-      confidence: Math.min(lw.confidence, rt.confidence),
-    };
-  });
-}
+// Pose-prior building moved VERBATIM to packages/domain/putting/buildPosePriors.ts
+// (Phase C dedupe — the live putt pipeline shares it). Constants
+// POSE_SHAFT_CAL_OFFSET_DEG / POSE_PRIOR_MIN_CONF live there now.
 
 type GateMetrics = {
   rest_window: { startIdx: number; endIdx: number } | 'none';
