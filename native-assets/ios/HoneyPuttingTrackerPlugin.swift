@@ -412,12 +412,16 @@ class HoneyPuttingTrackerPlugin: NSObject {
       }
 
       // Head detector selection: "shaft" (default — line fit, head = lower
-      // endpoint) or "blob" (legacy dark-blob path, kept intact for A/B on
-      // fixtures). Anything else rejects rather than silently defaulting.
+      // endpoint), "blob" (legacy dark-blob path, kept intact for A/B on
+      // fixtures), or "bar" (Phase A2 — v7.6.5 pinned twin-edge bar fitter,
+      // HoneyPuttingBarFitter.swift, own pass structure below). Anything else
+      // rejects rather than silently defaulting.
       let headDetectorRaw = (options?["headDetector"] as? String) ?? "shaft"
-      guard headDetectorRaw == "shaft" || headDetectorRaw == "blob" else {
+      guard headDetectorRaw == "shaft" || headDetectorRaw == "blob"
+        || headDetectorRaw == "bar" else {
         DispatchQueue.main.async {
-          reject("invalid_head_detector", "headDetector must be \"shaft\" or \"blob\"", nil)
+          reject("invalid_head_detector",
+                 "headDetector must be \"shaft\", \"blob\" or \"bar\"", nil)
         }
         return
       }
@@ -580,6 +584,24 @@ class HoneyPuttingTrackerPlugin: NSObject {
           let ys = anchorDetections.map { $0.y }.sorted()
           unanchoredMatY = ys[ys.count / 2]
         }
+      }
+
+      // ---- BAR MODE (Phase A2): the v7.6.5 pinned bar fitter runs its OWN
+      // pass structure (B' ball-only track → guarded launch + SHAFT_LEN
+      // rest-window calibration → C' calibrated fits). PASS A above is shared
+      // (unchanged); shaft/blob continue into the untouched PASS B below.
+      if headDetectorRaw == "bar" {
+        Self.runBarMode(asset: asset, track: track, preferredTransform: preferredTransform,
+                        grid: grid, durationMs: durationMs,
+                        posePriorsNorm: posePriors,
+                        ballSeedNorm: ballSeedNorm, seedPx0: seedPx,
+                        anchored0: anchored, anchorX0: anchorX, anchorY0: anchorY,
+                        unanchoredMatY: unanchoredMatY, roiAnchorMode: roiAnchorMode,
+                        writeOverlay: writeOverlay, annotateOverlay: annotateOverlay,
+                        analysisW0: analysisW, analysisH0: analysisH,
+                        fullW0: fullW, fullH0: fullH,
+                        resolve: resolve, reject: reject)
+        return
       }
 
       // ---- PASS B: full tracking pass.
@@ -836,6 +858,431 @@ class HoneyPuttingTrackerPlugin: NSObject {
         "frames": frames,
       ]
       DispatchQueue.main.async { resolve(payload) }
+    }
+  }
+
+  // MARK: - BAR MODE (Phase A2 — v7.6.5 fitter passes; fitter math lives in
+  // HoneyPuttingBarFitter.swift, EXTERNAL ASSUMPTION constants documented
+  // there). Ball detection below CALLS the locked ball path read-only —
+  // identical gates/fallback/floor as PASS B; the locked bodies are untouched.
+
+  private static func runBarMode(asset: AVAsset, track: AVAssetTrack,
+                                 preferredTransform: CGAffineTransform,
+                                 grid: [Double], durationMs: Double,
+                                 posePriorsNorm: [(angleDeg: Double, ax: Double, ay: Double)?],
+                                 ballSeedNorm: (x: Double, y: Double)?,
+                                 seedPx0: (x: Double, y: Double)?,
+                                 anchored0: Bool, anchorX0: Double, anchorY0: Double,
+                                 unanchoredMatY: Double?, roiAnchorMode: String,
+                                 writeOverlay: Bool, annotateOverlay: Bool,
+                                 analysisW0: Int, analysisH0: Int, fullW0: Int, fullH0: Int,
+                                 resolve: @escaping RCTPromiseResolveBlock,
+                                 reject: @escaping RCTPromiseRejectBlock) {
+    var analysisW = analysisW0
+    var analysisH = analysisH0
+    var fullW = fullW0
+    var fullH = fullH0
+    var anchored = anchored0
+    var anchorX = anchorX0
+    var anchorY = anchorY0
+    var seedPx = seedPx0
+
+    // ---- PASS B': ball-only track over the full grid (LOCKED path, read-only
+    // calls — same seeded gate / Vision fallback / confidence floor as PASS B).
+    guard let cursorB = DecodeCursor(asset: asset, track: track) else {
+      DispatchQueue.main.async {
+        reject("reader_init_failed", "AVAssetReader init failed (bar ball pass)", nil)
+      }
+      return
+    }
+    var ballDetections: [Detection?] = []
+    var prevBall: (x: Double, y: Double)? = nil
+    for ts in grid {
+      let keepGoing = autoreleasepool { () -> Bool in
+        guard let sample = cursorB.nearestSample(toMs: ts),
+              let cgImage = Self.uprightImage(from: sample, transform: preferredTransform) else {
+          return false
+        }
+        if fullW == 0 {
+          fullW = cgImage.width
+          fullH = cgImage.height
+          analysisW = Self.ANALYSIS_WIDTH
+          let rawH = Int((Double(fullH) * Double(analysisW) / Double(fullW)).rounded())
+          analysisH = rawH - (rawH % 2)
+          if seedPx == nil, let s = ballSeedNorm {
+            let px = (x: s.x * Double(analysisW), y: s.y * Double(analysisH))
+            seedPx = px
+            anchorX = px.x
+            anchorY = px.y
+            anchored = true
+          }
+        }
+        guard let buffer = Self.makeAnalysisBuffer(cgImage, width: analysisW, height: analysisH) else {
+          return false
+        }
+        let band = Self.ballSearchBand(analysisW: analysisW, analysisH: analysisH)
+        let ballGate: (x: Double, y: Double, radius: Double)? = seedPx.map { seed in
+          let c = prevBall ?? seed
+          return (x: c.x, y: c.y, radius: Self.SEEDED_MAX_JUMP_PX)
+        }
+        let ballMask = Self.buildMask(buffer: buffer, roi: band, kind: .brightBall)
+        var ball = Self.selectBlob(mask: ballMask, roi: band, isBall: true, prev: prevBall,
+                                   gate: ballGate)
+        if (ball?.confidence ?? 0) < Self.MIN_CONFIDENCE_FLOOR {
+          ball = Self.visionFallback(image: CIImage(cvPixelBuffer: buffer), roi: band,
+                                     analysisH: analysisH, isBall: true, prev: prevBall,
+                                     gate: ballGate)
+        }
+        if let b = ball, b.confidence < Self.MIN_CONFIDENCE_FLOOR { ball = nil }
+        if let b = ball { prevBall = (b.x, b.y) }
+        ballDetections.append(ball)
+        return true
+      }
+      if !keepGoing { break }
+    }
+    if cursorB.reader.status == .failed {
+      DispatchQueue.main.async {
+        reject("reader_failed",
+               "AVAssetReader failed mid-stream (bar ball pass): \(cursorB.reader.error?.localizedDescription ?? "unknown")",
+               nil)
+      }
+      return
+    }
+    cursorB.cancel()
+    let emittedCount = ballDetections.count
+    guard emittedCount > 0, fullW > 0 else {
+      DispatchQueue.main.async {
+        reject("no_frames", "bar mode decoded zero frames", nil)
+      }
+      return
+    }
+
+    let s = Double(fullW) / Double(analysisW)
+    let balls: [BarBall?] = ballDetections.map { det in
+      det.map { BarBall(x: $0.x, y: $0.y, r: ($0.area / Double.pi).squareRoot()) }
+    }
+
+    // Guarded launch on the FULL-RES ball series — identical semantics to the
+    // TS detectImpact (device cross-check: launchFrameIdx == impactFrame).
+    let fullResBalls: [(x: Double, y: Double)?] = ballDetections.map { det in
+      det.map { (x: $0.x * s, y: $0.y * s) }
+    }
+    let launchInfo = HoneyPuttingBarFitter.computeBallLaunch(fullResBalls: fullResBalls)
+    let launch = launchInfo?.launch
+
+    // Pose priors → analysis px, med3 anchor smoothing, hand-x velocities.
+    var priorsPx: [BarPrior?] = []
+    priorsPx.reserveCapacity(emittedCount)
+    for gi in 0..<emittedCount {
+      let raw = gi < posePriorsNorm.count ? posePriorsNorm[gi] : nil
+      priorsPx.append(raw.map {
+        BarPrior(angleDeg: $0.angleDeg,
+                 ax: $0.ax * Double(analysisW),
+                 ay: $0.ay * Double(analysisH))
+      })
+    }
+    let priors = HoneyPuttingBarFitter.smoothedPriors(priorsPx)
+    let matY = anchored ? anchorY : (unanchoredMatY ?? 0.8 * Double(analysisH))
+
+    // ---- PASS B'': SHAFT_LEN rest-window calibration. Rest window = first
+    // 60% of PRE-LAUNCH ball-present frames (v765 cal button). The cal loop
+    // commits ONLY accepted fits (ladderCommits: false — no pose-fallback
+    // commits during calibration; the fitter never depends on a prior length).
+    var ballFrames: [Int] = []
+    for (i, b) in balls.enumerated() where b != nil {
+      if launch == nil || i < launch! { ballFrames.append(i) }
+    }
+    let calFrames = Array(ballFrames.prefix(max(1, Int(Double(ballFrames.count) * 0.6))))
+    var shaftLen: Double? = nil
+    var acceptedFitCount = 0
+    if calFrames.count >= 3 {
+      guard let cursorCal = DecodeCursor(asset: asset, track: track) else {
+        DispatchQueue.main.async {
+          reject("reader_init_failed", "AVAssetReader init failed (bar cal pass)", nil)
+        }
+        return
+      }
+      var calState = BarFitterState()
+      var lens: [Double] = []
+      for fi in calFrames {
+        let keepGoing = autoreleasepool { () -> Bool in
+          guard let sample = cursorCal.nearestSample(toMs: grid[fi]),
+                let cgImage = Self.uprightImage(from: sample, transform: preferredTransform),
+                let buffer = Self.makeAnalysisBuffer(cgImage, width: analysisW, height: analysisH) else {
+            return false
+          }
+          let luma = HoneyPuttingBarFitter.meanLumaPlane(buffer: buffer)
+          let r = HoneyPuttingBarFitter.fitFrame(
+            luma: luma, W: analysisW, H: analysisH,
+            prior: fi < priors.count ? priors[fi] : nil,
+            ball: balls[fi], preImpact: true, shaftLen: nil, matY: matY,
+            vx: HoneyPuttingBarFitter.handVx(priors, fi),
+            state: &calState, ladderCommits: false)
+          if r.source == "cv" || r.source == "recovery" { lens.append(r.spanPx) }
+          return true
+        }
+        if !keepGoing { break }
+      }
+      cursorCal.cancel()
+      shaftLen = HoneyPuttingBarFitter.medianShaftLen(lens)
+      acceptedFitCount = lens.count
+    }
+
+    // ---- PASS C': calibrated fits over every frame + payload + overlay.
+    guard let cursorC = DecodeCursor(asset: asset, track: track) else {
+      DispatchQueue.main.async {
+        reject("reader_init_failed", "AVAssetReader init failed (bar fit pass)", nil)
+      }
+      return
+    }
+    var overlay: OverlayWriter? = nil
+    var frames: [[String: Any]] = []
+    var state = BarFitterState()
+    var prevBallOverlay: (x: Double, y: Double)? = nil
+    var prevHeadOverlay: (x: Double, y: Double)? = nil
+    for gi in 0..<emittedCount {
+      let keepGoing = autoreleasepool { () -> Bool in
+        guard let sample = cursorC.nearestSample(toMs: grid[gi]),
+              let cgImage = Self.uprightImage(from: sample, transform: preferredTransform),
+              let buffer = Self.makeAnalysisBuffer(cgImage, width: analysisW, height: analysisH) else {
+          return false
+        }
+        if writeOverlay, overlay == nil {
+          overlay = OverlayWriter(width: analysisW, height: analysisH)
+        }
+        let luma = HoneyPuttingBarFitter.meanLumaPlane(buffer: buffer)
+        let preImpact = launch == nil || gi < launch!
+        let fit = HoneyPuttingBarFitter.fitFrame(
+          luma: luma, W: analysisW, H: analysisH,
+          prior: gi < priors.count ? priors[gi] : nil,
+          ball: balls[gi], preImpact: preImpact, shaftLen: shaftLen, matY: matY,
+          vx: HoneyPuttingBarFitter.handVx(priors, gi),
+          state: &state, ladderCommits: true)
+
+        // head export: tube endpoint, cv/recovery fits only (real pixel
+        // evidence; fallback/hold frames carry the line in shaftFit instead).
+        // Confidence = lengthMatch (proxy — locked schema requires a value).
+        var headDet: Detection? = nil
+        if fit.source == "cv" || fit.source == "recovery",
+           let ang = fit.angleDeg, let gx = fit.gripX, let gy = fit.gripY {
+          let th = ang * Double.pi / 180
+          headDet = Detection(x: gx + sin(th) * fit.spanPx,
+                              y: gy + cos(th) * fit.spanPx,
+                              area: 0,
+                              confidence: min(1.0, max(0.0, fit.lengthMatch ?? 0.5)),
+                              source: "bar")
+        }
+
+        if let writer = overlay, !writer.failed {
+          if annotateOverlay {
+            var segment: (x0: Double, y0: Double, x1: Double, y1: Double)? = nil
+            if let ang = fit.angleDeg, let gx = fit.gripX, let gy = fit.gripY {
+              let th = ang * Double.pi / 180
+              let reach = fit.spanPx > 0 ? fit.spanPx : (shaftLen ?? 150)
+              segment = (gx, gy, gx + sin(th) * reach, gy + cos(th) * reach)
+            }
+            Self.drawOverlay(on: buffer, headRoi: Roi(x0: 0, y0: 0, x1: 0, y1: 0),
+                             ball: ballDetections[gi], head: headDet,
+                             lastBall: prevBallOverlay, lastHead: prevHeadOverlay,
+                             shaftSegment: segment,
+                             poseAnchor: priors[gi].map { ($0.ax, $0.ay) },
+                             analysisH: analysisH)
+          }
+          writer.append(buffer, ptsMs: grid[gi])
+        }
+        if let b = ballDetections[gi] { prevBallOverlay = (b.x, b.y) }
+        if let h = headDet { prevHeadOverlay = (h.x, h.y) }
+
+        var frame: [String: Any] = [
+          "timestampMs": grid[gi],
+          "frameWidth": fullW,
+          "frameHeight": fullH,
+        ]
+        if let b = ballDetections[gi] {
+          frame["ball"] = [
+            "x": b.x * s,
+            "y": b.y * s,
+            "radiusPx": (b.area / Double.pi).squareRoot() * s,
+            "confidence": b.confidence,
+            "source": b.source,
+          ]
+        } else {
+          frame["ball"] = NSNull()
+        }
+        if let h = headDet {
+          frame["head"] = [
+            "x": h.x * s,
+            "y": h.y * s,
+            "areaPx": 0,
+            "confidence": h.confidence,
+            "source": "bar",
+          ]
+        } else {
+          frame["head"] = NSNull()
+        }
+        // shaftFit: ANALYSIS px @480w (deliberately NOT scaled — the frozen
+        // bar constants and the TS smoother/refiner operate in this space).
+        var sf: [String: Any] = [
+          "spanPx": fit.spanPx,
+          "score": fit.score,
+          "pivotOffsetPx": fit.pivotOffsetPx,
+          "source": fit.source,
+        ]
+        sf["angleDeg"] = fit.angleDeg ?? NSNull()
+        sf["gripX"] = fit.gripX ?? NSNull()
+        sf["gripY"] = fit.gripY ?? NSNull()
+        sf["matX"] = fit.matX ?? NSNull()
+        sf["lengthMatch"] = fit.lengthMatch ?? NSNull()
+        frame["shaftFit"] = sf
+        frames.append(frame)
+        return true
+      }
+      if !keepGoing { break }
+    }
+    if cursorC.reader.status == .failed {
+      DispatchQueue.main.async {
+        reject("reader_failed",
+               "AVAssetReader failed mid-stream (bar fit pass): \(cursorC.reader.error?.localizedDescription ?? "unknown")",
+               nil)
+      }
+      return
+    }
+    let overlayUri = overlay?.finish()
+
+    var calibration: Any = NSNull()
+    if let l = shaftLen, let info = launchInfo {
+      calibration = [
+        "shaftLenPx": l,
+        "restStartIdx": info.restStart,
+        "restEndIdx": info.restEnd,
+        "acceptedFitCount": acceptedFitCount,
+        "launchFrameIdx": info.launch ?? NSNull(),
+      ] as [String: Any]
+    }
+    let payload: [String: Any] = [
+      "videoDurationMs": durationMs,
+      "frameWidth": fullW,
+      "frameHeight": fullH,
+      "roiAnchor": roiAnchorMode,
+      "headDetector": "bar",
+      "overlayUri": overlayUri ?? NSNull(),
+      "frames": frames,
+      "barCalibration": calibration,
+      "analysisWidth": analysisW,
+      "analysisHeight": analysisH,
+    ]
+    DispatchQueue.main.async { resolve(payload) }
+  }
+
+  // MARK: - refinePutterHead (Phase A2 — windowed greenness-ellipse refiner)
+
+  /// Refines the putter-head position on the caller-specified grid frames.
+  /// The ellipse center per frame is (gripX,gripY) + unit(angleDeg) ×
+  /// (shaftLenPx + headExtPx) — predicted by the TS smoothed series, never
+  /// recomputed here. Per-frame refine failure (or a frame past stream end)
+  /// COASTS on the prediction; only malformed input rejects the call.
+  /// Spec/points are ANALYSIS px @480w.
+  @objc(refinePutterHead:stepMs:spec:resolver:rejecter:)
+  func refinePutterHead(_ videoUri: NSString,
+                        stepMs: NSNumber,
+                        spec: NSDictionary?,
+                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let step = stepMs.doubleValue
+      guard step > 0, step.isFinite else {
+        DispatchQueue.main.async { reject("invalid_step", "stepMs must be > 0, got \(step)", nil) }
+        return
+      }
+      guard let shaftLenPx = (spec?["shaftLenPx"] as? NSNumber)?.doubleValue,
+            shaftLenPx > 0, shaftLenPx.isFinite,
+            let headExtPx = (spec?["headExtPx"] as? NSNumber)?.doubleValue,
+            headExtPx >= 0, headExtPx.isFinite,
+            let rawFrames = spec?["frames"] as? NSArray, rawFrames.count > 0 else {
+        DispatchQueue.main.async {
+          reject("invalid_spec",
+                 "spec must be {frames: [...], shaftLenPx > 0, headExtPx >= 0}", nil)
+        }
+        return
+      }
+      var specFrames: [(gridIdx: Int, gripX: Double, gripY: Double, angleDeg: Double)] = []
+      specFrames.reserveCapacity(rawFrames.count)
+      for item in rawFrames {
+        guard let d = item as? NSDictionary,
+              let gi = (d["gridIdx"] as? NSNumber)?.intValue, gi >= 0,
+              let gx = (d["gripX"] as? NSNumber)?.doubleValue, gx.isFinite,
+              let gy = (d["gripY"] as? NSNumber)?.doubleValue, gy.isFinite,
+              let a = (d["angleDeg"] as? NSNumber)?.doubleValue, a.isFinite else {
+          DispatchQueue.main.async {
+            reject("invalid_spec", "each frame needs {gridIdx>=0, gripX, gripY, angleDeg}", nil)
+          }
+          return
+        }
+        specFrames.append((gi, gx, gy, a))
+      }
+      specFrames.sort { $0.gridIdx < $1.gridIdx }
+
+      guard let url = URL(string: videoUri as String) else {
+        DispatchQueue.main.async {
+          reject("invalid_video", "Could not parse video URI: \(videoUri)", nil)
+        }
+        return
+      }
+      let asset = AVURLAsset(url: url)
+      guard let track = asset.tracks(withMediaType: .video).first else {
+        DispatchQueue.main.async { reject("no_video_track", "asset has no video track", nil) }
+        return
+      }
+      let preferredTransform = track.preferredTransform
+      guard let cursor = DecodeCursor(asset: asset, track: track) else {
+        DispatchQueue.main.async {
+          reject("reader_init_failed", "AVAssetReader init failed (refine pass)", nil)
+        }
+        return
+      }
+
+      var analysisW = 0
+      var analysisH = 0
+      var points: [[String: Any]] = []
+      let reach = shaftLenPx + headExtPx
+      for f in specFrames {
+        autoreleasepool {
+          let th = f.angleDeg * Double.pi / 180
+          let cx = f.gripX + sin(th) * reach
+          let cy = f.gripY + cos(th) * reach
+          var refined: (x: Double, y: Double, count: Int)? = nil
+          if let sample = cursor.nearestSample(toMs: Double(f.gridIdx) * step),
+             let cgImage = Self.uprightImage(from: sample, transform: preferredTransform) {
+            if analysisW == 0 {
+              analysisW = Self.ANALYSIS_WIDTH
+              let rawH = Int((Double(cgImage.height) * Double(analysisW) / Double(cgImage.width)).rounded())
+              analysisH = rawH - (rawH % 2)
+            }
+            if let buffer = Self.makeAnalysisBuffer(cgImage, width: analysisW, height: analysisH) {
+              refined = HoneyPuttingBarFitter.refineHeadEllipse(buffer: buffer, cx: cx, cy: cy,
+                                                                angRad: th)
+            }
+          }
+          if let r = refined {
+            points.append(["gridIdx": f.gridIdx, "x": r.x, "y": r.y,
+                           "coasted": false, "candidateCount": r.count])
+          } else {
+            // Coast on the prediction — never a jump, never a call failure.
+            points.append(["gridIdx": f.gridIdx, "x": cx, "y": cy,
+                           "coasted": true, "candidateCount": 0])
+          }
+        }
+      }
+      if cursor.reader.status == .failed {
+        DispatchQueue.main.async {
+          reject("reader_failed",
+                 "AVAssetReader failed mid-stream (refine pass): \(cursor.reader.error?.localizedDescription ?? "unknown")",
+                 nil)
+        }
+        return
+      }
+      cursor.cancel()
+      DispatchQueue.main.async { resolve(["points": points]) }
     }
   }
 

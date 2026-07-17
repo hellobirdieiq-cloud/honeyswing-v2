@@ -7,13 +7,22 @@ import { getSwingVideoSignedUrl } from '@/lib/getSwingVideoUrl';
 import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
 import {
   trackPuttingObjects,
+  refinePutterHead,
   type PuttingBallSeed,
   type PuttingPosePrior,
   type PuttingTrackResult,
   type PuttingObjectFrame,
+  type PuttingRefinedPoint,
 } from '@/modules/vision-camera-pose/src';
 import { runPuttingDetectors } from '@/packages/domain/putting/runPuttingDetectors';
-import type { PuttingDetectorsResult } from '@/packages/domain/putting/types';
+import { smoothShaftSeries } from '@/packages/domain/putting/smoothShaftSeries';
+import { computeRefineWindow } from '@/packages/domain/putting/detectFineTakeaway';
+import { applyFineTakeaway } from '@/packages/domain/putting/applyFineTakeaway';
+import type {
+  PuttingDetectorsResult,
+  ShaftFitSample,
+  SmoothedShaftFrame,
+} from '@/packages/domain/putting/types';
 
 /**
  * Putting CV go/no-go gate (Phase 1) — dev-only eyeball harness.
@@ -321,7 +330,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
   const [swingId, setSwingId] = useState(DEFAULT_SWING_ID);
   const [seedXText, setSeedXText] = useState(DEFAULT_SEED_X);
   const [seedYText, setSeedYText] = useState(DEFAULT_SEED_Y);
-  const [headDetector, setHeadDetector] = useState<'shaft' | 'blob'>('shaft');
+  const [headDetector, setHeadDetector] = useState<'shaft' | 'blob' | 'bar'>('bar');
   const [overlayMode, setOverlayMode] = useState<'clean' | 'annotated'>('clean');
   const [phase, setPhase] = useState<Phase>('idle');
   const [status, setStatus] = useState<string[]>([]);
@@ -401,11 +410,60 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       setRoiAnchor(result.roiAnchor);
 
       // Phase A1 tempo detectors — pure series math over what was tracked.
-      const det = runPuttingDetectors({
+      const coarseDet = runPuttingDetectors({
         posePriors,
         balls: result.frames.map((f) => (f.ball ? { x: f.ball.x, y: f.ball.y } : null)),
         stepMs,
       });
+
+      // Phase A2 fine takeaway (bar mode only): smoothed series → windowed
+      // native greenness refine → ramp-foot onset. Any failure leaves the
+      // coarse result standing with a specific warning.
+      let smoothed: SmoothedShaftFrame[] | null = null;
+      let refinedPoints: PuttingRefinedPoint[] | null = null;
+      let headExtPx: number | null = null;
+      let det = coarseDet;
+      if (headDetector === 'bar') {
+        const shaftLenPx = result.barCalibration?.shaftLenPx ?? null;
+        let skipReason = 'fine_skipped_not_bar_mode';
+        if (shaftLenPx == null) {
+          skipReason = 'no_shaft_len';
+          log('bar calibration failed — fine takeaway skipped (coarse stands)');
+        } else {
+          headExtPx = Math.round(0.13 * shaftLenPx); // D3 ratio — 0.13×194 ≈ 25
+          const shaftFits: ShaftFitSample[] = result.frames.map((f) => f.shaftFit ?? null);
+          smoothed = smoothShaftSeries(shaftFits, shaftLenPx, headExtPx);
+          if (smoothed == null) {
+            skipReason = 'no_anchors';
+            log('no anchor fits (lengthMatch ≥ 0.6) — fine takeaway skipped');
+          } else if (coarseDet.takeawayFrame != null && coarseDet.topFrame != null) {
+            const win = computeRefineWindow(coarseDet.takeawayFrame, coarseDet.topFrame);
+            const specFrames = [];
+            for (let f = Math.max(0, win.lo); f <= Math.min(win.hi, smoothed.length - 1); f++) {
+              const sf = smoothed[f];
+              specFrames.push({ gridIdx: f, gripX: sf.px, gripY: sf.py, angleDeg: sf.ang });
+            }
+            if (specFrames.length > 0) {
+              log(`refining head over f${specFrames[0].gridIdx}–f${specFrames[specFrames.length - 1].gridIdx}…`);
+              const refined = await refinePutterHead(download.uri, stepMs, {
+                frames: specFrames,
+                shaftLenPx,
+                headExtPx,
+              });
+              refinedPoints = refined.points;
+            }
+          }
+        }
+        const anchorCount = smoothed ? smoothed.filter((sf) => sf.anchor).length : null;
+        det = applyFineTakeaway({
+          base: coarseDet,
+          refinedPoints,
+          headExtPx,
+          anchorCount,
+          stepMs,
+          skipReason,
+        });
+      }
       setDetectors(det);
       log(
         `detectors: TA ${det.takeawayFrame ?? '—'} · TOP ${det.topFrame ?? '—'} · ` +
@@ -418,7 +476,11 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
 
       const jsonUri = `${exportDir}${id}.json`;
       const payload = {
-        schema_version: 2, // v2 = v1 + additive putting_detectors field
+        // v2 = v1 + putting_detectors; v3 = v2 + bar_calibration /
+        // smoothed_series / refined_points (null on non-bar runs). The v3
+        // export IS the refined-disp fixture source for the post-batch
+        // findOnset lock-in (plan Step 6).
+        schema_version: 3,
         swing_id: id,
         exported_at_ms: Date.now(),
         step_ms: stepMs,
@@ -430,6 +492,9 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
         ball_seed: ballSeed ?? null,
         metrics: m,
         putting_detectors: det,
+        bar_calibration: result.barCalibration ?? null,
+        smoothed_series: smoothed,
+        refined_points: refinedPoints,
         // Harness-side EXTERNAL ASSUMPTION constants (plugin constants are
         // documented in HoneyPuttingTrackerPlugin.swift).
         external_assumptions_used: {
@@ -536,7 +601,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       <Text style={styles.seedHint}>middle ball, this clip · both empty = no seed</Text>
 
       <View style={styles.detectorRow}>
-        {(['shaft', 'blob'] as const).map((d) => (
+        {(['bar', 'shaft', 'blob'] as const).map((d) => (
           <Pressable
             key={d}
             onPress={() => setHeadDetector(d)}
@@ -546,7 +611,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
             <Text
               style={[styles.detectorText, headDetector === d && styles.detectorTextActive]}
             >
-              {d === 'shaft' ? 'Head: SHAFT' : 'Head: BLOB'}
+              {d === 'bar' ? 'Head: BAR' : d === 'shaft' ? 'Head: SHAFT' : 'Head: BLOB'}
             </Text>
           </Pressable>
         ))}
@@ -610,6 +675,28 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
                 ? `f${detectors.intermediates.plateau.start}–${detectors.intermediates.plateau.end}`
                 : '—'}
             </Text>
+            {detectors.intermediates.fine && (
+              <Text style={styles.metricLine}>
+                fine: coarse{' '}
+                {detectors.intermediates.fine.coarse_takeaway != null
+                  ? `f${detectors.intermediates.fine.coarse_takeaway}`
+                  : '—'}{' '}
+                · onset{' '}
+                {detectors.intermediates.fine.onset != null
+                  ? `f${detectors.intermediates.fine.onset}`
+                  : '—'}{' '}
+                · cross{' '}
+                {detectors.intermediates.fine.hard_cross != null
+                  ? `f${detectors.intermediates.fine.hard_cross}`
+                  : '—'}{' '}
+                · σ {detectors.intermediates.fine.sigma_px ?? '—'}px · L{' '}
+                {detectors.intermediates.fine.head_ext_px != null
+                  ? `${detectors.intermediates.fine.head_ext_px}ext`
+                  : '—'}{' '}
+                · anchors {detectors.intermediates.fine.anchor_count ?? '—'} · coast{' '}
+                {detectors.intermediates.fine.coasted_count ?? '—'}
+              </Text>
+            )}
             {detectors.intermediates.warnings.length > 0 && (
               <Text style={styles.gateFail}>
                 warnings: {detectors.intermediates.warnings.join(', ')}

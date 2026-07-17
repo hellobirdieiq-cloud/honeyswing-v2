@@ -37,6 +37,7 @@ const SOURCE_FILES = [
   "HoneyRtmwOneShotPlugin.swift",
   "HoneyPuttingTrackerPlugin.m",
   "HoneyPuttingTrackerPlugin.swift",
+  "HoneyPuttingBarFitter.swift",
   "HoneyAppleVisionBodyConfirmPlugin.m",
   "HoneyAppleVisionBodyConfirmPlugin.swift",
   "HoneyWatchImuModule.m",
