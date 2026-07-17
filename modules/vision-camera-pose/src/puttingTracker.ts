@@ -140,6 +140,12 @@ export async function trackPuttingObjects(
   stepMs: number,
   options: {
     writeOverlay: boolean;
+    /**
+     * "clean" (default) — the overlay .mov is raw decoded frames, nothing
+     * drawn. "annotated" — markers/line/ROI burned in (debug). Tracking and
+     * the ball path are unaffected either way.
+     */
+    overlayMode?: 'clean' | 'annotated';
     ballSeed?: PuttingBallSeed;
     debugCandidates?: boolean;
     /**

@@ -22,9 +22,10 @@ import {
  * Downloads a swing's clip from the swing-videos bucket, runs the native
  * putting tracker on the SAME 8.33ms timestamp grid as pose extraction, then
  * computes the gate metrics and exports <swingId>.json + <swingId>-overlay.mov
- * + <swingId>-raw.mov (untouched full-res source — the overlay is 480w with
- * markers burned in) via the share sheet (manually copied into
- * docs/putting-cv-test/).
+ * + <swingId>-raw.mov (untouched full-res source — the overlay is 480w;
+ * CLEAN mode (default) writes raw decoded frames with nothing drawn,
+ * ANNOTATED burns in the debug markers) via the share sheet (manually copied
+ * into docs/putting-cv-test/).
  *
  * The rest/stroke windows below are METRIC REPORTING ONLY — this is not phase
  * detection, and putting must NEVER fall back to the wrist/pose phase detector.
@@ -313,6 +314,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
   const [seedXText, setSeedXText] = useState(DEFAULT_SEED_X);
   const [seedYText, setSeedYText] = useState(DEFAULT_SEED_Y);
   const [headDetector, setHeadDetector] = useState<'shaft' | 'blob'>('shaft');
+  const [overlayMode, setOverlayMode] = useState<'clean' | 'annotated'>('clean');
   const [phase, setPhase] = useState<Phase>('idle');
   const [status, setStatus] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -372,6 +374,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       const t0 = Date.now();
       const result = await trackPuttingObjects(download.uri, stepMs, {
         writeOverlay: true,
+        overlayMode, // 'clean' = raw frames, nothing drawn; 'annotated' = debug markers
         debugCandidates: true, // dev harness: always dump per-frame diagnostics
         headDetector,
         posePriors,
@@ -445,7 +448,7 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       setError(err instanceof Error ? err.message : String(err));
       setPhase('error');
     }
-  }, [swingId, seedXText, seedYText, headDetector, log]);
+  }, [swingId, seedXText, seedYText, headDetector, overlayMode, log]);
 
   const onShare = useCallback(async (uri: string) => {
     try {
@@ -521,6 +524,21 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
               style={[styles.detectorText, headDetector === d && styles.detectorTextActive]}
             >
               {d === 'shaft' ? 'Head: SHAFT' : 'Head: BLOB'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.detectorRow}>
+        {(['clean', 'annotated'] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setOverlayMode(m)}
+            disabled={phase === 'running'}
+            style={[styles.detectorButton, overlayMode === m && styles.detectorButtonActive]}
+          >
+            <Text style={[styles.detectorText, overlayMode === m && styles.detectorTextActive]}>
+              {m === 'clean' ? 'Overlay: CLEAN' : 'Overlay: ANNOTATED'}
             </Text>
           </Pressable>
         ))}

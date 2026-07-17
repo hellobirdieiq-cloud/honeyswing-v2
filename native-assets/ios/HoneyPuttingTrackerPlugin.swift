@@ -373,10 +373,23 @@ class HoneyPuttingTrackerPlugin: NSObject {
                            rejecter reject: @escaping RCTPromiseRejectBlock) {
     let writeOverlay = (options?["writeOverlay"] as? NSNumber)?.boolValue ?? false
     let debugCandidates = (options?["debugCandidates"] as? NSNumber)?.boolValue ?? false
+    // Overlay CONTENT mode: "clean" (default) — the exported overlay video is
+    // the raw decoded analysis frames with NOTHING drawn (no line, dots, or
+    // rings). "annotated" — markers burned in (debug). Ball path and all
+    // tracking logic are untouched either way; this only changes what the
+    // overlay writer draws.
+    let overlayModeRaw = (options?["overlayMode"] as? String) ?? "clean"
+    let annotateOverlay = overlayModeRaw == "annotated"
     DispatchQueue.global(qos: .userInitiated).async {
       let step = stepMs.doubleValue
       guard step > 0, step.isFinite else {
         DispatchQueue.main.async { reject("invalid_step", "stepMs must be > 0, got \(step)", nil) }
+        return
+      }
+      guard overlayModeRaw == "clean" || overlayModeRaw == "annotated" else {
+        DispatchQueue.main.async {
+          reject("invalid_overlay_mode", "overlayMode must be \"clean\" or \"annotated\"", nil)
+        }
         return
       }
 
@@ -742,12 +755,16 @@ class HoneyPuttingTrackerPlugin: NSObject {
           if let h = head, h.confidence < Self.MIN_CONFIDENCE_FLOOR { head = nil }
 
           // Overlay drawing happens BEFORE prev-position update so a null
-          // frame rings the LAST-KNOWN position (hollow = missing).
+          // frame rings the LAST-KNOWN position (hollow = missing). In
+          // "clean" mode the buffer is appended untouched — raw decoded
+          // frames, nothing drawn.
           if let writer = overlay, !writer.failed {
-            Self.drawOverlay(on: buffer, headRoi: headRoi, ball: ball, head: head,
-                             lastBall: prevBall, lastHead: prevHead,
-                             shaftSegment: shaftOverlaySegment, poseAnchor: poseAnchorForOverlay,
-                             analysisH: analysisH)
+            if annotateOverlay {
+              Self.drawOverlay(on: buffer, headRoi: headRoi, ball: ball, head: head,
+                               lastBall: prevBall, lastHead: prevHead,
+                               shaftSegment: shaftOverlaySegment, poseAnchor: poseAnchorForOverlay,
+                               analysisH: analysisH)
+            }
             writer.append(buffer, ptsMs: ts)
           }
 
