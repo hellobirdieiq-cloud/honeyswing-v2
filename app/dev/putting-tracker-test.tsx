@@ -1,7 +1,21 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, Share, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Dimensions,
+} from 'react-native';
+import { VideoView } from 'expo-video';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
+import { useSwingVideoClock } from '@/app/analysis/useSwingVideoClock';
+import SwingSkeletonCanvas from '@/components/SwingSkeletonCanvas';
+import PuttingShaftOverlay from '@/components/PuttingShaftOverlay';
+import type { PoseFrame } from '@/packages/pose/PoseTypes';
 import { supabase } from '@/lib/supabase';
 import { getSwingVideoSignedUrl } from '@/lib/getSwingVideoUrl';
 import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
@@ -338,6 +352,25 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
   const [metrics, setMetrics] = useState<GateMetrics | null>(null);
   const [detectors, setDetectors] = useState<PuttingDetectorsResult | null>(null);
   const [roiAnchor, setRoiAnchor] = useState<string | null>(null);
+  // Phase B playback stage (D5 Path 1 — playback-time render; baked export
+  // deferred to roadmap #96). Populated by a bar-mode run.
+  const [localVideoUri, setLocalVideoUri] = useState<string | null>(null);
+  const [playbackFrames, setPlaybackFrames] = useState<PoseFrame[] | null>(null);
+  const [playbackSmoothed, setPlaybackSmoothed] = useState<SmoothedShaftFrame[] | null>(null);
+  const [playbackShaftLen, setPlaybackShaftLen] = useState<number | null>(null);
+  const [playbackAnalysisW, setPlaybackAnalysisW] = useState<number>(480);
+  const [showShaft, setShowShaft] = useState(true);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+
+  // Local-file branch of the clock, verified: videoUri non-null wins at
+  // useSwingVideoClock.ts:50; the signed-URL resolve (:173) and remote retry
+  // (:93) effects both early-return — no Supabase machinery on this path.
+  const clock = useSwingVideoClock({
+    frames: playbackFrames ?? undefined,
+    videoUri: localVideoUri,
+    videoStoragePath: null,
+    isLiveSwing: true,
+  });
   const [jsonPath, setJsonPath] = useState<string | null>(null);
   const [overlayPath, setOverlayPath] = useState<string | null>(null);
   const [rawPath, setRawPath] = useState<string | null>(null);
@@ -354,6 +387,10 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
     setMetrics(null);
     setDetectors(null);
     setRoiAnchor(null);
+    setLocalVideoUri(null);
+    setPlaybackFrames(null);
+    setPlaybackSmoothed(null);
+    setPlaybackShaftLen(null);
     setJsonPath(null);
     setOverlayPath(null);
     setRawPath(null);
@@ -386,6 +423,10 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
       const localUri = `${FileSystem.cacheDirectory}putting-cv-${id}.mov`;
       const download = await FileSystem.downloadAsync(signedUrl, localUri);
       if (download.status !== 200) throw new Error(`download HTTP ${download.status}`);
+      // Playback stage inputs: local clip + skeleton frames (motion_frames
+      // rows ARE PoseFrame[] shape — swingStore.ts read-path assumption).
+      setLocalVideoUri(download.uri);
+      setPlaybackFrames(motionFrames as unknown as PoseFrame[]);
 
       // Same grid step as pose extraction (lib/extractPoseFromVideo.ts:75).
       const stepMs = ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
@@ -453,6 +494,11 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
               refinedPoints = refined.points;
             }
           }
+        }
+        if (smoothed && shaftLenPx != null) {
+          setPlaybackSmoothed(smoothed);
+          setPlaybackShaftLen(shaftLenPx);
+          setPlaybackAnalysisW(result.analysisWidth ?? 480);
         }
         const anchorCount = smoothed ? smoothed.filter((sf) => sf.anchor).length : null;
         det = applyFineTakeaway({
@@ -772,10 +818,95 @@ export default function PuttingTrackerTestScreen(): React.ReactElement {
             <Text style={styles.shareButtonText}>Share raw video</Text>
           </Pressable>
         )}
+
+        {localVideoUri && playbackFrames && (
+          <View style={styles.playbackSection}>
+            <Text style={styles.playbackTitle}>Playback (Phase B overlay)</Text>
+            <View style={styles.detectorRow}>
+              <Pressable
+                onPress={() => setShowShaft((v) => !v)}
+                style={[styles.detectorButton, showShaft && styles.detectorButtonActive]}
+              >
+                <Text style={[styles.detectorText, showShaft && styles.detectorTextActive]}>
+                  SHAFT {showShaft ? 'ON' : 'off'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setShowSkeleton((v) => !v)}
+                style={[styles.detectorButton, showSkeleton && styles.detectorButtonActive]}
+              >
+                <Text style={[styles.detectorText, showSkeleton && styles.detectorTextActive]}>
+                  SKELETON {showSkeleton ? 'ON' : 'off'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={{ width: PLAYBACK_W, height: PLAYBACK_H }}>
+              <VideoView
+                player={clock.player}
+                style={{ width: PLAYBACK_W, height: PLAYBACK_H }}
+                contentFit="contain"
+                nativeControls={false}
+              />
+              {showSkeleton && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <SwingSkeletonCanvas
+                    frames={playbackFrames}
+                    phases={null}
+                    width={PLAYBACK_W}
+                    height={PLAYBACK_H}
+                    playheadIdx={clock.videoIdx ?? 0}
+                    overlay
+                  />
+                </View>
+              )}
+              {showShaft && playbackSmoothed && playbackShaftLen != null && (
+                <PuttingShaftOverlay
+                  smoothed={playbackSmoothed}
+                  shaftLenPx={playbackShaftLen}
+                  analysisWidth={playbackAnalysisW}
+                  playheadIdx={clock.videoIdx ?? 0}
+                  width={PLAYBACK_W}
+                  height={PLAYBACK_H}
+                />
+              )}
+            </View>
+            <View style={styles.detectorRow}>
+              <Pressable
+                onPress={() => (clock.isPlaying ? clock.player?.pause() : clock.player?.play())}
+                style={styles.detectorButton}
+              >
+                <Text style={styles.detectorText}>{clock.isPlaying ? 'Pause' : 'Play'}</Text>
+              </Pressable>
+              {([0.25, 1] as const).map((sp) => (
+                <Pressable
+                  key={sp}
+                  onPress={() => clock.setSpeed(sp)}
+                  style={[styles.detectorButton, clock.speed === sp && styles.detectorButtonActive]}
+                >
+                  <Text
+                    style={[styles.detectorText, clock.speed === sp && styles.detectorTextActive]}
+                  >
+                    {sp}×
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {!playbackSmoothed && (
+              <Text style={styles.seedHint}>
+                shaft line needs a bar-mode run with successful calibration
+              </Text>
+            )}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 }
+
+// Playback stage box: contain-fit portrait 9:16, same identity-mapping
+// assumption as the result screen (skeletonProjection.ts driven mode).
+const PLAYBACK_W = Dimensions.get('window').width - 32;
+const PLAYBACK_H = Math.round(PLAYBACK_W * (16 / 9));
 
 function gateStyle(v: number | null, target: number) {
   if (v === null) return styles.metricLine;
@@ -954,5 +1085,15 @@ const styles = StyleSheet.create({
     color: '#000',
     fontSize: 15,
     fontWeight: '700',
+  },
+  playbackSection: {
+    marginTop: 16,
+    marginBottom: 24,
+  },
+  playbackTitle: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
   },
 });

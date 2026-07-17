@@ -15,6 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { smoothShaftSeries } from './smoothShaftSeries';
+import { shaftDisplaySegment } from './shaftDisplay';
 import type { ShaftFitSample } from './types';
 
 let passed = 0;
@@ -116,6 +117,20 @@ function runClip(label: string, fixtureName: string): void {
   );
   const anchorFlags = fx.frames.every((fr) => smoothed[fr.f].anchor === fr.anchor);
   assert(anchorFlags, 'anchor flags match DATA frame-for-frame');
+
+  // Phase B draw rule (spec §4.6): the drawn segment's far end is the TUBE
+  // END — exactly what DATA hx/hy stores (pivot + unit(ang) × SHAFT_LEN, no
+  // headExt). Same tolerance as the tube-end convention check above.
+  let segMax = 0;
+  for (const fr of fx.frames) {
+    const seg = shaftDisplaySegment(smoothed[fr.f], fx.shaft_len);
+    segMax = Math.max(segMax, Math.abs(seg.x1 - fr.hx), Math.abs(seg.y1 - fr.hy));
+    if (seg.x0 !== smoothed[fr.f].px || seg.y0 !== smoothed[fr.f].py) segMax = Infinity;
+  }
+  assert(
+    segMax <= 0.11,
+    `shaftDisplaySegment end matches DATA tube end ≤ 0.11px (max |Δ| ${segMax.toFixed(4)}px)`,
+  );
 }
 
 runClip('clip1 51b07a6b (161/255 anchors)', 'clip1-shaft-series.json');
