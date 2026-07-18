@@ -33,6 +33,8 @@ import { buildRawTips, dedupeWorstMetricScores } from '../../lib/coachingTips';
 import { deriveTempoDisplay } from '../../packages/domain/swing/tempoDisplay';
 import { useSwingSource } from './useSwingSource';
 import { useSwingVideoClock } from './useSwingVideoClock';
+import { useFullSwingRegrade } from './useFullSwingRegrade';
+import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorRegrade';
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -76,14 +78,18 @@ export default function ResultScreen() {
   // meaningful when a video exists; the no-video path renders skeleton-only and
   // never shows the segmented control.
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
-  // Operator label mode — ANNOTATE-ONLY on this screen: labels persist to
-  // swing_debug.operator_labels (sibling top-level key; the merge RPC is a
-  // top-level shallow merge) and NOTHING is recomputed or re-rendered — the
-  // displayed score/tempo/phases are byte-identical with the bar closed.
+  // Operator label mode — AUTHORITATIVE (P-101): saves regrade tempo/score
+  // from the merged phases through the real pipeline seam (operatorRegrade.ts)
+  // and dual-write row columns + swing_debug.operator_labels (sibling
+  // top-level key; the merge RPC is a top-level shallow merge). The card
+  // gains an Auto | Yours toggle when ≥1 label is saved; with no labels every
+  // displayed value is byte-identical to the pre-P-101 screen.
   const [labelMode, setLabelMode] = useState(false);
   const [phaseLabels, setPhaseLabels] = useState<Record<string, number | undefined>>({});
   const [labelSaveStatus, setLabelSaveStatus] = useState<'ready' | 'saving' | 'saved'>('ready');
   const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
+  // Auto | Yours card view — defaults Yours; inert until corrections exist.
+  const [cardView, setCardView] = useState<'auto' | 'yours'>('yours');
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -100,6 +106,30 @@ export default function ResultScreen() {
     partialReason,
     videoUri,
   } = useSwingSource(effectiveSwingId, isLeftHanded);
+
+  // P-101 regrade view-model: corrections = Yours (merged operator+detected
+  // phases through the pipeline seam), autoView = the ORIGINAL values (under
+  // row-rewrite persistence the row — and thus the reconstructed analysis —
+  // holds Yours after a save, so Auto must come from here, never the row).
+  const { corrections, autoView, savedLabelFrames, registerSavedLabels } = useFullSwingRegrade({
+    swingRecord,
+    analysis,
+    frames: effectiveMotion?.frames,
+    isLiveSwing,
+  });
+
+  // Seed the label bar from previously saved stamps so a re-save EXTENDS the
+  // saved set instead of clobbering it (the RPC replaces the key, and under
+  // row-rewrite a partial re-save would regrade from a partial set). One-shot;
+  // never over stamps the operator has already placed this session.
+  const labelsSeededRef = useRef(false);
+  useEffect(() => {
+    if (labelsSeededRef.current || !savedLabelFrames) return;
+    labelsSeededRef.current = true;
+    setPhaseLabels((prev) =>
+      Object.values(prev).some((v) => v != null) ? prev : { ...savedLabelFrames },
+    );
+  }, [savedLabelFrames]);
 
   // The viewer-side effects below (session accumulator, insight persistence,
   // Today's Focus) must run ONLY for a LIVE just-captured swing — never when
@@ -189,7 +219,32 @@ export default function ResultScreen() {
     }
     const detected: Record<string, number | null> = {};
     for (const ev of fsLabelEvents) detected[ev.key] = ev.detectedFrame;
-    const { error } = await supabase.rpc('merge_swing_debug', {
+
+    // P-101 regrade from the exact payload being persisted — merged phases
+    // through the real pipeline seam (tempo trust gates included).
+    const regrade = regradeFromOperatorPhases({
+      detectedPhases: analysis?.phases,
+      operatorFrames: stamped,
+      frames,
+      stepMs,
+    });
+
+    // 1) Row columns get the regraded (Yours) values — putting precedent.
+    //    honey_boom included: reconstructAnalysisFromRecord reads it back, so
+    //    a stale flag would desync from the rewritten score. NEVER touch
+    //    swing_debug via .update() (wholesale overwrite).
+    const { error: updateError } = await supabase
+      .from('swings')
+      .update({
+        score: regrade.score,
+        tempo_ratio: regrade.tempo?.tempoRatio ?? null,
+        backswing_ms: regrade.tempo != null ? Math.round(regrade.tempo.backswingMs) : null,
+        downswing_ms: regrade.tempo != null ? Math.round(regrade.tempo.downswingMs) : null,
+        honey_boom: regrade.honeyBoom,
+      })
+      .eq('id', effectiveSwingId);
+    // 2) Label record under the SIBLING top-level key.
+    const { error: rpcError } = await supabase.rpc('merge_swing_debug', {
       swing_id: effectiveSwingId,
       patch: {
         operator_labels: {
@@ -202,11 +257,16 @@ export default function ResultScreen() {
         },
       },
     });
-    if (error) {
+    // Partial-failure honesty: ✓ only when BOTH landed; else surface a retry.
+    if (updateError || rpcError) {
       setLabelSaveStatus('ready');
-      setLabelSaveError('save failed — tap to retry');
+      setLabelSaveError(
+        `save incomplete — ${updateError ? 'row update' : 'label record'} failed; tap to retry`,
+      );
       return;
     }
+    registerSavedLabels(stamped, stepMs);
+    setCardView('yours');
     setLabelSaveStatus('saved');
   };
 
@@ -306,7 +366,18 @@ export default function ResultScreen() {
   const tempo = analysis?.tempo;
   const firstFrameTimestamp = effectiveMotion?.frames?.[0]?.timestampMs;
 
-  const { scoreColor, tempoLabelText, coachingCueText } = deriveTempoDisplay(tempo);
+  // P-101 card view selection: with saved corrections BOTH sides come from
+  // the regrade hook — the row-reconstructed analysis may already hold the
+  // Yours values (row-rewrite persistence), so it must never back the Auto
+  // side. With no corrections the pre-P-101 expressions apply unchanged.
+  // (autoView is non-null whenever corrections is; ?? corrections is a type
+  // guard, not a reachable fallback.)
+  const showYours = cardView === 'yours' && corrections != null;
+  const selectedView =
+    corrections == null ? null : showYours ? corrections : (autoView ?? corrections);
+  const cardTempo = selectedView ? selectedView.tempo : tempo;
+
+  const { scoreColor, tempoLabelText, coachingCueText } = deriveTempoDisplay(cardTempo);
 
   // Task 7: frequency-limited coaching tips + Task 8: positive reinforcement
   const { processedTips, positiveResult } = useMemo<{
@@ -464,10 +535,35 @@ export default function ResultScreen() {
                 <Text style={styles.partialBannerSub}>Reason: {partialReason}</Text>
               </View>
             )}
-            {/* 1. Score */}
+            {/* 1. Score (Auto = original; Yours = operator regrade) */}
             <View style={styles.scoreCard}>
+              {corrections != null && (
+                <View style={styles.viewToggleRow}>
+                  {(['auto', 'yours'] as const).map((v) => (
+                    <TouchableOpacity
+                      key={v}
+                      style={[styles.viewToggle, cardView === v && styles.viewToggleActive]}
+                      onPress={() => setCardView(v)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.viewToggleText,
+                          cardView === v && styles.viewToggleTextActive,
+                        ]}
+                      >
+                        {v === 'auto' ? 'Auto' : 'Yours'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
               <Text style={[styles.score, { color: scoreColor }]}>
-                {scoreWithheld ? '—' : displayedScore}
+                {selectedView
+                  ? (selectedView.score ?? '—')
+                  : scoreWithheld
+                    ? '—'
+                    : displayedScore}
               </Text>
               {tempoLabelText && (
                 <Text style={[styles.tempoVerdict, { color: scoreColor }]}>
@@ -477,15 +573,15 @@ export default function ResultScreen() {
               {coachingCueText && (
                 <Text style={styles.coachingCue}>{coachingCueText}</Text>
               )}
-              {tempo && (
+              {cardTempo && (
                 <Text style={styles.tempoRatio}>
-                  {tempo.tempoRatio.toFixed(2)}:1
+                  {cardTempo.tempoRatio.toFixed(2)}:1
                 </Text>
               )}
-              {tempo && (
+              {cardTempo && (
                 <View style={styles.timingRow}>
-                  <Text style={styles.timingItem}>Back {Math.round(tempo.backswingMs)}ms</Text>
-                  <Text style={styles.timingItem}>Down {Math.round(tempo.downswingMs)}ms</Text>
+                  <Text style={styles.timingItem}>Back {Math.round(cardTempo.backswingMs)}ms</Text>
+                  <Text style={styles.timingItem}>Down {Math.round(cardTempo.downswingMs)}ms</Text>
                 </View>
               )}
             </View>
@@ -652,9 +748,10 @@ export default function ResultScreen() {
             </View>
             )}
 
-            {/* 3b. Operator label mode — ANNOTATE-ONLY: persists to
-                swing_debug.operator_labels via the merge RPC; no recompute,
-                displayed values untouched. Video mode only. */}
+            {/* 3b. Operator label mode — AUTHORITATIVE (P-101): saves regrade
+                tempo/score through operatorRegrade.ts and dual-write the row
+                columns + swing_debug.operator_labels; the card gains the
+                Auto | Yours toggle. Video mode only. */}
             {hasVideo && (
               <TouchableOpacity
                 style={labelMode ? styles.phaseChip : styles.phaseChipDisabled}

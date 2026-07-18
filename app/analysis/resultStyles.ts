@@ -99,6 +99,32 @@ export const styles = StyleSheet.create({
     marginBottom: 20,
     paddingVertical: 28,
   },
+  // Auto | Yours view toggle (P-101) — putting-card pattern, GOLD accent
+  viewToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  viewToggle: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+  },
+  viewToggleActive: {
+    borderColor: GOLD,
+    backgroundColor: `${GOLD}22`,
+  },
+  viewToggleText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewToggleTextActive: {
+    color: GOLD,
+  },
   lowConfBadge: {
     color: '#AAAAAA',
     fontSize: 13,

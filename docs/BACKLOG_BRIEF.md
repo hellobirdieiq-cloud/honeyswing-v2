@@ -427,20 +427,29 @@ WHY QUEUED / WHERE / EFFORT / DEPENDS ON / RISK: see T9-74.
 
 ## 2b. Post-100 addendum (added outside the canonical 100; not in the counts)
 
-**P-101 — full-swing score recompute from operator phases** ⬜
+**P-101 — full-swing score recompute from operator phases** ✅ (2026-07-17)
 WHAT: a phase-override input to the full-swing analysis pipeline that consumes
 `swing_debug.operator_labels` (the annotate-only labels shipped with the operator label
 mode) and recomputes tempo/score from operator frames — the full-swing twin of the putting
 "Save Corrections" authoritative path.
-WHY QUEUED: owner directive at label-mode approval (2026-07-17): "ticket only, own session
-later" — it touches `packages/domain/swing/**`, which is protected in the putting/label
-workstream.
-WHERE: `packages/domain/swing/analysisPipeline.ts` (+ tempoAnalysis/scoring consumers),
-`app/analysis/result.tsx` (an Auto|Yours toggle like the putting card).
-EFFORT: M — the pipeline needs an injection point for phase overrides; scoring/tempo are
-already pure.
-DEPENDS ON: operator label mode shipped (done); enough labeled full swings to judge value.
-RISK IF IGNORED: none — labels accumulate either way; recompute is a pure read of them.
+SHIPPED AS: NEW seam `packages/domain/swing/operatorRegrade.ts` (composes the real
+calculateTempo/isTempoTrustworthy/scoreSwing on merged phases — no whole-pipeline re-run:
+historical rows can't replay tilt correction, and the headline score is tempo-only) +
+`app/analysis/useFullSwingRegrade.ts` view-model + Auto|Yours toggle on the result card.
+Owner decision: option (a) row-rewrite on save (score/tempo_ratio/backswing_ms/
+downswing_ms/honey_boom get the Yours values; row updates on SAVE only, never on open).
+Auto side is recomputed from the row's original detected phases (or the
+operator_labels.detected snapshot), never the row columns. Known limit: phase-windowed
+angles are NOT recomputed from operator frames.
+
+**P-102 — phase chips follow the Yours view** ⬜ (parked at P-101 approval, 2026-07-17)
+WHAT: when the result card shows Yours, the phase chips (and skeleton phase markers)
+still seek to the AUTO detected frames; swap them to the effective (operator-merged)
+phases under Yours. `regradeFromOperatorPhases` already returns `effectivePhases`.
+WHY QUEUED: owner directive — display-scope creep kept out of P-101; chips stay Auto.
+WHERE: `app/analysis/result.tsx` (PHASE_CHIPS row + SwingSkeletonCanvas `phases` prop).
+EFFORT: S. DEPENDS ON: P-101 (done). RISK IF IGNORED: minor operator confusion —
+chips seek to Auto frames while the card shows Yours numbers.
 
 ---
 
