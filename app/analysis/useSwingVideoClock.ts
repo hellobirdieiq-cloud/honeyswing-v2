@@ -149,7 +149,9 @@ export function useSwingVideoClock(args: {
 
   // THE one seek path for every phase-chip surface (canvas row + video-section
   // row). Divergent chip behavior was the original sync bug — keep it single.
-  const seekToFrame = useCallback((index: number) => {
+  // opts.autoPlay (default TRUE — existing callers byte-identical): false =
+  // stay paused after the seek (operator label-mode frame stepping).
+  const seekToFrame = useCallback((index: number, opts?: { autoPlay?: boolean }) => {
     // Not-ready guard covers the surfaces without a chip gate (skeleton-only
     // canvas row) — a seek before readyToPlay would be silently dropped anyway.
     if (!player || !isPlayerReady) return;
@@ -159,6 +161,7 @@ export function useSwingVideoClock(args: {
     // paused.
     setVideoIdx(Math.min(Math.max(0, index), Math.max(0, frameCount - 1)));
     if (seekTimerRef.current != null) clearTimeout(seekTimerRef.current);
+    if (opts?.autoPlay === false) return;
     seekTimerRef.current = setTimeout(() => {
       seekTimerRef.current = null;
       if (!isMountedRef.current) return;

@@ -40,7 +40,7 @@ import type { GravityReading } from '../packages/domain/swing/tiltCorrection';
 import { classifyGripFrames, releaseGripBuffer } from '../modules/vision-camera-pose/src';
 import { extractPoseFromVideo } from './extractPoseFromVideo';
 import { runPuttingPipeline } from './puttingPipeline';
-import { setCurrentPuttResult } from './puttResultStore';
+import { setCurrentPuttResult, setCurrentPuttSwingId } from './puttResultStore';
 import { persistPutt } from './persistPutt';
 import { APP_VERSION } from './appVersion';
 import type { PoseFrame } from '../packages/pose/PoseTypes';
@@ -552,7 +552,7 @@ async function processPuttCapture(args: {
       warnings: pipeline.detectors.intermediates.warnings,
     });
 
-    setCurrentPuttResult({
+    const puttToken = setCurrentPuttResult({
       poseFrames: correctedFrames,
       videoUri: video.path,
       recordedAt: Date.now(),
@@ -585,6 +585,9 @@ async function processPuttCapture(args: {
       return null;
     });
     ctx.swingIdPromiseRef.current.then((swingId) => {
+      // Label mode reads the id from the store (token-guarded — a superseded
+      // capture's late insert can't stamp the newer putt).
+      setCurrentPuttSwingId(swingId, puttToken);
       if (!videoEntry.id || videoEntry.abandoned) return;
       if (ctx.videoOutboxEntryIdRef.current === videoEntry.id) {
         ctx.videoOutboxEntryIdRef.current = null;

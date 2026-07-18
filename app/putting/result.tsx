@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,21 @@ import { useRouter } from 'expo-router';
 import { useSwingVideoClock } from '@/app/analysis/useSwingVideoClock';
 import SwingSkeletonCanvas from '@/components/SwingSkeletonCanvas';
 import PuttingShaftOverlay from '@/components/PuttingShaftOverlay';
-import { getCurrentPuttResult } from '@/lib/puttResultStore';
+import PhaseLabelBar from '@/components/PhaseLabelBar';
+import {
+  getCurrentPuttResult,
+  getCurrentPuttSwingId,
+  subscribeCurrentPuttSwingId,
+  getCurrentPuttCaptureToken,
+  getCurrentPuttCorrections,
+  setCurrentPuttCorrections,
+  type PuttCorrections,
+} from '@/lib/puttResultStore';
+import { supabase } from '@/lib/supabase';
+import { APP_VERSION } from '@/lib/appVersion';
+import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
+import { computePuttingTempo } from '@/packages/domain/putting/computePuttingTempo';
+import { tempoBandScore } from '@/packages/domain/putting/tempoBandScore';
 
 /**
  * Putting result screen (Phase C) — TEMPO CARD + Phase B playback overlay.
@@ -37,12 +51,31 @@ function chip(label: string, frame: number | null | undefined): string {
   return `${label} ${frame != null ? `f${frame}` : '—'}`;
 }
 
+type LabelKey = 'takeaway' | 'top' | 'impact';
+
 export default function PuttingResultScreen(): React.ReactElement {
   const router = useRouter();
   // Per-render snapshot (swingMotionStore convention) — set before the push.
   const putt = useMemo(() => getCurrentPuttResult(), []);
+  const puttToken = useMemo(() => getCurrentPuttCaptureToken(), []);
   const [showShaft, setShowShaft] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(true);
+
+  // ── Operator label mode (AUTHORITATIVE — corrections recompute + persist) ──
+  const [labelMode, setLabelMode] = useState(false);
+  const [labels, setLabels] = useState<Partial<Record<LabelKey, number>>>({});
+  const [saveStatus, setSaveStatus] = useState<'ready' | 'saving' | 'saved'>('ready');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Row id arrives after mount (persistPutt resolves async; token-guarded).
+  const [swingId, setSwingId] = useState<string | null>(() => getCurrentPuttSwingId());
+  useEffect(() => subscribeCurrentPuttSwingId(setSwingId), []);
+  // Saved Manual view (survives remount via the store); Auto | Yours toggle.
+  const [corrections, setCorrections] = useState<PuttCorrections | null>(() =>
+    getCurrentPuttCorrections(),
+  );
+  const [cardView, setCardView] = useState<'auto' | 'yours'>(() =>
+    getCurrentPuttCorrections() ? 'yours' : 'auto',
+  );
 
   const clock = useSwingVideoClock({
     frames: putt?.poseFrames,
@@ -64,8 +97,108 @@ export default function PuttingResultScreen(): React.ReactElement {
   }
 
   const { detectors, score, smoothed, shaftLenPx, analysisWidth } = putt.pipeline;
-  const tempo = detectors.tempo;
   const warnings = detectors.intermediates.warnings;
+
+  // Auto = immutable detected pipeline; Yours = saved merged corrections.
+  // Toggle is DISPLAY-ONLY — the row already holds the Manual values.
+  const detected: Record<LabelKey, number | null> = {
+    takeaway: detectors.takeawayFrame,
+    top: detectors.topFrame,
+    impact: detectors.impactFrame,
+  };
+  const showYours = cardView === 'yours' && corrections != null;
+  const cardScore = showYours ? corrections!.score : score;
+  const cardTempo = showYours ? corrections!.tempo : detectors.tempo;
+  const cardFrames = showYours ? corrections!.effectiveFrames : detected;
+
+  const stampedCount = (Object.keys(labels) as LabelKey[]).filter(
+    (k) => labels[k] != null,
+  ).length;
+  const saveState =
+    stampedCount === 0 || swingId == null
+      ? ('disabled' as const)
+      : saveStatus === 'saving'
+        ? ('saving' as const)
+        : saveStatus === 'saved'
+          ? ('saved' as const)
+          : ('ready' as const);
+  const saveDisabledReason =
+    stampedCount === 0
+      ? 'stamp at least one event to save'
+      : swingId == null
+        ? 'row not persisted (sign in and re-record to save corrections)'
+        : undefined;
+
+  const onSaveCorrections = async () => {
+    if (swingId == null || stampedCount === 0) return;
+    setSaveStatus('saving');
+    setSaveError(null);
+    // Merged (Manual) frames: operator where stamped, detected where not.
+    const effective: Record<LabelKey, number | null> = {
+      takeaway: labels.takeaway ?? detected.takeaway,
+      top: labels.top ?? detected.top,
+      impact: labels.impact ?? detected.impact,
+    };
+    const stepMs = ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
+    const tempo = computePuttingTempo(
+      effective.takeaway,
+      effective.top,
+      effective.impact,
+      stepMs,
+    );
+    const newScore = tempoBandScore(tempo?.ratio ?? null);
+
+    // 1) Row columns get the MANUAL values (direct update — RLS user-scoped).
+    //    NEVER touch swing_debug via .update() (wholesale overwrite).
+    const { error: updateError } = await supabase
+      .from('swings')
+      .update({
+        tempo_ratio: tempo?.ratio ?? null,
+        backswing_ms: tempo != null ? Math.round(tempo.backswingMs) : null,
+        downswing_ms: tempo != null ? Math.round(tempo.downswingMs) : null,
+        score: newScore,
+      })
+      .eq('id', swingId);
+    // 2) Label record under the SIBLING top-level key (merge_swing_debug is a
+    //    top-level shallow merge — {putting: …} would clobber the detected
+    //    payload). Stamped events only + FULL detected snapshot.
+    const stampedLabels: Partial<Record<LabelKey, number>> = {};
+    const deltas: Partial<Record<LabelKey, number | null>> = {};
+    for (const k of Object.keys(labels) as LabelKey[]) {
+      const v = labels[k];
+      if (v == null) continue;
+      stampedLabels[k] = v;
+      deltas[k] = detected[k] != null ? v - (detected[k] as number) : null;
+    }
+    const { error: rpcError } = await supabase.rpc('merge_swing_debug', {
+      swing_id: swingId,
+      patch: {
+        putting_operator_labels: {
+          schema: 1,
+          labels: stampedLabels,
+          detected,
+          deltas,
+          step_ms: stepMs,
+          app_version: APP_VERSION,
+          labeled_at_ms: Date.now(),
+        },
+      },
+    });
+
+    // Partial-failure honesty: ✓ only when BOTH landed; else surface a retry.
+    if (updateError || rpcError) {
+      setSaveStatus('ready');
+      setSaveError(
+        `save incomplete — ${updateError ? 'row update' : 'label record'} failed; tap to retry`,
+      );
+      return;
+    }
+    const saved: PuttCorrections = { effectiveFrames: effective, tempo, score: newScore };
+    setCurrentPuttCorrections(saved, puttToken);
+    setCorrections(saved);
+    setCardView('yours');
+    setSaveStatus('saved');
+  };
 
   return (
     <View style={styles.container}>
@@ -76,21 +209,38 @@ export default function PuttingResultScreen(): React.ReactElement {
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* TEMPO CARD */}
+        {/* TEMPO CARD (Auto = detected pipeline; Yours = saved corrections) */}
         <View style={styles.card}>
-          <Text style={styles.scoreText}>{score != null ? score : '—'}</Text>
+          {corrections != null && (
+            <View style={styles.viewToggleRow}>
+              {(['auto', 'yours'] as const).map((v) => (
+                <Pressable
+                  key={v}
+                  style={[styles.viewToggle, cardView === v && styles.viewToggleActive]}
+                  onPress={() => setCardView(v)}
+                >
+                  <Text
+                    style={[styles.viewToggleText, cardView === v && styles.viewToggleTextActive]}
+                  >
+                    {v === 'auto' ? 'Auto' : 'Yours'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+          <Text style={styles.scoreText}>{cardScore != null ? cardScore : '—'}</Text>
           <Text style={styles.scoreCaption}>tempo band</Text>
           <Text style={styles.ratioText}>
-            {tempo ? `${tempo.ratio.toFixed(2)}:1` : '—'}
+            {cardTempo ? `${cardTempo.ratio.toFixed(2)}:1` : '—'}
           </Text>
           <Text style={styles.timingRow}>
-            {tempo
-              ? `Back ${Math.round(tempo.backswingMs)}ms · Down ${Math.round(tempo.downswingMs)}ms`
+            {cardTempo
+              ? `Back ${Math.round(cardTempo.backswingMs)}ms · Down ${Math.round(cardTempo.downswingMs)}ms`
               : 'Tempo withheld'}
           </Text>
           <Text style={styles.chipRow}>
-            {chip('TA', detectors.takeawayFrame)} · {chip('TOP', detectors.topFrame)} ·{' '}
-            {chip('IMP', detectors.impactFrame)}
+            {chip('TA', cardFrames.takeaway)} · {chip('TOP', cardFrames.top)} ·{' '}
+            {chip('IMP', cardFrames.impact)}
           </Text>
           {warnings.length > 0 && (
             <Text style={styles.warningsText}>{warnings.join(' · ')}</Text>
@@ -117,7 +267,45 @@ export default function PuttingResultScreen(): React.ReactElement {
                   SKELETON {showSkeleton ? 'ON' : 'off'}
                 </Text>
               </Pressable>
+              <Pressable
+                onPress={() => setLabelMode((v) => !v)}
+                style={[styles.toggle, labelMode && styles.toggleActive]}
+              >
+                <Text style={[styles.toggleText, labelMode && styles.toggleTextActive]}>
+                  LABEL {labelMode ? 'ON' : 'off'}
+                </Text>
+              </Pressable>
             </View>
+            {labelMode && (
+              <>
+                <PhaseLabelBar
+                  events={[
+                    { key: 'takeaway', label: 'TA', detectedFrame: detected.takeaway },
+                    { key: 'top', label: 'TOP', detectedFrame: detected.top },
+                    { key: 'impact', label: 'IMP', detectedFrame: detected.impact },
+                  ]}
+                  frameCount={putt.poseFrames.length}
+                  videoIdx={clock.videoIdx ?? 0}
+                  seekToFrame={clock.seekToFrame}
+                  labels={labels}
+                  onStamp={(key, frame) => {
+                    setLabels((prev) => ({ ...prev, [key]: frame }));
+                    setSaveStatus('ready');
+                    setSaveError(null);
+                  }}
+                  onResetLabels={() => {
+                    setLabels({});
+                    setSaveStatus('ready');
+                    setSaveError(null);
+                  }}
+                  onSave={() => void onSaveCorrections()}
+                  saveButtonLabel="Save Corrections"
+                  saveState={saveState}
+                  saveDisabledReason={saveDisabledReason}
+                />
+                {saveError != null && <Text style={styles.saveErrorText}>{saveError}</Text>}
+              </>
+            )}
             <View style={{ width: STAGE_W, height: STAGE_H }}>
               <VideoView
                 player={clock.player}
@@ -250,6 +438,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Menlo',
     marginTop: 10,
+    textAlign: 'center',
+  },
+  viewToggleRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 12,
+    alignSelf: 'center',
+  },
+  viewToggle: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+  },
+  viewToggleActive: {
+    borderColor: '#FFD60A',
+    backgroundColor: '#FFD60A22',
+  },
+  viewToggleText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewToggleTextActive: {
+    color: '#FFD60A',
+  },
+  saveErrorText: {
+    color: '#FF6961',
+    fontSize: 12,
+    fontFamily: 'Menlo',
+    marginBottom: 10,
     textAlign: 'center',
   },
   toggleRow: {
