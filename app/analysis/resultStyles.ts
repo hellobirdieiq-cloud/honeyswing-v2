@@ -125,6 +125,53 @@ export const styles = StyleSheet.create({
   viewToggleTextActive: {
     color: GOLD,
   },
+  // Corrections-gated null-tempo notice (FIX 5)
+  tempoUnavailableText: {
+    color: '#888',
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 6,
+  },
+  // Operator label overlay on the video stage (FIX 4)
+  labelOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  labelOverlayCollapse: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  labelOverlayTab: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  labelOverlayTabText: {
+    color: '#0A84FF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  labelSaveSummary: {
+    color: '#30D158',
+    fontSize: 12,
+    fontFamily: 'Menlo',
+    textAlign: 'center',
+    paddingBottom: 8,
+  },
+  labelSaveError: {
+    color: '#FF6961',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingBottom: 8,
+  },
   lowConfBadge: {
     color: '#AAAAAA',
     fontSize: 13,

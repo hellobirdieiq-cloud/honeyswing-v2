@@ -90,6 +90,11 @@ export default function ResultScreen() {
   const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
   // Auto | Yours card view — defaults Yours; inert until corrections exist.
   const [cardView, setCardView] = useState<'auto' | 'yours'>('yours');
+  // Label overlay collapse (video stays fully visible when collapsed) + the
+  // post-save regrade readout shown at the bar (operator sees the result
+  // without scrolling up to the card).
+  const [labelBarCollapsed, setLabelBarCollapsed] = useState(false);
+  const [lastSaveSummary, setLastSaveSummary] = useState<string | null>(null);
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -111,12 +116,13 @@ export default function ResultScreen() {
   // phases through the pipeline seam), autoView = the ORIGINAL values (under
   // row-rewrite persistence the row — and thus the reconstructed analysis —
   // holds Yours after a save, so Auto must come from here, never the row).
-  const { corrections, autoView, savedLabelFrames, registerSavedLabels } = useFullSwingRegrade({
-    swingRecord,
-    analysis,
-    frames: effectiveMotion?.frames,
-    isLiveSwing,
-  });
+  const { corrections, autoView, effectivePhases, savedLabelFrames, registerSavedLabels } =
+    useFullSwingRegrade({
+      swingRecord,
+      analysis,
+      frames: effectiveMotion?.frames,
+      isLiveSwing,
+    });
 
   // Seed the label bar from previously saved stamps so a re-save EXTENDS the
   // saved set instead of clobbering it (the RPC replaces the key, and under
@@ -175,8 +181,10 @@ export default function ResultScreen() {
   const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
   const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
 
-  // ── Operator label bar inputs (annotate-only; see state block above) ──────
-  const fsLabelEvents = useMemo(() => {
+  // ── Operator label bar inputs (see label-mode state block above) ──────────
+  // ALL 5 phases — the persisted operator_labels.detected snapshot must stay
+  // 5-key (it is the history Auto-fallback source in useFullSwingRegrade).
+  const fsAllPhaseEvents = useMemo(() => {
     const defs = [
       { key: 'takeaway', label: 'TA' },
       { key: 'top', label: 'TOP' },
@@ -192,6 +200,12 @@ export default function ResultScreen() {
       };
     });
   }, [analysis]);
+  // UI list: DSW excluded (device feedback — operators don't stamp it; the
+  // detected downswing still fills the effective 5-set in the regrade).
+  const fsLabelEvents = useMemo(
+    () => fsAllPhaseEvents.filter((ev) => ev.key !== 'downswing'),
+    [fsAllPhaseEvents],
+  );
   const fsStampedCount = Object.values(phaseLabels).filter((v) => v != null).length;
   const fsSaveState =
     fsStampedCount === 0 || !effectiveSwingId
@@ -217,8 +231,10 @@ export default function ResultScreen() {
     for (const [k, v] of Object.entries(phaseLabels)) {
       if (v != null) stamped[k] = v;
     }
+    // Snapshot from ALL 5 phases (incl. DSW, absent from the UI list) — the
+    // history Auto-fallback depends on the 5-key detected map.
     const detected: Record<string, number | null> = {};
-    for (const ev of fsLabelEvents) detected[ev.key] = ev.detectedFrame;
+    for (const ev of fsAllPhaseEvents) detected[ev.key] = ev.detectedFrame;
 
     // P-101 regrade from the exact payload being persisted — merged phases
     // through the real pipeline seam (tempo trust gates included).
@@ -227,6 +243,15 @@ export default function ResultScreen() {
       operatorFrames: stamped,
       frames,
       stepMs,
+    });
+    // Device diagnostic (FIX 5): confirms regrade inputs/outputs on-device.
+    console.log('[P-101 regrade]', {
+      stamped,
+      stepMs,
+      frameCount: frames?.length ?? 0,
+      tempo: regrade.tempo,
+      score: regrade.score,
+      overridden: regrade.overriddenPhases,
     });
 
     // 1) Row columns get the regraded (Yours) values — putting precedent.
@@ -267,6 +292,11 @@ export default function ResultScreen() {
     }
     registerSavedLabels(stamped, stepMs);
     setCardView('yours');
+    setLastSaveSummary(
+      regrade.tempo != null
+        ? `Yours: ${regrade.tempo.tempoRatio.toFixed(2)}:1 · ${regrade.score}`
+        : 'Yours: tempo unavailable',
+    );
     setLabelSaveStatus('saved');
   };
 
@@ -584,6 +614,11 @@ export default function ResultScreen() {
                   <Text style={styles.timingItem}>Down {Math.round(cardTempo.downswingMs)}ms</Text>
                 </View>
               )}
+              {/* Corrections-gated only — the no-label withheld case keeps
+                  today's bare em-dash (byte-identity). */}
+              {selectedView && !cardTempo && (
+                <Text style={styles.tempoUnavailableText}>Tempo unavailable</Text>
+              )}
             </View>
 
             {/* 2. Stage: Video / Overlay / Skeleton */}
@@ -671,6 +706,67 @@ export default function ResultScreen() {
                           <Text style={styles.videoPlayButtonIcon}>▶</Text>
                         </TouchableOpacity>
                       )}
+                      {/* Operator label overlay (FIX 4): translucent panel
+                          pinned to the bottom of the video so the frame stays
+                          visible while stepping/stamping; collapsible to a
+                          slim tab. Same handlers as the old below-video bar —
+                          two-tap stamp flow unchanged. */}
+                      {labelMode && effectiveMotion &&
+                        (labelBarCollapsed ? (
+                          <TouchableOpacity
+                            style={styles.labelOverlayTab}
+                            onPress={() => setLabelBarCollapsed(false)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.labelOverlayTabText}>Label ▴</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.labelOverlay}>
+                            <TouchableOpacity
+                              style={styles.labelOverlayCollapse}
+                              onPress={() => setLabelBarCollapsed(true)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.labelOverlayTabText}>Label ▾</Text>
+                            </TouchableOpacity>
+                            <PhaseLabelBar
+                              variant="overlay"
+                              events={fsLabelEvents}
+                              frameCount={effectiveMotion.frames.length}
+                              videoIdx={videoIdx ?? 0}
+                              seekToFrame={seekToFrame}
+                              labels={phaseLabels}
+                              onStamp={(key, frame) => {
+                                setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
+                                setLabelSaveStatus('ready');
+                                setLabelSaveError(null);
+                                setLastSaveSummary(null);
+                              }}
+                              onResetLabels={() => {
+                                setPhaseLabels({});
+                                setLabelSaveStatus('ready');
+                                setLabelSaveError(null);
+                                setLastSaveSummary(null);
+                              }}
+                              onSave={() => void onSaveLabels()}
+                              saveButtonLabel="Save Labels"
+                              saveState={fsSaveState}
+                              saveDisabledReason={
+                                fsStampedCount === 0
+                                  ? 'stamp at least one phase to save'
+                                  : !effectiveSwingId
+                                    ? 'swing not persisted yet'
+                                    : undefined
+                              }
+                            />
+                            {lastSaveSummary != null && (
+                              <Text style={styles.labelSaveSummary}>{lastSaveSummary}</Text>
+                            )}
+                            {labelSaveError != null && (
+                              <Text style={styles.labelSaveError}>{labelSaveError}</Text>
+                            )}
+                          </View>
+                        ))}
                     </View>
                   </View>
                 </>
@@ -683,7 +779,7 @@ export default function ResultScreen() {
                   width={skeletonCanvasW}
                   height={skeletonCanvasH}
                   playheadIdx={null}
-                  onPhaseSeek={(_phase, index) => seekToFrame(index)}
+                  onPhaseSeek={(_phase, index) => seekToFrame(index, { autoPlay: false })}
                 />
               )
             ) : null}
@@ -704,7 +800,7 @@ export default function ResultScreen() {
                       disabled={!enabled}
                       onPress={
                         enabled
-                          ? () => seekToFrame(0)
+                          ? () => seekToFrame(0, { autoPlay: false })
                           : undefined
                       }
                       activeOpacity={0.7}
@@ -730,7 +826,7 @@ export default function ResultScreen() {
                       enabled
                         ? () => {
                             if (typeof phaseEntry.index !== 'number') return;
-                            seekToFrame(phaseEntry.index);
+                            seekToFrame(phaseEntry.index, { autoPlay: false });
                           }
                         : undefined
                     }
@@ -755,7 +851,10 @@ export default function ResultScreen() {
             {hasVideo && (
               <TouchableOpacity
                 style={labelMode ? styles.phaseChip : styles.phaseChipDisabled}
-                onPress={() => setLabelMode((v) => !v)}
+                onPress={() => {
+                  setLabelMode((v) => !v);
+                  setLabelBarCollapsed(false); // re-open expanded
+                }}
                 activeOpacity={0.7}
               >
                 <Text
@@ -766,49 +865,19 @@ export default function ResultScreen() {
                 </Text>
               </TouchableOpacity>
             )}
-            {hasVideo && labelMode && effectiveMotion && (
-              <View style={{ marginTop: 8 }}>
-                <PhaseLabelBar
-                  events={fsLabelEvents}
-                  frameCount={effectiveMotion.frames.length}
-                  videoIdx={videoIdx ?? 0}
-                  seekToFrame={seekToFrame}
-                  labels={phaseLabels}
-                  onStamp={(key, frame) => {
-                    setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
-                    setLabelSaveStatus('ready');
-                    setLabelSaveError(null);
-                  }}
-                  onResetLabels={() => {
-                    setPhaseLabels({});
-                    setLabelSaveStatus('ready');
-                    setLabelSaveError(null);
-                  }}
-                  onSave={() => void onSaveLabels()}
-                  saveButtonLabel="Save Labels"
-                  saveState={fsSaveState}
-                  saveDisabledReason={
-                    fsStampedCount === 0
-                      ? 'stamp at least one phase to save'
-                      : !effectiveSwingId
-                        ? 'swing not persisted yet'
-                        : undefined
-                  }
-                />
-                {labelSaveError != null && (
-                  <Text style={{ color: '#FF6961', fontSize: 12, textAlign: 'center', marginTop: 6 }}>
-                    {labelSaveError}
-                  </Text>
-                )}
-              </View>
-            )}
+            {/* Label bar now lives INSIDE the video stage (FIX 4 overlay). */}
 
             {/* 4. Swing Art */}
             {classification?.validity === 'valid' && effectiveMotion && (
               <View style={{ marginTop: 8 }}>
                 <SwingArtCard
                   frames={effectiveMotion.frames}
-                  phases={analysis?.phases ?? []}
+                  // FIX 3 (owner): art follows the card toggle — effective
+                  // (operator-merged) phases under Yours, Auto otherwise.
+                  // No corrections ⇒ exactly the prior expression.
+                  phases={
+                    showYours && effectivePhases ? effectivePhases : (analysis?.phases ?? [])
+                  }
                   width={screenW - 48}
                 />
               </View>

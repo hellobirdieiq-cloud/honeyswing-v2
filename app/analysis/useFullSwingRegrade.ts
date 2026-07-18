@@ -26,7 +26,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SwingRecord } from '../../lib/swingStore';
 import type { AnalysisResult } from '../../packages/domain/swing/analysisPipeline';
-import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
+import type { DetectedPhase, SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import type { SwingTempo } from '../../packages/domain/swing/tempoAnalysis';
 import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorRegrade';
 
@@ -89,6 +89,10 @@ export function useFullSwingRegrade(params: {
   corrections: FullSwingCorrections | null;
   /** Original values for the Auto side; non-null whenever corrections is. */
   autoView: FullSwingViewModel | null;
+  /** Merged (operator + detected) phase set of the Yours regrade — feeds
+   *  display surfaces that follow the toggle (Swing Art). Non-null whenever
+   *  corrections is. */
+  effectivePhases: DetectedPhase[] | null;
   /** Previously saved stamps — seeds the label bar so re-saves EXTEND. */
   savedLabelFrames: Partial<Record<SwingPhase, number>> | null;
   registerSavedLabels: (phases: Partial<Record<SwingPhase, number>>, stepMs: number | null) => void;
@@ -114,21 +118,28 @@ export function useFullSwingRegrade(params: {
     setSaved((prev) => ({ phases, detected: prev?.detected ?? {}, stepMs }));
   };
 
-  const corrections = useMemo<FullSwingCorrections | null>(() => {
+  const regraded = useMemo(() => {
     if (!saved) return null;
-    const r = regradeFromOperatorPhases({
+    return regradeFromOperatorPhases({
       detectedPhases: analysis?.phases,
       operatorFrames: saved.phases,
       frames,
       stepMs: saved.stepMs,
     });
-    return {
-      score: r.score,
-      tempo: r.tempo,
-      honeyBoom: r.honeyBoom,
-      overriddenPhases: r.overriddenPhases,
-    };
   }, [saved, analysis, frames]);
+
+  const corrections = useMemo<FullSwingCorrections | null>(
+    () =>
+      regraded
+        ? {
+            score: regraded.score,
+            tempo: regraded.tempo,
+            honeyBoom: regraded.honeyBoom,
+            overriddenPhases: regraded.overriddenPhases,
+          }
+        : null,
+    [regraded],
+  );
 
   const autoView = useMemo<FullSwingViewModel | null>(() => {
     if (!saved) return null;
@@ -145,5 +156,11 @@ export function useFullSwingRegrade(params: {
     return { score: r.score, tempo: r.tempo, honeyBoom: r.honeyBoom };
   }, [saved, analysis, frames, isLiveSwing]);
 
-  return { corrections, autoView, savedLabelFrames: saved?.phases ?? null, registerSavedLabels };
+  return {
+    corrections,
+    autoView,
+    effectivePhases: regraded?.effectivePhases ?? null,
+    savedLabelFrames: saved?.phases ?? null,
+    registerSavedLabels,
+  };
 }

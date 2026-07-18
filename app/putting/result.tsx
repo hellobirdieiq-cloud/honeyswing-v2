@@ -251,7 +251,7 @@ export default function PuttingResultScreen(): React.ReactElement {
           <Text style={styles.timingRow}>
             {cardTempo
               ? `Back ${Math.round(cardTempo.backswingMs)}ms · Down ${Math.round(cardTempo.downswingMs)}ms`
-              : 'Tempo withheld'}
+              : 'Tempo unavailable'}
           </Text>
           <Text style={styles.chipRow}>
             {chip('TA', cardFrames.takeaway)} · {chip('TOP', cardFrames.top)} ·{' '}

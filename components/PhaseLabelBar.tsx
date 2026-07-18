@@ -4,8 +4,8 @@ import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 /**
  * PhaseLabelBar — operator frame-labeling bar, shared by the putting result
  * screen (authoritative corrections) and the full-swing result screen
- * (annotate-only). Pure UI: no supabase, no domain imports — the host screen
- * owns persistence, recompute, and label state.
+ * (authoritative regrade since P-101). Pure UI: no supabase, no domain
+ * imports — the host screen owns persistence, recompute, and label state.
  *
  * Interactions (owner-specified):
  *  - Stepper −5 · −1 · < f57 > · +1 · +5 — every seek is PAUSED
@@ -44,6 +44,11 @@ interface Props {
   saveButtonLabel: string;
   saveState: LabelSaveState;
   saveDisabledReason?: string;
+  /** 'panel' (default) = the original opaque card below the video (putting).
+   *  'overlay' = transparent-bg compact form for the video-stage overlay:
+   *  tighter paddings + delta ROWS collapse to one tappable line. Interaction
+   *  logic is identical in both variants. */
+  variant?: 'panel' | 'overlay';
 }
 
 export default function PhaseLabelBar({
@@ -58,6 +63,7 @@ export default function PhaseLabelBar({
   saveButtonLabel,
   saveState,
   saveDisabledReason,
+  variant = 'panel',
 }: Props) {
   const [armedKey, setArmedKey] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState<string | null>(null);
@@ -107,9 +113,10 @@ export default function PhaseLabelBar({
   };
 
   const stampedCount = events.filter((ev) => labels[ev.key] != null).length;
+  const overlay = variant === 'overlay';
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, overlay && styles.containerOverlay]}>
       {/* Stepper */}
       <View style={styles.stepperRow}>
         <Pressable style={styles.stepBtn} onPress={() => step(-5)}>
@@ -181,22 +188,46 @@ export default function PhaseLabelBar({
         })}
       </View>
 
-      {/* Delta rows */}
-      {events.map((ev) => {
-        const you = labels[ev.key];
-        const auto = ev.detectedFrame;
-        const delta = you != null && auto != null ? you - auto : null;
-        const warn = delta != null && Math.abs(delta) > DELTA_WARN;
-        return (
-          <Pressable key={ev.key} style={styles.deltaRow} onPress={() => seekToDetected(ev)}>
-            <Text style={[styles.deltaText, warn && styles.deltaWarn]}>
-              {ev.label}: Auto {auto != null ? `f${auto}` : '—'} / You{' '}
-              {you != null ? `f${you}` : '—'}
-              {delta != null ? ` (Δ${delta > 0 ? '+' : ''}${delta})` : ''}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {/* Delta readout — panel: one row per event; overlay: one compact line
+          of tappable tokens (tap = paused seek to the detected frame). */}
+      {overlay ? (
+        <View style={styles.deltaLine}>
+          {events.map((ev) => {
+            const you = labels[ev.key];
+            const auto = ev.detectedFrame;
+            const delta = you != null && auto != null ? you - auto : null;
+            const warn = delta != null && Math.abs(delta) > DELTA_WARN;
+            return (
+              <Pressable key={ev.key} onPress={() => seekToDetected(ev)}>
+                <Text style={[styles.deltaText, warn && styles.deltaWarn]}>
+                  {ev.label}{' '}
+                  {delta != null
+                    ? `Δ${delta > 0 ? '+' : ''}${delta}`
+                    : you != null
+                      ? `f${you}`
+                      : '—'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        events.map((ev) => {
+          const you = labels[ev.key];
+          const auto = ev.detectedFrame;
+          const delta = you != null && auto != null ? you - auto : null;
+          const warn = delta != null && Math.abs(delta) > DELTA_WARN;
+          return (
+            <Pressable key={ev.key} style={styles.deltaRow} onPress={() => seekToDetected(ev)}>
+              <Text style={[styles.deltaText, warn && styles.deltaWarn]}>
+                {ev.label}: Auto {auto != null ? `f${auto}` : '—'} / You{' '}
+                {you != null ? `f${you}` : '—'}
+                {delta != null ? ` (Δ${delta > 0 ? '+' : ''}${delta})` : ''}
+              </Text>
+            </Pressable>
+          );
+        })
+      )}
 
       {/* Reset + Save */}
       <View style={styles.actionRow}>
@@ -243,6 +274,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     marginBottom: 12,
+  },
+  // Overlay variant: the host's translucent panel provides the background.
+  containerOverlay: {
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    padding: 10,
+    paddingTop: 0,
+    marginBottom: 0,
+  },
+  deltaLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    paddingVertical: 2,
   },
   stepperRow: {
     flexDirection: 'row',
