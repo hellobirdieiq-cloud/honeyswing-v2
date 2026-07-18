@@ -80,6 +80,8 @@ export type SwingHistoryRecord = {
   player_profile_id: string | null;
   is_favorite: boolean;
   frame_count: number | null;
+  /** 'putt-v1' tags putt rows (History v2); full swings are 'v2'/'v0'. */
+  analysis_version: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -101,6 +103,7 @@ export type SwingStoreAdapter = {
   fetchSwingHistory(
     userId: string,
     sinceIso: string,
+    includePutts?: boolean,
   ): Promise<{
     data: SwingHistoryRecord[] | null;
     error: { message: string } | null;
@@ -141,7 +144,7 @@ const GRIP_HISTORY_COLUMNS =
 
 // Exported for lib/coachData.ts, which fetches the same compact projection for
 // coach-granted swings (mirror-image scoping: .neq instead of .eq on user_id).
-export const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id, is_favorite, frame_count';
+export const SWING_HISTORY_COLUMNS = 'id, created_at, tempo_ratio, score, player_profile_id, is_favorite, frame_count, analysis_version';
 
 type SupabaseError = { message: string };
 type SupabaseResult<T> = { data: T; error: SupabaseError | null };
@@ -208,15 +211,16 @@ function getAdapter(): SwingStoreAdapter {
           error: error ? { message: error.message } : null,
         };
       },
-      async fetchSwingHistory(userId, sinceIso) {
-        const { data, error } = await mod.supabase
+      async fetchSwingHistory(userId, sinceIso, includePutts) {
+        // History v2: putt rows (analysis_version 'putt-v1') are included only
+        // when the caller opts in (History list). Default FALSE keeps every
+        // other consumer (gallery via getSwingHistory) putt-free unchanged.
+        let q = mod.supabase
           .from('swings')
           .select(SWING_HISTORY_COLUMNS)
-          .eq('user_id', userId)
-          // Phase C (D1-b): putt rows (analysis_version 'putt-v1') are hidden
-          // from the full-swing History/gallery lists — putt history UI is a
-          // future phase. The row itself is durable; only the list filters.
-          .neq('analysis_version', 'putt-v1')
+          .eq('user_id', userId);
+        if (!includePutts) q = q.neq('analysis_version', 'putt-v1');
+        const { data, error } = await q
           .gte('created_at', sinceIso)
           .order('created_at', { ascending: false });
         return {
@@ -406,14 +410,18 @@ export async function getGripHistory(
  * error (logged). Does not throw.
  */
 export async function getSwingHistory(
-  opts?: { windowMs?: number },
+  // includePutts (History v2): default FALSE — only the History list opts in.
+  // Filtering downstream stays CLIENT-SIDE; revisit server-side type/kid
+  // filters + pagination when the 30-day window exceeds ~500 rows (57 today —
+  // the unbounded windowed fetch is the real ceiling, not the array filter).
+  opts?: { windowMs?: number; includePutts?: boolean },
 ): Promise<SwingHistoryRecord[]> {
   const a = getAdapter();
   const userId = await a.getUserId();
   if (!userId) return [];
   const windowMs = opts?.windowMs ?? DEFAULT_WINDOW_MS;
   const sinceIso = new Date(Date.now() - windowMs).toISOString();
-  const { data, error } = await a.fetchSwingHistory(userId, sinceIso);
+  const { data, error } = await a.fetchSwingHistory(userId, sinceIso, opts?.includePutts ?? false);
   if (error) {
     console.error('[HoneySwing] swing history fetch error:', error.message);
     return [];

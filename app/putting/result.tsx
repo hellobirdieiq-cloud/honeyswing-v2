@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,22 +6,16 @@ import {
   ScrollView,
   StyleSheet,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { VideoView } from 'expo-video';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSwingVideoClock } from '@/app/analysis/useSwingVideoClock';
 import SwingSkeletonCanvas from '@/components/SwingSkeletonCanvas';
 import PuttingShaftOverlay from '@/components/PuttingShaftOverlay';
 import PhaseLabelBar from '@/components/PhaseLabelBar';
-import {
-  getCurrentPuttResult,
-  getCurrentPuttSwingId,
-  subscribeCurrentPuttSwingId,
-  getCurrentPuttCaptureToken,
-  getCurrentPuttCorrections,
-  setCurrentPuttCorrections,
-  type PuttCorrections,
-} from '@/lib/puttResultStore';
+import { usePuttSource, type PuttEventFrames } from './usePuttSource';
+import { setCurrentPuttCorrections, type PuttCorrections } from '@/lib/puttResultStore';
 import { supabase } from '@/lib/supabase';
 import { APP_VERSION } from '@/lib/appVersion';
 import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
@@ -29,19 +23,18 @@ import { computePuttingTempo } from '@/packages/domain/putting/computePuttingTem
 import { tempoBandScore } from '@/packages/domain/putting/tempoBandScore';
 
 /**
- * Putting result screen (Phase C) — TEMPO CARD + Phase B playback overlay.
+ * Putting result screen — TEMPO CARD + playback overlay + operator label mode.
  *
- * Param-less live-only: reads the just-captured putt from puttResultStore
- * (same push-after-store pattern as the full-swing flow; putt rows are
- * filtered from History in v1, so there is no history entry point yet).
+ * TWO data paths via usePuttSource (History v2): LIVE (param-less, store
+ * snapshot — the original flow) and HISTORY (swingId param from a History-list
+ * putt row; card + overlay reconstructed from swing_debug.putting, video via
+ * the clock's signed-URL branch). Label mode works in BOTH — saves update the
+ * row identically; only the live path also mirrors corrections into the store
+ * (token-guarded; the store belongs to the live capture).
  *
- * Deliberately fires NONE of the full-swing result side effects —
- * sessionAccumulator, session_insight merge, Today's Focus,
- * positiveReinforcement, checkSwingLimit — those are all full-swing metric
- * machinery (plan §result-screen investigation).
- *
- * Score is the TEMPO BAND score only (packages/domain/putting/tempoBandScore
- * — EXTERNAL ASSUMPTION adult anchor). Withheld = em-dash, never 0.
+ * Fires NONE of the full-swing result side effects (sessionAccumulator,
+ * session_insight merge, Today's Focus, positiveReinforcement, checkSwingLimit).
+ * Score = tempo band only; withheld = em-dash, never 0.
  */
 
 const STAGE_W = Dimensions.get('window').width - 32;
@@ -55,40 +48,53 @@ type LabelKey = 'takeaway' | 'top' | 'impact';
 
 export default function PuttingResultScreen(): React.ReactElement {
   const router = useRouter();
-  // Per-render snapshot (swingMotionStore convention) — set before the push.
-  const putt = useMemo(() => getCurrentPuttResult(), []);
-  const puttToken = useMemo(() => getCurrentPuttCaptureToken(), []);
+  const { swingId: swingIdParam } = useLocalSearchParams<{ swingId?: string }>();
+  const source = usePuttSource(swingIdParam);
+
   const [showShaft, setShowShaft] = useState(true);
   const [showSkeleton, setShowSkeleton] = useState(true);
 
-  // ── Operator label mode (AUTHORITATIVE — corrections recompute + persist) ──
+  // ── Operator label mode ──
   const [labelMode, setLabelMode] = useState(false);
   const [labels, setLabels] = useState<Partial<Record<LabelKey, number>>>({});
   const [saveStatus, setSaveStatus] = useState<'ready' | 'saving' | 'saved'>('ready');
   const [saveError, setSaveError] = useState<string | null>(null);
-  // Row id arrives after mount (persistPutt resolves async; token-guarded).
-  const [swingId, setSwingId] = useState<string | null>(() => getCurrentPuttSwingId());
-  useEffect(() => subscribeCurrentPuttSwingId(setSwingId), []);
-  // Saved Manual view (survives remount via the store); Auto | Yours toggle.
-  const [corrections, setCorrections] = useState<PuttCorrections | null>(() =>
-    getCurrentPuttCorrections(),
-  );
-  const [cardView, setCardView] = useState<'auto' | 'yours'>(() =>
-    getCurrentPuttCorrections() ? 'yours' : 'auto',
-  );
+  // Saved Yours view — seeded from the source once it resolves (history loads
+  // async; live is ready immediately), then owned locally after saves.
+  const [corrections, setCorrections] = useState<PuttCorrections | null>(null);
+  const [cardView, setCardView] = useState<'auto' | 'yours'>('auto');
+  const [seeded, setSeeded] = useState(false);
+  useEffect(() => {
+    if (seeded || source.status !== 'ready') return;
+    setSeeded(true);
+    setCorrections(source.corrections);
+    if (source.corrections) setCardView('yours');
+  }, [seeded, source]);
 
+  const ready = source.status === 'ready' ? source : null;
   const clock = useSwingVideoClock({
-    frames: putt?.poseFrames,
-    videoUri: putt?.videoUri ?? null,
-    videoStoragePath: null,
-    isLiveSwing: true,
+    frames: ready?.poseFrames,
+    videoUri: ready?.videoUri ?? null,
+    videoStoragePath: ready?.videoStoragePath ?? null,
+    isLiveSwing: ready?.isLive ?? true,
   });
 
-  if (!putt) {
+  if (source.status === 'loading') {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color="#FFD60A" />
+      </View>
+    );
+  }
+  if (source.status === 'empty' || source.status === 'error') {
     return (
       <View style={styles.container}>
         <Text style={styles.header}>Putt</Text>
-        <Text style={styles.emptyText}>No putt loaded — record one from the Record tab.</Text>
+        <Text style={styles.emptyText}>
+          {source.status === 'error'
+            ? source.message
+            : 'No putt loaded — record one from the Record tab.'}
+        </Text>
         <Pressable style={styles.cta} onPress={() => router.back()}>
           <Text style={styles.ctaText}>Back</Text>
         </Pressable>
@@ -96,20 +102,26 @@ export default function PuttingResultScreen(): React.ReactElement {
     );
   }
 
-  const { detectors, score, smoothed, shaftLenPx, analysisWidth } = putt.pipeline;
-  const warnings = detectors.intermediates.warnings;
+  const {
+    isLive,
+    swingId,
+    poseFrames,
+    detected,
+    detectedTempo,
+    detectedScore,
+    warnings,
+    smoothed,
+    shaftLenPx,
+    analysisWidth,
+    captureToken,
+  } = source;
+  const hasPlayback = !!(ready?.videoUri || ready?.videoStoragePath);
 
-  // Auto = immutable detected pipeline; Yours = saved merged corrections.
-  // Toggle is DISPLAY-ONLY — the row already holds the Manual values.
-  const detected: Record<LabelKey, number | null> = {
-    takeaway: detectors.takeawayFrame,
-    top: detectors.topFrame,
-    impact: detectors.impactFrame,
-  };
+  // Auto = detected (immutable); Yours = saved corrections. Display-only.
   const showYours = cardView === 'yours' && corrections != null;
-  const cardScore = showYours ? corrections!.score : score;
-  const cardTempo = showYours ? corrections!.tempo : detectors.tempo;
-  const cardFrames = showYours ? corrections!.effectiveFrames : detected;
+  const cardScore = showYours ? corrections!.score : detectedScore;
+  const cardTempo = showYours ? corrections!.tempo : detectedTempo;
+  const cardFrames: PuttEventFrames = showYours ? corrections!.effectiveFrames : detected;
 
   const stampedCount = (Object.keys(labels) as LabelKey[]).filter(
     (k) => labels[k] != null,
@@ -134,7 +146,7 @@ export default function PuttingResultScreen(): React.ReactElement {
     setSaveStatus('saving');
     setSaveError(null);
     // Merged (Manual) frames: operator where stamped, detected where not.
-    const effective: Record<LabelKey, number | null> = {
+    const effective: PuttEventFrames = {
       takeaway: labels.takeaway ?? detected.takeaway,
       top: labels.top ?? detected.top,
       impact: labels.impact ?? detected.impact,
@@ -194,7 +206,10 @@ export default function PuttingResultScreen(): React.ReactElement {
       return;
     }
     const saved: PuttCorrections = { effectiveFrames: effective, tempo, score: newScore };
-    setCurrentPuttCorrections(saved, puttToken);
+    // The store belongs to the LIVE capture — history saves stay local.
+    if (isLive && captureToken != null) {
+      setCurrentPuttCorrections(saved, captureToken);
+    }
     setCorrections(saved);
     setCardView('yours');
     setSaveStatus('saved');
@@ -209,7 +224,7 @@ export default function PuttingResultScreen(): React.ReactElement {
         </Pressable>
       </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* TEMPO CARD (Auto = detected pipeline; Yours = saved corrections) */}
+        {/* TEMPO CARD (Auto = detected; Yours = saved corrections) */}
         <View style={styles.card}>
           {corrections != null && (
             <View style={styles.viewToggleRow}>
@@ -247,8 +262,8 @@ export default function PuttingResultScreen(): React.ReactElement {
           )}
         </View>
 
-        {/* PLAYBACK (Phase B overlay) */}
-        {putt.videoUri && (
+        {/* PLAYBACK (Phase B overlay) — live local file or history signed URL */}
+        {hasPlayback && (
           <>
             <View style={styles.toggleRow}>
               <Pressable
@@ -284,7 +299,7 @@ export default function PuttingResultScreen(): React.ReactElement {
                     { key: 'top', label: 'TOP', detectedFrame: detected.top },
                     { key: 'impact', label: 'IMP', detectedFrame: detected.impact },
                   ]}
-                  frameCount={putt.poseFrames.length}
+                  frameCount={poseFrames.length}
                   videoIdx={clock.videoIdx ?? 0}
                   seekToFrame={clock.seekToFrame}
                   labels={labels}
@@ -313,10 +328,10 @@ export default function PuttingResultScreen(): React.ReactElement {
                 contentFit="contain"
                 nativeControls={false}
               />
-              {showSkeleton && putt.poseFrames.length > 0 && (
+              {showSkeleton && poseFrames.length > 0 && (
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   <SwingSkeletonCanvas
-                    frames={putt.poseFrames}
+                    frames={poseFrames}
                     phases={null}
                     width={STAGE_W}
                     height={STAGE_H}
@@ -359,7 +374,7 @@ export default function PuttingResultScreen(): React.ReactElement {
         )}
 
         <Pressable style={styles.cta} onPress={() => router.back()}>
-          <Text style={styles.ctaText}>Record Again</Text>
+          <Text style={styles.ctaText}>{isLive ? 'Record Again' : 'Back'}</Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -372,6 +387,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     padding: 16,
     paddingTop: 60,
+  },
+  centered: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerRow: {
     flexDirection: 'row',

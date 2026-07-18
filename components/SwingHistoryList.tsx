@@ -30,12 +30,17 @@ function formatDate(iso: string): string {
   });
 }
 
+// Putt accents (History v2) — matches the record screen's Putt pill orange.
+const PUTT_COLOR = '#FF9500';
+
 export default function SwingHistoryList() {
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [profileMap, setProfileMap] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<string>('all');
+  // History v2 type filter — combines with the kid tab (kid AND type).
+  const [typeFilter, setTypeFilter] = useState<'all' | 'swing' | 'putt'>('all');
 
   // Profiles refresh on focus (not mount-only): rows already refetch on focus,
   // so a kid added/renamed/deleted while away would otherwise desync the tabs.
@@ -131,7 +136,9 @@ export default function SwingHistoryList() {
           setState({ kind: 'anonymous' });
           return;
         }
-        const rows = await getSwingHistory();
+        // History v2: this list is the ONE consumer that opts into putt rows
+        // (gallery/coach keep the default putt-free query).
+        const rows = await getSwingHistory({ includePutts: true });
         if (cancelled) return;
         setState({ kind: 'ready', rows });
       })();
@@ -162,38 +169,57 @@ export default function SwingHistoryList() {
   }
 
   const isIndividualTab = activeTab !== 'all';
-  const filteredRows =
-    activeTab === 'all'
-      ? state.rows
-      : state.rows.filter((r) => r.player_profile_id === activeTab);
+  // Kid AND type (History v2). Client-side by design at current scale — see
+  // the threshold note on getSwingHistory.
+  const filteredRows = state.rows.filter((r) => {
+    const matchesKid = activeTab === 'all' || r.player_profile_id === activeTab;
+    const isPutt = r.analysis_version === 'putt-v1';
+    const matchesType = typeFilter === 'all' || (typeFilter === 'putt') === isPutt;
+    return matchesKid && matchesType;
+  });
 
-  const showTabs = profiles.length >= 2;
+  const showKidTabs = profiles.length >= 2;
 
   return (
     // Local root view (app root has none — record.tsx does the same): required
     // ancestor for the row Swipeables.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      {showTabs && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsRow}
-        >
-          <TabButton
-            label="All"
-            active={activeTab === 'all'}
-            onPress={() => setActiveTab('all')}
-          />
-          {profiles.map((p) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabsRow}
+      >
+        {showKidTabs && (
+          <>
             <TabButton
-              key={p.id}
-              label={getDisplayName(p)}
-              active={activeTab === p.id}
-              onPress={() => setActiveTab(p.id)}
+              label="All"
+              active={activeTab === 'all'}
+              onPress={() => setActiveTab('all')}
             />
-          ))}
-        </ScrollView>
-      )}
+            {profiles.map((p) => (
+              <TabButton
+                key={p.id}
+                label={getDisplayName(p)}
+                active={activeTab === p.id}
+                onPress={() => setActiveTab(p.id)}
+              />
+            ))}
+            <View style={styles.tabSeparator} />
+          </>
+        )}
+        {/* Type chips (History v2) — always rendered; tapping the active
+            type clears back to all. */}
+        <TabButton
+          label="Swing"
+          active={typeFilter === 'swing'}
+          onPress={() => setTypeFilter((cur) => (cur === 'swing' ? 'all' : 'swing'))}
+        />
+        <TabButton
+          label="Putt"
+          active={typeFilter === 'putt'}
+          onPress={() => setTypeFilter((cur) => (cur === 'putt' ? 'all' : 'putt'))}
+        />
+      </ScrollView>
       {filteredRows.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyBody}>No swings recorded yet.</Text>
@@ -244,9 +270,13 @@ function SwingRow({
   onMoveRequest: (swingId: string, currentProfileId: string | null) => void;
 }) {
   const router = useRouter();
+  const isPutt = item.analysis_version === 'putt-v1';
   const hasTempo = item.tempo_ratio != null && Number.isFinite(item.tempo_ratio);
   const band = hasTempo ? scoreTempoTrafficLight(item.tempo_ratio as number).band : null;
-  const dotColor = band ? TEMPO_BAND_COLORS[band] : '#555';
+  // Putt rows skip the full-swing traffic light (its bands are swing-tempo
+  // anchored — a good putt ratio ~2.0 would band misleadingly) and use the
+  // putt orange (matches the record-screen mode pill).
+  const dotColor = isPutt ? PUTT_COLOR : band ? TEMPO_BAND_COLORS[band] : '#555';
   const ratioText = hasTempo
     ? (item.tempo_ratio as number).toFixed(2)
     : 'Tempo unavailable';
@@ -291,7 +321,12 @@ function SwingRow({
     >
       <TouchableOpacity
         style={styles.row}
-        onPress={() => router.push({ pathname: '/analysis/result', params: { swingId: item.id } })}
+        onPress={() =>
+          router.push({
+            pathname: isPutt ? '/putting/result' : '/analysis/result',
+            params: { swingId: item.id },
+          })
+        }
         activeOpacity={0.7}
       >
         <View style={[styles.dot, { backgroundColor: dotColor }]} />
@@ -302,12 +337,38 @@ function SwingRow({
           <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
           <Text style={styles.rowRatio}>{secondLine}</Text>
         </View>
+        {isPutt && (
+          <View style={styles.puttTag}>
+            <Text style={styles.puttTagText}>PUTT</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </ReanimatedSwipeable>
   );
 }
 
 const styles = StyleSheet.create({
+  tabSeparator: {
+    width: 1,
+    alignSelf: 'stretch',
+    marginVertical: 6,
+    marginHorizontal: 6,
+    backgroundColor: '#333',
+  },
+  puttTag: {
+    borderWidth: 1,
+    borderColor: PUTT_COLOR,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
+  },
+  puttTagText: {
+    color: PUTT_COLOR,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   listContent: {
     paddingTop: 8,
     paddingBottom: 24,
