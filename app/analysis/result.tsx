@@ -14,6 +14,8 @@ import {
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, supabase } from '../../lib/supabase';
+import PhaseLabelBar from '../../components/PhaseLabelBar';
+import { APP_VERSION } from '../../lib/appVersion';
 import { GOLD } from '../../lib/colors';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
 import { getActiveProfileHandedness } from '../../lib/handedness';
@@ -74,6 +76,14 @@ export default function ResultScreen() {
   // meaningful when a video exists; the no-video path renders skeleton-only and
   // never shows the segmented control.
   const [viewMode, setViewMode] = useState<'video' | 'overlay' | 'skeleton'>('overlay');
+  // Operator label mode — ANNOTATE-ONLY on this screen: labels persist to
+  // swing_debug.operator_labels (sibling top-level key; the merge RPC is a
+  // top-level shallow merge) and NOTHING is recomputed or re-rendered — the
+  // displayed score/tempo/phases are byte-identical with the bar closed.
+  const [labelMode, setLabelMode] = useState(false);
+  const [phaseLabels, setPhaseLabels] = useState<Record<string, number | undefined>>({});
+  const [labelSaveStatus, setLabelSaveStatus] = useState<'ready' | 'saving' | 'saved'>('ready');
+  const [labelSaveError, setLabelSaveError] = useState<string | null>(null);
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -134,6 +144,71 @@ export default function ResultScreen() {
   const hasVideo = !!(effectiveVideoUri && player);
   const skeletonCanvasW = hasVideo ? screenW - 48 : screenW - 32;
   const skeletonCanvasH = hasVideo ? Math.round(((screenW - 48) * 16) / 9) : 380;
+
+  // ── Operator label bar inputs (annotate-only; see state block above) ──────
+  const fsLabelEvents = useMemo(() => {
+    const defs = [
+      { key: 'takeaway', label: 'TA' },
+      { key: 'top', label: 'TOP' },
+      { key: 'downswing', label: 'DSW' },
+      { key: 'impact', label: 'IMP' },
+      { key: 'follow_through', label: 'FIN' },
+    ];
+    return defs.map((d) => {
+      const p = analysis?.phases?.find((ph) => ph.phase === d.key);
+      return {
+        ...d,
+        detectedFrame: typeof p?.index === 'number' ? p.index : null,
+      };
+    });
+  }, [analysis]);
+  const fsStampedCount = Object.values(phaseLabels).filter((v) => v != null).length;
+  const fsSaveState =
+    fsStampedCount === 0 || !effectiveSwingId
+      ? ('disabled' as const)
+      : labelSaveStatus === 'saving'
+        ? ('saving' as const)
+        : labelSaveStatus === 'saved'
+          ? ('saved' as const)
+          : ('ready' as const);
+
+  const onSaveLabels = async () => {
+    if (!effectiveSwingId || fsStampedCount === 0) return;
+    setLabelSaveStatus('saving');
+    setLabelSaveError(null);
+    // msPerFrame from the actual frame timestamps (fps varies across eras) —
+    // same derivation as useSwingVideoClock.
+    const frames = effectiveMotion?.frames;
+    const stepMs =
+      frames && frames.length > 1
+        ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) / (frames.length - 1)
+        : null;
+    const stamped: Record<string, number> = {};
+    for (const [k, v] of Object.entries(phaseLabels)) {
+      if (v != null) stamped[k] = v;
+    }
+    const detected: Record<string, number | null> = {};
+    for (const ev of fsLabelEvents) detected[ev.key] = ev.detectedFrame;
+    const { error } = await supabase.rpc('merge_swing_debug', {
+      swing_id: effectiveSwingId,
+      patch: {
+        operator_labels: {
+          schema: 1,
+          phases: stamped,
+          detected,
+          step_ms: stepMs,
+          app_version: APP_VERSION,
+          labeled_at_ms: Date.now(),
+        },
+      },
+    });
+    if (error) {
+      setLabelSaveStatus('ready');
+      setLabelSaveError('save failed — tap to retry');
+      return;
+    }
+    setLabelSaveStatus('saved');
+  };
 
   // Score count-up. Animates from the currently displayed value to the target
   // (not from 0) so a retarget doesn't visibly reset, holds the last value
@@ -575,6 +650,60 @@ export default function ResultScreen() {
                 );
               })}
             </View>
+            )}
+
+            {/* 3b. Operator label mode — ANNOTATE-ONLY: persists to
+                swing_debug.operator_labels via the merge RPC; no recompute,
+                displayed values untouched. Video mode only. */}
+            {hasVideo && (
+              <TouchableOpacity
+                style={labelMode ? styles.phaseChip : styles.phaseChipDisabled}
+                onPress={() => setLabelMode((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={labelMode ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
+                  numberOfLines={1}
+                >
+                  {labelMode ? 'Label frames ▲' : 'Label frames ▼'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {hasVideo && labelMode && effectiveMotion && (
+              <View style={{ marginTop: 8 }}>
+                <PhaseLabelBar
+                  events={fsLabelEvents}
+                  frameCount={effectiveMotion.frames.length}
+                  videoIdx={videoIdx ?? 0}
+                  seekToFrame={seekToFrame}
+                  labels={phaseLabels}
+                  onStamp={(key, frame) => {
+                    setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
+                    setLabelSaveStatus('ready');
+                    setLabelSaveError(null);
+                  }}
+                  onResetLabels={() => {
+                    setPhaseLabels({});
+                    setLabelSaveStatus('ready');
+                    setLabelSaveError(null);
+                  }}
+                  onSave={() => void onSaveLabels()}
+                  saveButtonLabel="Save Labels"
+                  saveState={fsSaveState}
+                  saveDisabledReason={
+                    fsStampedCount === 0
+                      ? 'stamp at least one phase to save'
+                      : !effectiveSwingId
+                        ? 'swing not persisted yet'
+                        : undefined
+                  }
+                />
+                {labelSaveError != null && (
+                  <Text style={{ color: '#FF6961', fontSize: 12, textAlign: 'center', marginTop: 6 }}>
+                    {labelSaveError}
+                  </Text>
+                )}
+              </View>
             )}
 
             {/* 4. Swing Art */}

@@ -425,6 +425,25 @@ WHY QUEUED / WHERE / EFFORT / DEPENDS ON / RISK: see T9-74.
 
 ---
 
+## 2b. Post-100 addendum (added outside the canonical 100; not in the counts)
+
+**P-101 — full-swing score recompute from operator phases** ⬜
+WHAT: a phase-override input to the full-swing analysis pipeline that consumes
+`swing_debug.operator_labels` (the annotate-only labels shipped with the operator label
+mode) and recomputes tempo/score from operator frames — the full-swing twin of the putting
+"Save Corrections" authoritative path.
+WHY QUEUED: owner directive at label-mode approval (2026-07-17): "ticket only, own session
+later" — it touches `packages/domain/swing/**`, which is protected in the putting/label
+workstream.
+WHERE: `packages/domain/swing/analysisPipeline.ts` (+ tempoAnalysis/scoring consumers),
+`app/analysis/result.tsx` (an Auto|Yours toggle like the putting card).
+EFFORT: M — the pipeline needs an injection point for phase overrides; scoring/tempo are
+already pure.
+DEPENDS ON: operator label mode shipped (done); enough labeled full swings to judge value.
+RISK IF IGNORED: none — labels accumulate either way; recompute is a pure read of them.
+
+---
+
 ## 3. Suggested order — ⚠️ OPINION, not status
 
 1. **T2-95 (OTA runtime pin)** — the risk went live this week: three TestFlight builds shipped under runtime "1.0.0"; one OTA publish after the next native change can crash-loop all of them. 20 minutes once you pick `fingerprint`.
