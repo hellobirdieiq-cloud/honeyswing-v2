@@ -342,24 +342,27 @@ export function detectDTLPhases(input: {
   const reliability: PhaseRuleReliability = emptyReliability();
   const assumptionsUsed: string[] = [];
 
+  // T9-72: ONE mutable ruleDebug per run — fields are stamped as each phase
+  // computes, and every gate (plus the success return) hands back this same
+  // object. Only one return ever executes per run, so the shared identity is
+  // safe; reliability/external_assumptions_used were always live references.
+  const ruleDebug: PhaseRuleDebug = {
+    detector: "dtl",
+    swing_start_frame: null,
+    true_address_frame: null,
+    reliability,
+    external_assumptions_used: assumptionsUsed,
+  };
+
   if (trail.length < 6) {
-    return {
-      phases: [],
-      fallbackGate: "points_too_short",
-      ruleDebug: {
-        detector: "dtl",
-        swing_start_frame: null,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
-    };
+    return { phases: [], fallbackGate: "points_too_short", ruleDebug };
   }
 
   // Phase 0 — swing_start
   const swingStart = detectDTLSwingStart(frames, msPerFrame);
   reliability.swing_start = swingStart.reliability;
   assumptionsUsed.push("dtl.swingStart");
+  ruleDebug.swing_start_frame = swingStart.frame;
 
   // Phase 2 — takeaway directional gate (start-of-window address candidate)
   const velocities = computeTrailVelocities(trail);
@@ -371,17 +374,7 @@ export function detectDTLPhases(input: {
   const top = detectDTLTop(trail, takeawayAddressIdx, msPerFrame);
   assumptionsUsed.push("dtl.top");
   if (top.frame == null) {
-    return {
-      phases: [],
-      fallbackGate: "top_search_bounds",
-      ruleDebug: {
-        detector: "dtl",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: null,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
-    };
+    return { phases: [], fallbackGate: "top_search_bounds", ruleDebug };
   }
   const topIdx = top.frame;
   reliability.top = "high";
@@ -400,6 +393,7 @@ export function detectDTLPhases(input: {
   const trueAddress = detectDTLTrueAddress(frames, topFrameIdx, msPerFrame);
   reliability.true_address = trueAddress.reliability ?? "low";
   assumptionsUsed.push("dtl.trueAddress");
+  ruleDebug.true_address_frame = trueAddress.frame;
   // trueAddress.frame is FRAME-space; indices[] below is consumed as
   // trail-space (trail[ti].timestamp). Map back via nearest timestamp — exact
   // at 1:1; nearest covers a true-address frame dropped from the trail
@@ -426,13 +420,7 @@ export function detectDTLPhases(input: {
     return {
       phases: [],
       fallbackGate: "impact_search_bounds",
-      ruleDebug: {
-        detector: "dtl",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: trueAddress.frame,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
+      ruleDebug,
     };
   }
   const impactIdx = impact.frame;
@@ -445,13 +433,7 @@ export function detectDTLPhases(input: {
     return {
       phases: [],
       fallbackGate: "impact_distance_out_of_range",
-      ruleDebug: {
-        detector: "dtl",
-        swing_start_frame: swingStart.frame,
-        true_address_frame: trueAddress.frame,
-        reliability,
-        external_assumptions_used: assumptionsUsed,
-      },
+      ruleDebug,
     };
   }
 
@@ -471,13 +453,7 @@ export function detectDTLPhases(input: {
       return {
         phases: [],
         fallbackGate: "temporal_inversion",
-        ruleDebug: {
-          detector: "dtl",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: trueAddress.frame,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-        },
+        ruleDebug,
       };
     }
   }
@@ -486,13 +462,7 @@ export function detectDTLPhases(input: {
       return {
         phases: [],
         fallbackGate: "phases_too_bunched",
-        ruleDebug: {
-          detector: "dtl",
-          swing_start_frame: swingStart.frame,
-          true_address_frame: trueAddress.frame,
-          reliability,
-          external_assumptions_used: assumptionsUsed,
-        },
+        ruleDebug,
       };
     }
   }
@@ -517,12 +487,6 @@ export function detectDTLPhases(input: {
   return {
     phases,
     fallbackGate: null,
-    ruleDebug: {
-      detector: "dtl",
-      swing_start_frame: swingStart.frame,
-      true_address_frame: trueAddress.frame,
-      reliability,
-      external_assumptions_used: assumptionsUsed,
-    },
+    ruleDebug,
   };
 }
