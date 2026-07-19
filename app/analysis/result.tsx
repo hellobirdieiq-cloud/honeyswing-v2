@@ -412,6 +412,13 @@ export default function ResultScreen() {
   const selectedView =
     corrections == null ? null : showYours ? corrections : (autoView ?? corrections);
   const cardTempo = selectedView ? selectedView.tempo : tempo;
+  // P-102: display surfaces (phase chips, skeleton chip row, Swing Art) follow
+  // the card toggle — effective (operator-merged) phases under Yours, detected
+  // otherwise; no labels ⇒ identical to analysis.phases. The label bar's Auto
+  // references and the save-time regrade input deliberately KEEP reading
+  // analysis.phases (they must show/consume app-detected frames).
+  const displayPhases =
+    showYours && effectivePhases ? effectivePhases : (analysis?.phases ?? null);
 
   const { scoreColor, tempoLabelText, coachingCueText } = deriveTempoDisplay(cardTempo);
 
@@ -691,7 +698,7 @@ export default function ResultScreen() {
                         <View style={StyleSheet.absoluteFill} pointerEvents="none">
                           <SwingSkeletonCanvas
                             frames={effectiveMotion.frames}
-                            phases={analysis?.phases ?? null}
+                            phases={displayPhases}
                             width={skeletonCanvasW}
                             height={skeletonCanvasH}
                             // Driven by the video clock; videoIdx ?? 0 until the
@@ -799,7 +806,7 @@ export default function ResultScreen() {
                 // behavior). No segmented control.
                 <SwingSkeletonCanvas
                   frames={effectiveMotion.frames}
-                  phases={analysis?.phases ?? null}
+                  phases={displayPhases}
                   width={skeletonCanvasW}
                   height={skeletonCanvasH}
                   playheadIdx={null}
@@ -838,7 +845,7 @@ export default function ResultScreen() {
                     </TouchableOpacity>
                   );
                 }
-                const phaseEntry = analysis?.phases?.find((p) => p.phase === entry.phase);
+                const phaseEntry = displayPhases?.find((p) => p.phase === entry.phase);
                 const enabled =
                   !!phaseEntry && !!player && !!effectiveVideoUri && isPlayerReady && firstFrameTimestamp != null;
                 return (
@@ -879,12 +886,9 @@ export default function ResultScreen() {
               <View style={{ marginTop: 8 }}>
                 <SwingArtCard
                   frames={effectiveMotion.frames}
-                  // FIX 3 (owner): art follows the card toggle — effective
-                  // (operator-merged) phases under Yours, Auto otherwise.
-                  // No corrections ⇒ exactly the prior expression.
-                  phases={
-                    showYours && effectivePhases ? effectivePhases : (analysis?.phases ?? [])
-                  }
+                  // FIX 3 + P-102: art shares the toggle-following selector
+                  // with the phase chips / skeleton chip row.
+                  phases={displayPhases ?? []}
                   width={screenW - 48}
                 />
               </View>

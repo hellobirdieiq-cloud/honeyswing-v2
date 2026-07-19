@@ -453,14 +453,17 @@ WHERE: components/PhaseLabelBar.tsx, components/VideoLabelOverlay.tsx (+ new hoo
 EFFORT: S. DEPENDS ON: none. RISK IF IGNORED: the two copies drift (e.g. a seek-pause or
 arm-semantics fix landing in only one surface).
 
-**P-102 — phase chips follow the Yours view** ⬜ (parked at P-101 approval, 2026-07-17)
-WHAT: when the result card shows Yours, the phase chips (and skeleton phase markers)
-still seek to the AUTO detected frames; swap them to the effective (operator-merged)
-phases under Yours. `regradeFromOperatorPhases` already returns `effectivePhases`.
-WHY QUEUED: owner directive — display-scope creep kept out of P-101; chips stay Auto.
-WHERE: `app/analysis/result.tsx` (PHASE_CHIPS row + SwingSkeletonCanvas `phases` prop).
-EFFORT: S. DEPENDS ON: P-101 (done). RISK IF IGNORED: minor operator confusion —
-chips seek to Auto frames while the card shows Yours numbers.
+**P-102 — phase chips follow the Yours view** 🔄 IN PROGRESS (unparked by owner
+2026-07-19 after device finding; parked at P-101 approval 2026-07-17)
+WHAT: when the result card shows Yours, the phase chips (and the skeleton canvas's
+chip row) still seek to the AUTO detected frames; swap them to the effective
+(operator-merged) phases under Yours, consistent with Swing Art (FIX 3).
+BUILD: one `displayPhases` selector in result.tsx (Yours → `effectivePhases` from
+useFullSwingRegrade; else `analysis.phases`) feeding the PHASE_CHIPS row, both
+SwingSkeletonCanvas `phases` props, and SwingArtCard. Full Swing chip stays frame 0
+(clip start, not a phase). Label-bar Auto references + save-time regrade input keep
+reading `analysis.phases`. No labels ⇒ byte-identical.
+WHERE: `app/analysis/result.tsx` only. EFFORT: S. DEPENDS ON: P-101 (done).
 
 ---
 
