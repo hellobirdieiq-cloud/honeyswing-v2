@@ -442,6 +442,17 @@ Auto side is recomputed from the row's original detected phases (or the
 operator_labels.detected snapshot), never the row columns. Known limit: phase-windowed
 angles are NOT recomputed from operator frames.
 
+**P-103 — extract shared phase-label interaction hook** ⬜ (logged at FIX 4b approval, 2026-07-19)
+WHAT: the two-tap-arm/re-stamp, detected-seek flash, frame stepping/clamping, and
+numeric frame-input logic is now DUPLICATED between `components/PhaseLabelBar.tsx`
+(putting panel) and `components/VideoLabelOverlay.tsx` (full-swing edge overlay, FIX 4b).
+Extract a shared `usePhaseLabelInteraction` hook both components consume.
+WHY QUEUED: owner directive at FIX 4b approval — do NOT refactor now (putting panel must
+stay byte-identical; extraction is a behavior-neutral cleanup for its own session).
+WHERE: components/PhaseLabelBar.tsx, components/VideoLabelOverlay.tsx (+ new hook file).
+EFFORT: S. DEPENDS ON: none. RISK IF IGNORED: the two copies drift (e.g. a seek-pause or
+arm-semantics fix landing in only one surface).
+
 **P-102 — phase chips follow the Yours view** ⬜ (parked at P-101 approval, 2026-07-17)
 WHAT: when the result card shows Yours, the phase chips (and skeleton phase markers)
 still seek to the AUTO detected frames; swap them to the effective (operator-merged)

@@ -132,19 +132,7 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 6,
   },
-  // Operator label overlay on the video stage (FIX 4)
-  labelOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.72)',
-  },
-  labelOverlayCollapse: {
-    alignSelf: 'flex-end',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
+  // Collapsed-state tab for the operator label overlay (FIX 4/4b)
   labelOverlayTab: {
     position: 'absolute',
     right: 8,
@@ -158,19 +146,6 @@ export const styles = StyleSheet.create({
     color: '#0A84FF',
     fontSize: 13,
     fontWeight: '700',
-  },
-  labelSaveSummary: {
-    color: '#30D158',
-    fontSize: 12,
-    fontFamily: 'Menlo',
-    textAlign: 'center',
-    paddingBottom: 8,
-  },
-  labelSaveError: {
-    color: '#FF6961',
-    fontSize: 12,
-    textAlign: 'center',
-    paddingBottom: 8,
   },
   lowConfBadge: {
     color: '#AAAAAA',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, useWindowDimensions, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Pressable, useWindowDimensions, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -14,7 +14,7 @@ import {
 import { checkSwingLimit } from '../../lib/swingLimit';
 import { getCachedAgeTier } from '@/lib/ageTier';
 import { getUser, supabase } from '../../lib/supabase';
-import PhaseLabelBar from '../../components/PhaseLabelBar';
+import { VideoLabelOverlay, LabelControlsBelow } from '../../components/VideoLabelOverlay';
 import { APP_VERSION } from '../../lib/appVersion';
 import { GOLD } from '../../lib/colors';
 import type { SwingPhase } from '../../packages/domain/swing/phaseDetection';
@@ -95,6 +95,12 @@ export default function ResultScreen() {
   // without scrolling up to the card).
   const [labelBarCollapsed, setLabelBarCollapsed] = useState(false);
   const [lastSaveSummary, setLastSaveSummary] = useState<string | null>(null);
+  // FIX 4c: a video-surface tap collapses the expanded overlay — but never
+  // mid two-tap: the overlay reports its armed state into this ref.
+  const labelArmedRef = useRef(false);
+  const onLabelArmedChange = useCallback((armed: boolean) => {
+    labelArmedRef.current = armed;
+  }, []);
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -697,6 +703,18 @@ export default function ResultScreen() {
                           />
                         </View>
                       )}
+                      {/* FIX 4c: a video-surface tap collapses the expanded
+                          overlay. Placed BEFORE the play button so play stays
+                          tappable (later siblings win); an armed two-tap flow
+                          is never interrupted (ref guard). */}
+                      {labelMode && !labelBarCollapsed && effectiveMotion && (
+                        <Pressable
+                          style={StyleSheet.absoluteFill}
+                          onPress={() => {
+                            if (!labelArmedRef.current) setLabelBarCollapsed(true);
+                          }}
+                        />
+                      )}
                       {!isPlaying && (
                         <TouchableOpacity
                           style={styles.videoPlayButton}
@@ -706,69 +724,75 @@ export default function ResultScreen() {
                           <Text style={styles.videoPlayButtonIcon}>▶</Text>
                         </TouchableOpacity>
                       )}
-                      {/* Operator label overlay (FIX 4): translucent panel
-                          pinned to the bottom of the video so the frame stays
-                          visible while stepping/stamping; collapsible to a
-                          slim tab. Same handlers as the old below-video bar —
-                          two-tap stamp flow unchanged. */}
-                      {labelMode && effectiveMotion &&
-                        (labelBarCollapsed ? (
+                      {/* Operator label overlay (FIX 4b/4c): edge layout — top
+                          strip (frame counter + collapse), −5/−1 and +1/+5
+                          rails on the side edges, phase chips in one line at
+                          the bottom; the subject is center-frame and stays
+                          visible. Delta/Reset/Save/readout render BELOW the
+                          stage (LabelControlsBelow). The blue tab is the ONLY
+                          label-mode control (replaces the old "Label frames"
+                          button): tap → expand; Label ▾ / video tap →
+                          collapse (labelMode stays armed). */}
+                      {effectiveMotion &&
+                        (labelMode && !labelBarCollapsed ? (
+                          <VideoLabelOverlay
+                            events={fsLabelEvents}
+                            frameCount={effectiveMotion.frames.length}
+                            videoIdx={videoIdx ?? 0}
+                            seekToFrame={seekToFrame}
+                            labels={phaseLabels}
+                            onStamp={(key, frame) => {
+                              setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
+                              setLabelSaveStatus('ready');
+                              setLabelSaveError(null);
+                              setLastSaveSummary(null);
+                            }}
+                            onCollapse={() => setLabelBarCollapsed(true)}
+                            onArmedChange={onLabelArmedChange}
+                          />
+                        ) : (
                           <TouchableOpacity
                             style={styles.labelOverlayTab}
-                            onPress={() => setLabelBarCollapsed(false)}
+                            onPress={() => {
+                              setLabelMode(true);
+                              setLabelBarCollapsed(false);
+                            }}
                             activeOpacity={0.7}
                           >
                             <Text style={styles.labelOverlayTabText}>Label ▴</Text>
                           </TouchableOpacity>
-                        ) : (
-                          <View style={styles.labelOverlay}>
-                            <TouchableOpacity
-                              style={styles.labelOverlayCollapse}
-                              onPress={() => setLabelBarCollapsed(true)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.labelOverlayTabText}>Label ▾</Text>
-                            </TouchableOpacity>
-                            <PhaseLabelBar
-                              variant="overlay"
-                              events={fsLabelEvents}
-                              frameCount={effectiveMotion.frames.length}
-                              videoIdx={videoIdx ?? 0}
-                              seekToFrame={seekToFrame}
-                              labels={phaseLabels}
-                              onStamp={(key, frame) => {
-                                setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
-                                setLabelSaveStatus('ready');
-                                setLabelSaveError(null);
-                                setLastSaveSummary(null);
-                              }}
-                              onResetLabels={() => {
-                                setPhaseLabels({});
-                                setLabelSaveStatus('ready');
-                                setLabelSaveError(null);
-                                setLastSaveSummary(null);
-                              }}
-                              onSave={() => void onSaveLabels()}
-                              saveButtonLabel="Save Labels"
-                              saveState={fsSaveState}
-                              saveDisabledReason={
-                                fsStampedCount === 0
-                                  ? 'stamp at least one phase to save'
-                                  : !effectiveSwingId
-                                    ? 'swing not persisted yet'
-                                    : undefined
-                              }
-                            />
-                            {lastSaveSummary != null && (
-                              <Text style={styles.labelSaveSummary}>{lastSaveSummary}</Text>
-                            )}
-                            {labelSaveError != null && (
-                              <Text style={styles.labelSaveError}>{labelSaveError}</Text>
-                            )}
-                          </View>
                         ))}
                     </View>
                   </View>
+                  {/* FIX 4b: off-video label controls — delta summary, Reset,
+                      Save, save-error and the post-save regrade readout.
+                      Hidden while the overlay is collapsed (collapse hides
+                      everything, matching v1 semantics). */}
+                  {labelMode && !labelBarCollapsed && effectiveMotion && (
+                    <LabelControlsBelow
+                      events={fsLabelEvents}
+                      labels={phaseLabels}
+                      seekToFrame={seekToFrame}
+                      onResetLabels={() => {
+                        setPhaseLabels({});
+                        setLabelSaveStatus('ready');
+                        setLabelSaveError(null);
+                        setLastSaveSummary(null);
+                      }}
+                      onSave={() => void onSaveLabels()}
+                      saveButtonLabel="Save Labels"
+                      saveState={fsSaveState}
+                      saveDisabledReason={
+                        fsStampedCount === 0
+                          ? 'stamp at least one phase to save'
+                          : !effectiveSwingId
+                            ? 'swing not persisted yet'
+                            : undefined
+                      }
+                      saveSummary={lastSaveSummary}
+                      saveError={labelSaveError}
+                    />
+                  )}
                 </>
               ) : (
                 // No video → skeleton-only, self-clocked replay (existing
@@ -847,25 +871,8 @@ export default function ResultScreen() {
             {/* 3b. Operator label mode — AUTHORITATIVE (P-101): saves regrade
                 tempo/score through operatorRegrade.ts and dual-write the row
                 columns + swing_debug.operator_labels; the card gains the
-                Auto | Yours toggle. Video mode only. */}
-            {hasVideo && (
-              <TouchableOpacity
-                style={labelMode ? styles.phaseChip : styles.phaseChipDisabled}
-                onPress={() => {
-                  setLabelMode((v) => !v);
-                  setLabelBarCollapsed(false); // re-open expanded
-                }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={labelMode ? styles.phaseChipLabel : styles.phaseChipLabelDisabled}
-                  numberOfLines={1}
-                >
-                  {labelMode ? 'Label frames ▲' : 'Label frames ▼'}
-                </Text>
-              </TouchableOpacity>
-            )}
-            {/* Label bar now lives INSIDE the video stage (FIX 4 overlay). */}
+                Auto | Yours toggle. Entry point is the on-video [Label ▴] tab
+                (FIX 4c) — no below-chips button. Video mode only. */}
 
             {/* 4. Swing Art */}
             {classification?.validity === 'valid' && effectiveMotion && (
