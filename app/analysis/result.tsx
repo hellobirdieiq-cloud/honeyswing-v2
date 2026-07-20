@@ -163,12 +163,24 @@ export default function ResultScreen() {
     speed,
     setSpeed,
     seekToFrame,
+    beginScrub,
+    scrubToFrame,
+    endScrub,
   } = useSwingVideoClock({
     frames: effectiveMotion?.frames,
     videoUri,
     videoStoragePath,
     isLiveSwing,
   });
+
+  // FIX 6a: label mode = PAUSED. Expanding the overlay halts playback
+  // immediately; while expanded the center play button is not rendered and
+  // every label-mode seek is {autoPlay:false}, so nothing can resume play.
+  // Collapsing restores the normal controls.
+  const labelOverlayExpanded = labelMode && !labelBarCollapsed;
+  useEffect(() => {
+    if (labelOverlayExpanded) player?.pause();
+  }, [labelOverlayExpanded, player]);
 
   // Re-read on focus (not just mount) so a profile switched while this screen was
   // backgrounded is reflected when the viewer regains focus.
@@ -714,7 +726,7 @@ export default function ResultScreen() {
                           overlay. Placed BEFORE the play button so play stays
                           tappable (later siblings win); an armed two-tap flow
                           is never interrupted (ref guard). */}
-                      {labelMode && !labelBarCollapsed && effectiveMotion && (
+                      {labelOverlayExpanded && effectiveMotion && (
                         <Pressable
                           style={StyleSheet.absoluteFill}
                           onPress={() => {
@@ -722,7 +734,9 @@ export default function ResultScreen() {
                           }}
                         />
                       )}
-                      {!isPlaying && (
+                      {/* FIX 6a: no play control while the label overlay is
+                          expanded — label mode is hard-paused. */}
+                      {!isPlaying && !labelOverlayExpanded && (
                         <TouchableOpacity
                           style={styles.videoPlayButton}
                           onPress={() => player.play()}
@@ -741,12 +755,18 @@ export default function ResultScreen() {
                           button): tap → expand; Label ▾ / video tap →
                           collapse (labelMode stays armed). */}
                       {effectiveMotion &&
-                        (labelMode && !labelBarCollapsed ? (
+                        (labelOverlayExpanded ? (
                           <VideoLabelOverlay
                             events={fsLabelEvents}
                             frameCount={effectiveMotion.frames.length}
                             videoIdx={videoIdx ?? 0}
                             seekToFrame={seekToFrame}
+                            // FIX 6c: scrubber segments follow Auto | Yours
+                            // via the shared displayPhases selector (P-102).
+                            phases={displayPhases}
+                            scrubBegin={beginScrub}
+                            scrubUpdate={scrubToFrame}
+                            scrubEnd={endScrub}
                             labels={phaseLabels}
                             onStamp={(key, frame) => {
                               setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
@@ -775,7 +795,7 @@ export default function ResultScreen() {
                       Save, save-error and the post-save regrade readout.
                       Hidden while the overlay is collapsed (collapse hides
                       everything, matching v1 semantics). */}
-                  {labelMode && !labelBarCollapsed && effectiveMotion && (
+                  {labelOverlayExpanded && effectiveMotion && (
                     <LabelControlsBelow
                       events={fsLabelEvents}
                       labels={phaseLabels}

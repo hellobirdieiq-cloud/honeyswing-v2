@@ -15,6 +15,12 @@ import { useVideoPlayer } from 'expo-video';
 import { getSwingVideoSignedUrl } from '../../lib/getSwingVideoUrl';
 import type { PoseFrame } from '../../packages/pose/PoseTypes';
 
+/** FIX 6c scrub coalescing: minimum gap between currentTime writes while a
+ *  drag is active (expo-video has no seek-completion event, so "one seek in
+ *  flight" is enforced as a time gate + one trailing write for the newest
+ *  pending target). EXTERNAL-ASSUMPTION tunable. */
+const SCRUB_MIN_SEEK_INTERVAL_MS = 80;
+
 export function useSwingVideoClock(args: {
   frames: PoseFrame[] | undefined;
   videoUri: string | null;
@@ -109,6 +115,14 @@ export function useSwingVideoClock(args: {
   // stays uncontrolled (self-clocked rAF).
   const [videoIdx, setVideoIdx] = useState<number | null>(null);
   const frameCount = frames?.length ?? 0;
+  // FIX 6c scrub state — active mutes the timeUpdate listener; timer/pending
+  // implement the trailing coalesced currentTime write.
+  const scrubRef = useRef<{
+    active: boolean;
+    lastSeekAtMs: number;
+    pendingIdx: number | null;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>({ active: false, lastSeekAtMs: 0, pendingIdx: null, timer: null });
   useEffect(() => {
     if (!player) return;
     // expo-video emits timeUpdate ONLY when the interval is set (default 0 =
@@ -116,6 +130,10 @@ export function useSwingVideoClock(args: {
     player.timeUpdateEventInterval = 1 / 60;
     const sub = player.addListener('timeUpdate', (payload) => {
       if (frameCount === 0) return;
+      // Muted mid-scrub (FIX 6c): the drag updates videoIdx immediately while
+      // currentTime writes are coalesced behind it — a stale event here would
+      // stomp the playhead back to a lagging video position.
+      if (scrubRef.current.active) return;
       const idx = Math.round((payload.currentTime * 1000) / msPerFrame);
       setVideoIdx(Math.min(Math.max(0, idx), frameCount - 1));
     });
@@ -138,11 +156,16 @@ export function useSwingVideoClock(args: {
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
+    const scrub = scrubRef.current;
     return () => {
       isMountedRef.current = false;
       if (seekTimerRef.current != null) {
         clearTimeout(seekTimerRef.current);
         seekTimerRef.current = null;
+      }
+      if (scrub.timer != null) {
+        clearTimeout(scrub.timer);
+        scrub.timer = null;
       }
     };
   }, []);
@@ -169,6 +192,69 @@ export function useSwingVideoClock(args: {
     }, 100);
   }, [player, isPlayerReady, msPerFrame, frameCount]);
 
+  // ── FIX 6c: scrub path — paused, coalesced preview seeks during a drag ──
+  // begin pauses and mutes timeUpdate; update moves the UI playhead
+  // immediately and gates currentTime writes to one per
+  // SCRUB_MIN_SEEK_INTERVAL_MS with a trailing write for the newest pending
+  // target; end lands ONE definitive exact seek through the single seek path
+  // (always autoPlay:false — label mode never resumes playback, FIX 6a).
+  const beginScrub = useCallback(() => {
+    if (!player || !isPlayerReady) return;
+    player.pause();
+    // A pending deferred-play from an earlier autoPlay seek must not fire
+    // mid-scrub.
+    if (seekTimerRef.current != null) {
+      clearTimeout(seekTimerRef.current);
+      seekTimerRef.current = null;
+    }
+    scrubRef.current.active = true;
+  }, [player, isPlayerReady]);
+
+  const scrubToFrame = useCallback(
+    (index: number) => {
+      const s = scrubRef.current;
+      if (!player || !isPlayerReady || !s.active) return;
+      const idx = Math.min(Math.max(0, index), Math.max(0, frameCount - 1));
+      // Playhead/counter/skeleton update immediately; the video write may lag.
+      setVideoIdx(idx);
+      const now = Date.now();
+      if (s.timer == null && now - s.lastSeekAtMs >= SCRUB_MIN_SEEK_INTERVAL_MS) {
+        s.lastSeekAtMs = now;
+        player.currentTime = Math.max(0, (idx * msPerFrame) / 1000);
+        return;
+      }
+      s.pendingIdx = idx; // newest target replaces pending
+      if (s.timer == null) {
+        s.timer = setTimeout(
+          () => {
+            s.timer = null;
+            const pending = s.pendingIdx;
+            s.pendingIdx = null;
+            if (!isMountedRef.current || !s.active || pending == null) return;
+            s.lastSeekAtMs = Date.now();
+            player.currentTime = Math.max(0, (pending * msPerFrame) / 1000);
+          },
+          Math.max(0, SCRUB_MIN_SEEK_INTERVAL_MS - (now - s.lastSeekAtMs)),
+        );
+      }
+    },
+    [player, isPlayerReady, msPerFrame, frameCount],
+  );
+
+  const endScrub = useCallback(
+    (index: number) => {
+      const s = scrubRef.current;
+      if (s.timer != null) {
+        clearTimeout(s.timer);
+        s.timer = null;
+      }
+      s.pendingIdx = null;
+      s.active = false;
+      seekToFrame(index, { autoPlay: false });
+    },
+    [seekToFrame],
+  );
+
   // Resolve the uploaded video into a signed URL ONCE per record load —
   // historical views only. Local videoUri (live swing) wins; storage_path
   // null (never/in-flight upload) → stays skeleton-only with no error.
@@ -192,5 +278,8 @@ export function useSwingVideoClock(args: {
     speed,
     setSpeed,
     seekToFrame,
+    beginScrub,
+    scrubToFrame,
+    endScrub,
   };
 }

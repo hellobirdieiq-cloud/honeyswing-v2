@@ -1,14 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 import type { LabelEvent, LabelSaveState } from './PhaseLabelBar';
+import { LabelScrubber } from './LabelScrubber';
 
 /**
  * VideoLabelOverlay + LabelControlsBelow — full-swing operator labeling,
  * edge-layout v2 (FIX 4b). The subject is center-frame, so on-video controls
  * hug the EDGES of the stage:
- *   - top strip: frame counter (< f214 >, tap → numeric input) centered,
+ *   - top strip: frame counter (< 214 / 350 >, tap → numeric input) centered,
  *     collapse control right-aligned;
- *   - left rail −5/−1 and right rail +1/+5, vertically centered;
+ *   - left rail −5/−1 and right rail +1/+5, vertically centered, with
+ *     press-and-hold repeat (FIX 6b);
+ *   - phase-colored precision scrubber above the chip row (FIX 6c,
+ *     LabelScrubber — the host's scrub trio owns coalescing/definitive seek);
  *   - bottom row: the phase chips in one line, fixed height (armed hint
  *     renders inside it — no layout jump; no idle hint text).
  * Everything else (delta summary, Reset, Save, save-error, save readout)
@@ -19,6 +23,9 @@ import type { LabelEvent, LabelSaveState } from './PhaseLabelBar';
  * tap (host-side tap-catcher, guarded by onArmedChange so an armed two-tap
  * flow is never interrupted).
  *
+ * FIX 6a: label mode = PAUSED — the host pauses on expand and hides the play
+ * button while expanded; every seek issued from this overlay stays paused.
+ *
  * Interaction contract is identical to PhaseLabelBar (two-tap arm, latest-wins
  * re-stamp, FLASH_MS flash on detected-seek, every seek PAUSED via
  * {autoPlay:false}); the host owns labels/persistence/recompute. The putting
@@ -27,6 +34,13 @@ import type { LabelEvent, LabelSaveState } from './PhaseLabelBar';
 
 const DELTA_WARN = 3;
 const FLASH_MS = 600;
+/** FIX 6b hold-to-repeat (EXTERNAL-ASSUMPTION tunables): initial delay before
+ *  the step repeats, then the repeat cadence. */
+const STEP_HOLD_DELAY_MS = 350;
+const STEP_HOLD_INTERVAL_MS = 80;
+/** Height the absolute-positioned chip row occupies (chip 50 + 2×8 padding) —
+ *  the scrubber sits directly above it. */
+const CHIP_ROW_HEIGHT = 66;
 
 export function VideoLabelOverlay({
   events,
@@ -37,6 +51,10 @@ export function VideoLabelOverlay({
   onStamp,
   onCollapse,
   onArmedChange,
+  phases,
+  scrubBegin,
+  scrubUpdate,
+  scrubEnd,
 }: {
   events: LabelEvent[];
   frameCount: number;
@@ -49,6 +67,12 @@ export function VideoLabelOverlay({
    *  collapses the overlay ONLY when no chip is armed). Pass a stable
    *  callback (useCallback) — it sits in an effect dep list. */
   onArmedChange?: (armed: boolean) => void;
+  /** FIX 6c scrubber inputs: displayPhases (segment colors follow the
+   *  Auto | Yours toggle) + the clock's coalesced scrub trio. */
+  phases: { phase: string; index: number }[] | null;
+  scrubBegin: () => void;
+  scrubUpdate: (frame: number) => void;
+  scrubEnd: (frame: number) => void;
 }) {
   const [armedKey, setArmedKey] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState<string | null>(null);
@@ -71,9 +95,40 @@ export function VideoLabelOverlay({
   };
 
   const clampFrame = (f: number) => Math.min(Math.max(0, f), Math.max(0, frameCount - 1));
-  const step = (delta: number) => {
-    seekToFrame(clampFrame(videoIdx + delta), { autoPlay: false });
+
+  // FIX 6b hold-to-repeat: press-in fires the first step immediately (single
+  // tap = one step, unchanged), then after STEP_HOLD_DELAY_MS repeats every
+  // STEP_HOLD_INTERVAL_MS until press-out/cancel. The running frame lives in
+  // the ref (not the videoIdx prop) so the repeat cadence never races the
+  // render round-trip; every seek is paused and clamped at clip bounds.
+  const holdRef = useRef<{
+    delay: ReturnType<typeof setTimeout> | null;
+    interval: ReturnType<typeof setInterval> | null;
+    frame: number;
+  }>({ delay: null, interval: null, frame: 0 });
+  const stopHold = () => {
+    const h = holdRef.current;
+    if (h.delay != null) clearTimeout(h.delay);
+    if (h.interval != null) clearInterval(h.interval);
+    h.delay = null;
+    h.interval = null;
   };
+  const startHold = (delta: number) => {
+    stopHold();
+    const h = holdRef.current;
+    h.frame = clampFrame(videoIdx + delta);
+    seekToFrame(h.frame, { autoPlay: false });
+    h.delay = setTimeout(() => {
+      h.delay = null;
+      h.interval = setInterval(() => {
+        const next = clampFrame(h.frame + delta);
+        if (next === h.frame) return; // clamped at a clip bound — hold, don't re-seek
+        h.frame = next;
+        seekToFrame(next, { autoPlay: false });
+      }, STEP_HOLD_INTERVAL_MS);
+    }, STEP_HOLD_DELAY_MS);
+  };
+  useEffect(() => stopHold, []);
 
   const flash = (key: string) => {
     setFlashKey(key);
@@ -134,7 +189,8 @@ export function VideoLabelOverlay({
               setFrameInputOpen(true);
             }}
           >
-            <Text style={styles.frameText}>{'<'} f{videoIdx} {'>'}</Text>
+            {/* FIX 6d: < current / total > */}
+            <Text style={styles.frameText}>{'<'} {videoIdx} / {frameCount} {'>'}</Text>
           </Pressable>
         )}
         <Pressable style={styles.topStripSide} onPress={onCollapse} hitSlop={8}>
@@ -142,22 +198,37 @@ export function VideoLabelOverlay({
         </Pressable>
       </View>
 
-      {/* Edge rails */}
+      {/* Edge rails — press-and-hold repeats the step (FIX 6b) */}
       <View style={[styles.rail, styles.railLeft]} pointerEvents="box-none">
-        <Pressable style={styles.railBtn} onPress={() => step(-5)}>
+        <Pressable style={styles.railBtn} onPressIn={() => startHold(-5)} onPressOut={stopHold}>
           <Text style={styles.railText}>−5</Text>
         </Pressable>
-        <Pressable style={styles.railBtn} onPress={() => step(-1)}>
+        <Pressable style={styles.railBtn} onPressIn={() => startHold(-1)} onPressOut={stopHold}>
           <Text style={styles.railText}>−1</Text>
         </Pressable>
       </View>
       <View style={[styles.rail, styles.railRight]} pointerEvents="box-none">
-        <Pressable style={styles.railBtn} onPress={() => step(1)}>
+        <Pressable style={styles.railBtn} onPressIn={() => startHold(1)} onPressOut={stopHold}>
           <Text style={styles.railText}>+1</Text>
         </Pressable>
-        <Pressable style={styles.railBtn} onPress={() => step(5)}>
+        <Pressable style={styles.railBtn} onPressIn={() => startHold(5)} onPressOut={stopHold}>
           <Text style={styles.railText}>+5</Text>
         </Pressable>
+      </View>
+
+      {/* FIX 6c: precision scrubber — thin phase-colored track above the chip
+          row; tap = absolute paused seek, drag = relative whole-frame
+          precision (vertical bands). box-none wrapper: only the 44pt hit
+          strip takes touches. */}
+      <View style={styles.scrubberWrap} pointerEvents="box-none">
+        <LabelScrubber
+          frameCount={frameCount}
+          videoIdx={videoIdx}
+          phases={phases}
+          scrubBegin={scrubBegin}
+          scrubUpdate={scrubUpdate}
+          scrubEnd={scrubEnd}
+        />
       </View>
 
       {/* Bottom chip row — one line, fixed height (armed hint fits inside) */}
@@ -354,6 +425,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Menlo',
     fontWeight: '700',
+  },
+  scrubberWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: CHIP_ROW_HEIGHT,
+    paddingHorizontal: 14,
   },
   chipRow: {
     position: 'absolute',

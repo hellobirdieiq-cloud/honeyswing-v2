@@ -465,6 +465,16 @@ SwingSkeletonCanvas `phases` props, and SwingArtCard. Full Swing chip stays fram
 reading `analysis.phases`. No labels ⇒ byte-identical.
 WHERE: `app/analysis/result.tsx` only. EFFORT: S. DEPENDS ON: P-101 (done).
 
+**P-104 — magnetic snap to phase boundaries on the label scrubber** ⏸️ PARKED
+(rejected at FIX 6, 2026-07-20)
+WHAT: snap the FIX 6c label-overlay scrubber playhead to nearby phase-boundary
+frames while dragging.
+WHY REJECTED: the boundaries shown during a labeling session are exactly the
+values under correction — snapping to them makes untrusted auto-detected (or
+half-edited) frames sticky targets and biases the operator toward confirming
+them. Revisit only if a trusted-boundary source appears.
+WHERE (if ever): components/LabelScrubber.tsx. EFFORT: S.
+
 ---
 
 ## 3. Suggested order — ⚠️ OPINION, not status
