@@ -219,6 +219,20 @@ export default function ResultScreen() {
     [fsAllPhaseEvents],
   );
   const fsStampedCount = Object.values(phaseLabels).filter((v) => v != null).length;
+  // 3b: scrubber boundaries track the CURRENT (unsaved) stamps live —
+  // operator frame where stamped (solid tick), detected otherwise (dim
+  // tick). A stamp moves its tick immediately; reset reverts. Only the
+  // label-overlay scrubber consumes this; every other phase surface keeps
+  // displayPhases (P-102) and the regrade input keeps analysis.phases.
+  const labelLivePhases = useMemo(
+    () =>
+      fsAllPhaseEvents.flatMap((ev) => {
+        const stamp = phaseLabels[ev.key];
+        const index = stamp ?? ev.detectedFrame;
+        return index == null ? [] : [{ phase: ev.key, index, operator: stamp != null }];
+      }),
+    [fsAllPhaseEvents, phaseLabels],
+  );
   const fsSaveState =
     fsStampedCount === 0 || !effectiveSwingId
       ? ('disabled' as const)
@@ -779,9 +793,11 @@ export default function ResultScreen() {
                             frameCount={effectiveMotion.frames.length}
                             videoIdx={videoIdx ?? 0}
                             seekToFrame={seekToFrame}
-                            // FIX 6c: scrubber segments follow Auto | Yours
-                            // via the shared displayPhases selector (P-102).
-                            phases={displayPhases}
+                            // 3b: scrubber boundaries = detected merged with
+                            // current unsaved stamps (live ticks; supersedes
+                            // the FIX 6c displayPhases feed for the scrubber
+                            // ONLY — chips/canvas/art keep displayPhases).
+                            phases={labelLivePhases}
                             scrubBegin={beginScrub}
                             scrubUpdate={scrubToFrame}
                             scrubEnd={endScrub}

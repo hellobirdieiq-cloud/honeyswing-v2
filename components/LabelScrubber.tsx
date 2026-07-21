@@ -8,11 +8,14 @@
  * definitive finger-up seek.
  *
  * Segments are colored by phase boundaries (pre-TA gray, TA→TOP, TOP→IMP,
- * IMP→FIN, post-FIN) from the phases prop — the host passes displayPhases,
- * so colors follow the Auto | Yours toggle. Boundary TICK MARKS double-code
- * the regions (never color alone); a white playhead line + thumb dot track
- * videoIdx (the thumb is a drag AFFORDANCE, not a handle — the full track
- * remains the gesture surface).
+ * IMP→FIN, post-FIN) from the phases prop — the host passes detected phases
+ * LIVE-merged with the current unsaved stamps (3b), so a stamp moves its
+ * boundary immediately and a reset reverts it. Boundary TICK MARKS
+ * double-code the regions (never color alone): operator-stamped boundaries
+ * render SOLID/bright, auto-only boundaries dimmer (`operator` flag per
+ * entry). A white playhead line + thumb dot track videoIdx (the thumb is a
+ * drag AFFORDANCE, not a handle — the full track remains the gesture
+ * surface).
  *
  * GESTURE OWNERSHIP: Pan with minDistance(0) activates at touch-down, so
  * once a finger lands on the track no other recognizer (video-tap collapse
@@ -58,9 +61,11 @@ const SEGMENT_COLORS = [
   '#6E4658', // IMP → FIN plum
   '#2C2C2E', // post-FIN dark gray
 ] as const;
-const TICK_COLOR = 'rgba(235,235,245,0.6)';
+// Operator-stamped boundary = solid/bright; auto-only = dimmer (3b).
+const TICK_COLOR_OPERATOR = 'rgba(235,235,245,0.95)';
+const TICK_COLOR_AUTO = 'rgba(235,235,245,0.35)';
 
-type PhaseLike = { phase: string; index: number };
+type PhaseLike = { phase: string; index: number; operator?: boolean };
 
 export function LabelScrubber({
   frameCount,
@@ -165,19 +170,21 @@ export function LabelScrubber({
   // out-of-order operator stamp can't produce a negative-width segment.
   const edges = useMemo(() => {
     if (frameCount < 2) return null;
-    const find = (name: string) => phases?.find((p) => p.phase === name)?.index;
+    const find = (name: string) => phases?.find((p) => p.phase === name);
     const ta = find('takeaway');
     const top = find('top');
     const imp = find('impact');
     const fin = find('follow_through');
     if (ta == null || top == null || imp == null || fin == null) return null;
-    const e = [0, ta, top, imp, fin, frameCount - 1].map(
+    const bounds = [ta, top, imp, fin];
+    const fracs = [0, ...bounds.map((b) => b.index), frameCount - 1].map(
       (i) => clampFrame(i, frameCount) / (frameCount - 1),
     );
-    e[0] = 0;
-    e[e.length - 1] = 1;
-    for (let i = 1; i < e.length; i++) e[i] = Math.max(e[i], e[i - 1]);
-    return e;
+    fracs[0] = 0;
+    fracs[fracs.length - 1] = 1;
+    for (let i = 1; i < fracs.length; i++) fracs[i] = Math.max(fracs[i], fracs[i - 1]);
+    // Per-boundary operator flags, index-aligned with fracs.slice(1, -1).
+    return { fracs, operator: bounds.map((b) => b.operator === true) };
   }, [phases, frameCount]);
 
   const playheadFrac =
@@ -199,7 +206,7 @@ export function LabelScrubber({
                 <View
                   key={color}
                   style={{
-                    width: `${(edges[i + 1] - edges[i]) * 100}%`,
+                    width: `${(edges.fracs[i + 1] - edges.fracs[i]) * 100}%`,
                     backgroundColor: color,
                   }}
                 />
@@ -209,8 +216,19 @@ export function LabelScrubber({
             )}
           </View>
           {edges &&
-            edges.slice(1, -1).map((frac, i) => (
-              <View key={i} style={[styles.tick, { left: `${frac * 100}%` }]} />
+            edges.fracs.slice(1, -1).map((frac, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.tick,
+                  {
+                    left: `${frac * 100}%`,
+                    backgroundColor: edges.operator[i]
+                      ? TICK_COLOR_OPERATOR
+                      : TICK_COLOR_AUTO,
+                  },
+                ]}
+              />
             ))}
           <View style={[styles.playhead, { left: `${playheadFrac * 100}%` }]} />
           <View
@@ -255,7 +273,7 @@ const styles = StyleSheet.create({
     marginLeft: -1,
     height: TICK_HEIGHT,
     borderRadius: 1,
-    backgroundColor: TICK_COLOR,
+    // backgroundColor set inline per boundary (operator vs auto, 3b).
   },
   playhead: {
     position: 'absolute',

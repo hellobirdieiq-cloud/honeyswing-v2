@@ -37,6 +37,9 @@ import { LabelScrubber } from './LabelScrubber';
 
 const DELTA_WARN = 3;
 const FLASH_MS = 600;
+/** 3a confirm-reset escape (EXTERNAL-ASSUMPTION tunable): the armed
+ *  "Confirm reset?" state auto-reverts to "Reset labels" after this long. */
+const RESET_CONFIRM_MS = 3000;
 /** FIX 6b hold-to-repeat (EXTERNAL-ASSUMPTION tunables): initial delay before
  *  the step repeats, then the repeat cadence. */
 const STEP_HOLD_DELAY_MS = 350;
@@ -68,9 +71,12 @@ export function VideoLabelOverlay({
   labels: Record<string, number | undefined>;
   onStamp: (key: string, frame: number) => void;
   onCollapse: () => void;
-  /** FIX 6c scrubber inputs: displayPhases (segment colors follow the
-   *  Auto | Yours toggle) + the clock's coalesced scrub trio. */
-  phases: { phase: string; index: number }[] | null;
+  /** FIX 6c scrubber inputs + 3b live boundaries: the host passes detected
+   *  phases merged with the CURRENT unsaved stamps (a stamp moves its tick
+   *  immediately; reset reverts). `operator` marks stamped boundaries —
+   *  the scrubber renders them solid, auto-only ones dimmer. Plus the
+   *  clock's coalesced scrub trio. */
+  phases: { phase: string; index: number; operator?: boolean }[] | null;
   scrubBegin: () => void;
   scrubUpdate: (frame: number) => void;
   scrubEnd: (frame: number) => void;
@@ -263,8 +269,24 @@ export function LabelControlsBelow({
   const [resetArmed, setResetArmed] = useState(false);
   const stampedCount = events.filter((ev) => labels[ev.key] != null).length;
 
+  // 3a confirm-reset escape: the armed state auto-reverts after
+  // RESET_CONFIRM_MS, and any touch inside this panel OTHER than the reset
+  // button cancels it immediately. onTouchStart is passive (never claims the
+  // responder), so the cancelling tap is NOT swallowed — delta tokens and
+  // Save still receive it; the reset button stops propagation so its own
+  // confirm tap can't disarm itself. Taps outside the panel (video stage)
+  // fall back to the timer.
+  useEffect(() => {
+    if (!resetArmed) return;
+    const t = setTimeout(() => setResetArmed(false), RESET_CONFIRM_MS);
+    return () => clearTimeout(t);
+  }, [resetArmed]);
+  const cancelResetConfirm = () => {
+    if (resetArmed) setResetArmed(false);
+  };
+
   return (
-    <View style={styles.belowContainer}>
+    <View style={styles.belowContainer} onTouchStart={cancelResetConfirm}>
       {/* Delta token line — tap seeks (paused) to the detected frame. Since
           the single-tap chip change, this is the ONLY route to the app's
           detected guess. */}
@@ -301,6 +323,7 @@ export function LabelControlsBelow({
       <View style={styles.actionRow}>
         <Pressable
           style={[styles.resetBtn, resetArmed && styles.resetArmed]}
+          onTouchStart={(e) => e.stopPropagation()}
           onPress={() => {
             if (resetArmed) {
               onResetLabels();
