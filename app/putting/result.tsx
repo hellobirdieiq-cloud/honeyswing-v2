@@ -162,7 +162,10 @@ export default function PuttingResultScreen(): React.ReactElement {
 
     // 1) Row columns get the MANUAL values (direct update — RLS user-scoped).
     //    NEVER touch swing_debug via .update() (wholesale overwrite).
-    const { error: updateError } = await supabase
+    //    .select('id') = row-count honesty (outbox precedent): an RLS-filtered
+    //    UPDATE (stale/unowned id, missing auth token) returns error:null with
+    //    0 rows — without the count check that silent no-op showed "✓ Saved".
+    const { data: updatedRows, error: updateError } = await supabase
       .from('swings')
       .update({
         tempo_ratio: tempo?.ratio ?? null,
@@ -170,10 +173,14 @@ export default function PuttingResultScreen(): React.ReactElement {
         downswing_ms: tempo != null ? Math.round(tempo.downswingMs) : null,
         score: newScore,
       })
-      .eq('id', swingId);
+      .eq('id', swingId)
+      .select('id');
+    const rowUpdateFailed = updateError != null || (updatedRows?.length ?? 0) === 0;
     // 2) Label record under the SIBLING top-level key (merge_swing_debug is a
     //    top-level shallow merge — {putting: …} would clobber the detected
-    //    payload). Stamped events only + FULL detected snapshot.
+    //    payload). Stamped events only + FULL detected snapshot. The RPC
+    //    RETURNS void — error-only detection; write-1 rowCount ≥ 1 under the
+    //    same token already proves RLS visibility of the row.
     const stampedLabels: Partial<Record<LabelKey, number>> = {};
     const deltas: Partial<Record<LabelKey, number | null>> = {};
     for (const k of Object.keys(labels) as LabelKey[]) {
@@ -198,10 +205,26 @@ export default function PuttingResultScreen(): React.ReactElement {
     });
 
     // Partial-failure honesty: ✓ only when BOTH landed; else surface a retry.
-    if (updateError || rpcError) {
+    if (rowUpdateFailed || rpcError) {
+      console.error('[label save] failed', {
+        swingId,
+        updatedRowCount: updatedRows?.length ?? 0,
+        updateError: updateError && {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        },
+        rpcError: rpcError && {
+          code: rpcError.code,
+          message: rpcError.message,
+          details: rpcError.details,
+          hint: rpcError.hint,
+        },
+      });
       setSaveStatus('ready');
       setSaveError(
-        `save incomplete — ${updateError ? 'row update' : 'label record'} failed; tap to retry`,
+        `save incomplete — ${rowUpdateFailed ? 'row update' : 'label record'} failed; tap to retry`,
       );
       return;
     }

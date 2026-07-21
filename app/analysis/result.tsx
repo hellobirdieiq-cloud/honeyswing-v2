@@ -258,6 +258,7 @@ export default function ResultScreen() {
     });
     // Device diagnostic (FIX 5): confirms regrade inputs/outputs on-device.
     console.log('[P-101 regrade]', {
+      swingId: effectiveSwingId,
       stamped,
       stepMs,
       frameCount: frames?.length ?? 0,
@@ -270,7 +271,10 @@ export default function ResultScreen() {
     //    honey_boom included: reconstructAnalysisFromRecord reads it back, so
     //    a stale flag would desync from the rewritten score. NEVER touch
     //    swing_debug via .update() (wholesale overwrite).
-    const { error: updateError } = await supabase
+    //    .select('id') = row-count honesty (outbox precedent): an RLS-filtered
+    //    UPDATE (stale/unowned id, missing auth token) returns error:null with
+    //    0 rows — without the count check that silent no-op showed "✓ Saved".
+    const { data: updatedRows, error: updateError } = await supabase
       .from('swings')
       .update({
         score: regrade.score,
@@ -279,8 +283,14 @@ export default function ResultScreen() {
         downswing_ms: regrade.tempo != null ? Math.round(regrade.tempo.downswingMs) : null,
         honey_boom: regrade.honeyBoom,
       })
-      .eq('id', effectiveSwingId);
-    // 2) Label record under the SIBLING top-level key.
+      .eq('id', effectiveSwingId)
+      .select('id');
+    const rowUpdateFailed = updateError != null || (updatedRows?.length ?? 0) === 0;
+    // 2) Label record under the SIBLING top-level key. merge_swing_debug
+    //    RETURNS void, so no row count crosses the wire (error-only detection
+    //    stays); acceptable because a write-1 rowCount ≥ 1 under the SAME
+    //    token already proves the row is visible+owned through RLS — the
+    //    RPC's inner UPDATE on that row can't silently 0-row for ownership.
     const { error: rpcError } = await supabase.rpc('merge_swing_debug', {
       swing_id: effectiveSwingId,
       patch: {
@@ -295,10 +305,26 @@ export default function ResultScreen() {
       },
     });
     // Partial-failure honesty: ✓ only when BOTH landed; else surface a retry.
-    if (updateError || rpcError) {
+    if (rowUpdateFailed || rpcError) {
+      console.error('[label save] failed', {
+        swingId: effectiveSwingId,
+        updatedRowCount: updatedRows?.length ?? 0,
+        updateError: updateError && {
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+        },
+        rpcError: rpcError && {
+          code: rpcError.code,
+          message: rpcError.message,
+          details: rpcError.details,
+          hint: rpcError.hint,
+        },
+      });
       setLabelSaveStatus('ready');
       setLabelSaveError(
-        `save incomplete — ${updateError ? 'row update' : 'label record'} failed; tap to retry`,
+        `save incomplete — ${rowUpdateFailed ? 'row update' : 'label record'} failed; tap to retry`,
       );
       return;
     }
