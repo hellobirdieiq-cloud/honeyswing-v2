@@ -452,6 +452,12 @@ stay byte-identical; extraction is a behavior-neutral cleanup for its own sessio
 WHERE: components/PhaseLabelBar.tsx, components/VideoLabelOverlay.tsx (+ new hook file).
 EFFORT: S. DEPENDS ON: none. RISK IF IGNORED: the two copies drift (e.g. a seek-pause or
 arm-semantics fix landing in only one surface).
+DIVERGENCE RIDER (2026-07-21, single-tap change): the two surfaces now have DIFFERENT
+stamp contracts by design — VideoLabelOverlay is SINGLE-TAP stamp at the current frame
+(no arm state, no seek in the stamp path; delta tokens below the video are the only
+detected-seek route), while PhaseLabelBar (putting panel) keeps the original two-tap
+arm + detected-seek flash. The extraction must parameterize the stamp flow, not assume
+one shared contract.
 
 **P-102 — phase chips follow the Yours view** 🔄 IN PROGRESS (unparked by owner
 2026-07-19 after device finding; parked at P-101 approval 2026-07-17)

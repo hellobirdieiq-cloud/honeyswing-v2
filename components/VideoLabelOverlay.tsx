@@ -13,23 +13,26 @@ import { LabelScrubber } from './LabelScrubber';
  *     press-and-hold repeat (FIX 6b);
  *   - phase-colored precision scrubber above the chip row (FIX 6c,
  *     LabelScrubber — the host's scrub trio owns coalescing/definitive seek);
- *   - bottom row: the phase chips in one line, fixed height (armed hint
- *     renders inside it — no layout jump; no idle hint text).
+ *   - bottom row: the phase chips in one line, fixed height (single-tap
+ *     stamp — no layout jump; no idle hint text).
  * Everything else (delta summary, Reset, Save, save-error, save readout)
  * renders OFF the video via LabelControlsBelow.
  *
  * FIX 4c: the blue [Label ▴] tab on the video is the ONLY label-mode control —
  * the host expands via the tab and collapses via Label ▾ or a video-surface
- * tap (host-side tap-catcher, guarded by onArmedChange so an armed two-tap
- * flow is never interrupted).
+ * tap (host-side tap-catcher; chips/rails/scrubber render as LATER siblings,
+ * so they always win the touch — the catcher only sees bare video taps).
  *
  * FIX 6a: label mode = PAUSED — the host pauses on expand and hides the play
  * button while expanded; every seek issued from this overlay stays paused.
  *
- * Interaction contract is identical to PhaseLabelBar (two-tap arm, latest-wins
- * re-stamp, FLASH_MS flash on detected-seek, every seek PAUSED via
- * {autoPlay:false}); the host owns labels/persistence/recompute. The putting
- * screen keeps the original PhaseLabelBar panel.
+ * Interaction contract: SINGLE-TAP stamp — tapping a chip stamps that phase
+ * at the CURRENT frame immediately (latest-wins on re-tap), confirmed by a
+ * FLASH_MS highlight + the ✓/fN title. NO seek happens in the stamp path;
+ * the delta tokens below the video (LabelControlsBelow) are the ONLY route
+ * to the app's detected guess (tap = paused seek). This DIVERGES from
+ * PhaseLabelBar's two-tap arm — the putting screen keeps that panel
+ * unchanged; reconcile in the P-103 extraction.
  */
 
 const DELTA_WARN = 3;
@@ -53,7 +56,6 @@ export function VideoLabelOverlay({
   labels,
   onStamp,
   onCollapse,
-  onArmedChange,
   phases,
   scrubBegin,
   scrubUpdate,
@@ -66,10 +68,6 @@ export function VideoLabelOverlay({
   labels: Record<string, number | undefined>;
   onStamp: (key: string, frame: number) => void;
   onCollapse: () => void;
-  /** Reports two-tap arm state to the host (FIX 4c: a video-surface tap
-   *  collapses the overlay ONLY when no chip is armed). Pass a stable
-   *  callback (useCallback) — it sits in an effect dep list. */
-  onArmedChange?: (armed: boolean) => void;
   /** FIX 6c scrubber inputs: displayPhases (segment colors follow the
    *  Auto | Yours toggle) + the clock's coalesced scrub trio. */
   phases: { phase: string; index: number }[] | null;
@@ -77,25 +75,16 @@ export function VideoLabelOverlay({
   scrubUpdate: (frame: number) => void;
   scrubEnd: (frame: number) => void;
 }) {
-  const [armedKey, setArmedKey] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const [frameInputOpen, setFrameInputOpen] = useState(false);
   const [frameInputText, setFrameInputText] = useState('');
 
-  // Reset now lives below the stage — clear a stale arm when the host wipes
-  // the label set out from under us.
+  // Reset lives below the stage — kill a stale stamp flash when the host
+  // wipes the label set out from under us.
   const stampedCount = events.filter((ev) => labels[ev.key] != null).length;
   useEffect(() => {
-    if (stampedCount === 0) {
-      setArmedKey(null);
-      onArmedChange?.(false);
-    }
-  }, [stampedCount, onArmedChange]);
-
-  const setArmed = (key: string | null) => {
-    setArmedKey(key);
-    onArmedChange?.(key != null);
-  };
+    if (stampedCount === 0) setFlashKey(null);
+  }, [stampedCount]);
 
   const clampFrame = (f: number) => Math.min(Math.max(0, f), Math.max(0, frameCount - 1));
 
@@ -138,26 +127,12 @@ export function VideoLabelOverlay({
     setTimeout(() => setFlashKey((k) => (k === key ? null : k)), FLASH_MS);
   };
 
-  const seekToDetected = (ev: LabelEvent) => {
-    if (ev.detectedFrame == null) return;
-    seekToFrame(clampFrame(ev.detectedFrame), { autoPlay: false });
-    flash(ev.key);
-  };
-
+  // Single-tap stamp: every tap marks the phase at the CURRENT frame
+  // (latest-wins on re-tap). NO seek in this path — the operator's playhead
+  // never moves out from under them; the flash + ✓/fN title confirm.
   const onChipTap = (ev: LabelEvent) => {
-    const stamped = labels[ev.key] != null;
-    if (stamped) {
-      onStamp(ev.key, videoIdx); // re-stamp at playhead, latest wins
-      setArmed(null);
-      return;
-    }
-    if (armedKey === ev.key) {
-      onStamp(ev.key, videoIdx); // tap 2: stamp current playhead frame
-      setArmed(null);
-    } else {
-      setArmed(ev.key); // tap 1: arm + jump to the Auto frame
-      seekToDetected(ev);
-    }
+    onStamp(ev.key, videoIdx);
+    flash(ev.key);
   };
 
   const submitFrameInput = () => {
@@ -235,11 +210,11 @@ export function VideoLabelOverlay({
         />
       </View>
 
-      {/* Bottom chip row — one line, fixed height (armed hint fits inside) */}
+      {/* Bottom chip row — one line, fixed height. Tap = stamp at the
+          current frame; the FLASH_MS highlight confirms the write. */}
       <View style={styles.chipRow}>
         {events.map((ev) => {
           const stamped = labels[ev.key];
-          const armed = armedKey === ev.key;
           const flashing = flashKey === ev.key;
           return (
             <Pressable
@@ -247,7 +222,6 @@ export function VideoLabelOverlay({
               style={[
                 styles.chip,
                 stamped != null && styles.chipStamped,
-                armed && styles.chipArmed,
                 flashing && styles.chipFlash,
               ]}
               onPress={() => onChipTap(ev)}
@@ -255,9 +229,6 @@ export function VideoLabelOverlay({
               <Text style={[styles.chipTitle, stamped != null && styles.chipTitleStamped]}>
                 {stamped != null ? `✓ ${ev.label} f${stamped}` : ev.label}
               </Text>
-              {armed && (
-                <Text style={styles.chipHint}>{`tap again to mark f${videoIdx}`}</Text>
-              )}
             </Pressable>
           );
         })}
@@ -294,7 +265,9 @@ export function LabelControlsBelow({
 
   return (
     <View style={styles.belowContainer}>
-      {/* Delta token line — tap seeks (paused) to the detected frame */}
+      {/* Delta token line — tap seeks (paused) to the detected frame. Since
+          the single-tap chip change, this is the ONLY route to the app's
+          detected guess. */}
       <View style={styles.deltaLine}>
         {events.map((ev) => {
           const you = labels[ev.key];
@@ -451,7 +424,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     flex: 1,
-    height: 50, // fixed: matches the panel's two-line chip; armed hint fits inside
+    height: 50, // fixed: matches the panel's two-line chip — no layout jump on stamp
     borderWidth: 1,
     borderColor: '#333',
     borderRadius: 8,
@@ -462,9 +435,6 @@ const styles = StyleSheet.create({
   chipStamped: {
     borderColor: '#30D158',
     backgroundColor: '#30D15818',
-  },
-  chipArmed: {
-    borderColor: '#FFD60A',
   },
   chipFlash: {
     backgroundColor: '#FFD60A33',
@@ -477,11 +447,6 @@ const styles = StyleSheet.create({
   },
   chipTitleStamped: {
     color: '#30D158',
-  },
-  chipHint: {
-    color: '#FFD60A',
-    fontSize: 10,
-    marginTop: 2,
   },
   // ── below-stage ──
   belowContainer: {

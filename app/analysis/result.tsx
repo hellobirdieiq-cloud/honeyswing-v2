@@ -95,12 +95,6 @@ export default function ResultScreen() {
   // without scrolling up to the card).
   const [labelBarCollapsed, setLabelBarCollapsed] = useState(false);
   const [lastSaveSummary, setLastSaveSummary] = useState<string | null>(null);
-  // FIX 4c: a video-surface tap collapses the expanded overlay — but never
-  // mid two-tap: the overlay reports its armed state into this ref.
-  const labelArmedRef = useRef(false);
-  const onLabelArmedChange = useCallback((armed: boolean) => {
-    labelArmedRef.current = armed;
-  }, []);
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -723,15 +717,13 @@ export default function ResultScreen() {
                         </View>
                       )}
                       {/* FIX 4c: a video-surface tap collapses the expanded
-                          overlay. Placed BEFORE the play button so play stays
-                          tappable (later siblings win); an armed two-tap flow
-                          is never interrupted (ref guard). */}
+                          overlay. Placed BEFORE the overlay so its chips/
+                          rails/scrubber stay tappable (later siblings win) —
+                          the catcher only ever sees bare video taps. */}
                       {labelOverlayExpanded && effectiveMotion && (
                         <Pressable
                           style={StyleSheet.absoluteFill}
-                          onPress={() => {
-                            if (!labelArmedRef.current) setLabelBarCollapsed(true);
-                          }}
+                          onPress={() => setLabelBarCollapsed(true)}
                         />
                       )}
                       {/* FIX 6a: no play control while the label overlay is
@@ -775,7 +767,6 @@ export default function ResultScreen() {
                               setLastSaveSummary(null);
                             }}
                             onCollapse={() => setLabelBarCollapsed(true)}
-                            onArmedChange={onLabelArmedChange}
                           />
                         ) : (
                           <TouchableOpacity
