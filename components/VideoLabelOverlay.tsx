@@ -39,8 +39,11 @@ const FLASH_MS = 600;
 const STEP_HOLD_DELAY_MS = 350;
 const STEP_HOLD_INTERVAL_MS = 80;
 /** Height the absolute-positioned chip row occupies (chip 50 + 2×8 padding) —
- *  the scrubber sits directly above it. */
+ *  the scrubber sits above it. */
 const CHIP_ROW_HEIGHT = 66;
+/** Extra breathing room between the scrubber and the chip row — visually
+ *  separates navigation (scrubber) from labeling (chips). */
+const SCRUBBER_CHIP_GAP = 10;
 
 export function VideoLabelOverlay({
   events,
@@ -198,13 +201,14 @@ export function VideoLabelOverlay({
         </Pressable>
       </View>
 
-      {/* Edge rails — press-and-hold repeats the step (FIX 6b) */}
+      {/* Edge rails — press-and-hold repeats the step (FIX 6b). Fine step on
+          top, coarse below; same row = same magnitude across the two rails. */}
       <View style={[styles.rail, styles.railLeft]} pointerEvents="box-none">
-        <Pressable style={styles.railBtn} onPressIn={() => startHold(-5)} onPressOut={stopHold}>
-          <Text style={styles.railText}>−5</Text>
-        </Pressable>
         <Pressable style={styles.railBtn} onPressIn={() => startHold(-1)} onPressOut={stopHold}>
           <Text style={styles.railText}>−1</Text>
+        </Pressable>
+        <Pressable style={styles.railBtn} onPressIn={() => startHold(-5)} onPressOut={stopHold}>
+          <Text style={styles.railText}>−5</Text>
         </Pressable>
       </View>
       <View style={[styles.rail, styles.railRight]} pointerEvents="box-none">
@@ -305,13 +309,15 @@ export function LabelControlsBelow({
                 seekToFrame(ev.detectedFrame, { autoPlay: false });
               }}
             >
-              <Text style={[styles.deltaText, warn && styles.deltaWarn]}>
+              <Text style={styles.deltaLabel}>
                 {ev.label}{' '}
-                {delta != null
-                  ? `Δ${delta > 0 ? '+' : ''}${delta}`
-                  : you != null
-                    ? `f${you}`
-                    : '—'}
+                <Text style={[styles.deltaValue, warn && styles.deltaWarn]}>
+                  {delta != null
+                    ? `Δ${delta > 0 ? '+' : ''}${delta}`
+                    : you != null
+                      ? `f${you}`
+                      : '—'}
+                </Text>
               </Text>
             </Pressable>
           );
@@ -363,7 +369,7 @@ const styles = StyleSheet.create({
   topStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.45)', // lighter than the other strips: more video shows through
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
@@ -430,7 +436,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: CHIP_ROW_HEIGHT,
+    bottom: CHIP_ROW_HEIGHT + SCRUBBER_CHIP_GAP,
     paddingHorizontal: 14,
   },
   chipRow: {
@@ -490,10 +496,17 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 2,
   },
-  deltaText: {
-    color: '#AAA',
+  // Δ value carries the visual weight; the phase label recedes.
+  deltaLabel: {
+    color: '#777',
+    fontSize: 12,
+    fontFamily: 'Menlo',
+  },
+  deltaValue: {
+    color: '#E5E5EA',
     fontSize: 13,
     fontFamily: 'Menlo',
+    fontWeight: '700',
   },
   deltaWarn: {
     color: '#FF9F0A',

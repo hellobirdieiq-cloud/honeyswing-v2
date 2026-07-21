@@ -10,7 +10,9 @@
  * Segments are colored by phase boundaries (pre-TA gray, TA→TOP, TOP→IMP,
  * IMP→FIN, post-FIN) from the phases prop — the host passes displayPhases,
  * so colors follow the Auto | Yours toggle. Boundary TICK MARKS double-code
- * the regions (never color alone); a white playhead line tracks videoIdx.
+ * the regions (never color alone); a white playhead line + thumb dot track
+ * videoIdx (the thumb is a drag AFFORDANCE, not a handle — the full track
+ * remains the gesture surface).
  *
  * GESTURE OWNERSHIP: Pan with minDistance(0) activates at touch-down, so
  * once a finger lands on the track no other recognizer (video-tap collapse
@@ -42,6 +44,10 @@ const TRACK_HEIGHT = 5; // visible track (spec: 4–6pt)
 const HIT_HEIGHT = 44; // interactive region (spec: ≥44pt)
 const TICK_HEIGHT = 12;
 const PLAYHEAD_HEIGHT = 16;
+/** Playhead thumb — a VISUAL position indicator only, never an exclusive
+ *  drag handle: the whole track stays the gesture surface (tap = absolute,
+ *  drag = relative bands). Small enough to fit inside the 44pt hit region. */
+const THUMB_SIZE = 12;
 const BUBBLE_GAP = 6; // bubble bottom edge above the hit region
 
 // Muted phase-segment palette (regions double-coded via boundary ticks).
@@ -207,6 +213,10 @@ export function LabelScrubber({
               <View key={i} style={[styles.tick, { left: `${frac * 100}%` }]} />
             ))}
           <View style={[styles.playhead, { left: `${playheadFrac * 100}%` }]} />
+          <View
+            pointerEvents="none"
+            style={[styles.thumb, { left: `${playheadFrac * 100}%` }]}
+          />
         </View>
       </GestureDetector>
       {bubble != null && (
@@ -255,6 +265,26 @@ const styles = StyleSheet.create({
     height: PLAYHEAD_HEIGHT,
     borderRadius: 1,
     backgroundColor: '#FFF',
+    // Dark halo keeps the white line visible over bright video content.
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 1,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  thumb: {
+    position: 'absolute',
+    top: (HIT_HEIGHT - THUMB_SIZE) / 2,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    marginLeft: -THUMB_SIZE / 2,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: '#FFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.4)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   bubble: {
     position: 'absolute',
