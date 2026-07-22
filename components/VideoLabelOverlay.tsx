@@ -173,8 +173,12 @@ export function VideoLabelOverlay({
               setFrameInputOpen(true);
             }}
           >
-            {/* FIX 6d: < current / total > */}
-            <Text style={styles.frameText}>{'<'} {videoIdx} / {frameCount} {'>'}</Text>
+            {/* FIX 6d: < current / total > — arrows keep accent blue
+                (interactivity cue), numbers solid white for contrast over
+                bright footage. */}
+            <Text style={styles.frameText}>
+              {'<'}<Text style={styles.frameTextNum}> {videoIdx} / {frameCount} </Text>{'>'}
+            </Text>
           </Pressable>
         )}
         <Pressable style={styles.topStripSide} onPress={onCollapse} hitSlop={8}>
@@ -381,6 +385,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   frameBox: {
+    // Rail treatment, lighter (rails 0.6) — composites over the 0.45 strip so
+    // the numbers get a dark patch on bright video without darkening the strip.
+    backgroundColor: 'rgba(0,0,0,0.45)',
     borderWidth: 1,
     borderColor: '#0A84FF',
     borderRadius: 8,
@@ -394,6 +401,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Menlo',
     fontWeight: '700',
+  },
+  frameTextNum: {
+    color: '#FFF',
   },
   frameInput: {
     color: '#FFF',
