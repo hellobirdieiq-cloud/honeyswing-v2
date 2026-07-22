@@ -481,6 +481,22 @@ half-edited) frames sticky targets and biases the operator toward confirming
 them. Revisit only if a trusted-boundary source appears.
 WHERE (if ever): components/LabelScrubber.tsx. EFFORT: S.
 
+**P-105 — history swing→putt type conversion (signed-URL downloader)** ⬜
+(logged at type-mismatch repair v1, 2026-07-22)
+WHAT: extend the wrong-type repair to HISTORICAL full-swing rows. The putting
+pipeline's native passes (trackPuttingObjects/refinePutterHead) decode LOCAL
+video pixels; history rows only expose a signed URL. Needs: download the
+signed URL to cache via expo-file-system (already a dep, ~19.0.21) → feed the
+local path to the existing lib/convertSwingType.ts convertToPutt (unchanged) →
+delete the cache file. Fail soft when video_storage_path is null (upload never
+drained) — keep the affordance hidden in that case, as v1 does for all
+history full-swing rows.
+WHY DEFERRED: largest new surface of the repair feature (download lifecycle,
+disk, retry) for the rarest scenario; the other three conversion cells shipped
+in v1 (live both directions + history putt→swing, which is a pure recompute).
+WHERE: lib/convertSwingType.ts (new download helper) + app/analysis/result.tsx
+guard (drop the isLiveSwing restriction once the downloader exists). EFFORT: M.
+
 ---
 
 ## 3. Suggested order — ⚠️ OPINION, not status

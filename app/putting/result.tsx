@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { APP_VERSION } from '@/lib/appVersion';
 import { CAPTURE_FPS, ANALYZER_DECIMATION } from '@/lib/cameraFormat';
 import { computePuttingTempo } from '@/packages/domain/putting/computePuttingTempo';
 import { tempoBandScore } from '@/packages/domain/putting/tempoBandScore';
+import { convertToSwing } from '@/lib/convertSwingType';
 
 /**
  * Putting result screen — TEMPO CARD + playback overlay + operator label mode.
@@ -64,6 +65,19 @@ export default function PuttingResultScreen(): React.ReactElement {
   const [corrections, setCorrections] = useState<PuttCorrections | null>(null);
   const [cardView, setCardView] = useState<'auto' | 'yours'>('auto');
   const [seeded, setSeeded] = useState(false);
+  // Type-mismatch repair ("this was a full swing"): works live AND from
+  // history (pure recompute — no video needed). Two-tap confirm; in-flight
+  // ref = concurrency guard (A3).
+  const [convertState, setConvertState] = useState<'idle' | 'confirm' | 'running' | 'error'>('idle');
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const convertInFlightRef = useRef(false);
+  const convertRevertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (seeded || source.status !== 'ready') return;
     setSeeded(true);
@@ -140,6 +154,39 @@ export default function PuttingResultScreen(): React.ReactElement {
       : swingId == null
         ? 'row not persisted (sign in and re-record to save corrections)'
         : undefined;
+
+  // Wrong-type repair, putt → swing. A row represents the RECORDING;
+  // analysis_version is the currently accepted analysis of it.
+  const CONVERT_CONFIRM_MS = 3000;
+  const canConvertToSwing = swingId != null && poseFrames.length > 0;
+  const onConvertToSwing = () => {
+    if (convertState === 'running' || convertInFlightRef.current) return; // A3
+    if (convertState !== 'confirm') {
+      setConvertState('confirm');
+      setConvertError(null);
+      if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+      convertRevertTimerRef.current = setTimeout(
+        () => setConvertState((s) => (s === 'confirm' ? 'idle' : s)),
+        CONVERT_CONFIRM_MS,
+      );
+      return;
+    }
+    if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+    if (swingId == null) return;
+    convertInFlightRef.current = true;
+    setConvertState('running');
+    void convertToSwing({ swingId, frames: poseFrames }).then((res) => {
+      convertInFlightRef.current = false;
+      if (res.ok) {
+        // History-mode route on purpose: reconstructs from the freshly
+        // written row and fires none of the live-only side effects.
+        router.replace({ pathname: '/analysis/result', params: { swingId } });
+      } else {
+        setConvertError(res.message);
+        setConvertState('error');
+      }
+    });
+  };
 
   const onSaveCorrections = async () => {
     if (swingId == null || stampedCount === 0) return;
@@ -284,6 +331,33 @@ export default function PuttingResultScreen(): React.ReactElement {
             <Text style={styles.warningsText}>{warnings.join(' · ')}</Text>
           )}
         </View>
+
+        {/* Wrong-type repair (quiet, two-tap confirm — copy names the
+            consequence). Screen-level only; the putting pipeline itself is
+            untouched. */}
+        {canConvertToSwing && (
+          <Pressable
+            style={styles.convertRow}
+            onPress={onConvertToSwing}
+            disabled={convertState === 'running'}
+          >
+            <Text
+              style={[
+                styles.convertLinkText,
+                convertState === 'confirm' && styles.convertLinkTextConfirm,
+              ]}
+            >
+              {convertState === 'running'
+                ? 'Re-analyzing…'
+                : convertState === 'confirm'
+                  ? 'Re-analyze as Full Swing? Saved frame labels will be removed.'
+                  : 'Wrong type? Re-analyze as Full Swing'}
+            </Text>
+            {convertState === 'error' && convertError != null && (
+              <Text style={styles.convertErrorText}>{convertError}</Text>
+            )}
+          </Pressable>
+        )}
 
         {/* PLAYBACK (Phase B overlay) — live local file or history signed URL */}
         {hasPlayback && (
@@ -512,6 +586,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Menlo',
     marginBottom: 10,
+    textAlign: 'center',
+  },
+  // Wrong-type repair link (type conversion) — deliberately quiet.
+  convertRow: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  convertLinkText: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  convertLinkTextConfirm: {
+    color: '#FF9500',
+  },
+  convertErrorText: {
+    color: '#FF6961',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
     textAlign: 'center',
   },
   toggleRow: {

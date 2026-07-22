@@ -218,6 +218,28 @@ export const styles = StyleSheet.create({
   viewToggleSmallTextActive: {
     color: GOLD,
   },
+  // Wrong-type repair link (type conversion) — deliberately quiet.
+  convertRow: {
+    alignItems: 'center',
+    paddingVertical: 10,
+    marginTop: 2,
+  },
+  convertLinkText: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  convertLinkTextConfirm: {
+    color: '#FF9500',
+  },
+  convertErrorText: {
+    color: '#FF453A',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
+  },
   // Corrections-gated null-tempo notice (FIX 5)
   tempoUnavailableText: {
     color: '#888',

@@ -35,6 +35,7 @@ import { useSwingSource } from './useSwingSource';
 import { useSwingVideoClock } from './useSwingVideoClock';
 import { useFullSwingRegrade } from './useFullSwingRegrade';
 import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorRegrade';
+import { convertToPutt } from '../../lib/convertSwingType';
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -99,6 +100,18 @@ export default function ResultScreen() {
   // Bottom detail rows (Phase 1 layout restructure): Tempo / Art expand on tap.
   const [tempoExpanded, setTempoExpanded] = useState(false);
   const [artExpanded, setArtExpanded] = useState(false);
+  // Type-mismatch repair ("this was a putt"): two-tap confirm → convertToPutt.
+  // In-flight ref = concurrency guard (A3): one conversion, no double taps.
+  const [convertState, setConvertState] = useState<'idle' | 'confirm' | 'running' | 'error'>('idle');
+  const [convertError, setConvertError] = useState<string | null>(null);
+  const convertInFlightRef = useRef(false);
+  const convertRevertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+    },
+    [],
+  );
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -576,6 +589,46 @@ export default function ResultScreen() {
     recordLoaded,
   );
 
+  // Wrong-type repair, swing → putt. LIVE-only in v1: the native putting
+  // passes decode the LOCAL capture video — history rows only have a signed
+  // URL (P-105 downloader ticket). Needs a persisted row (signed-out held
+  // swings have none).
+  const CONVERT_CONFIRM_MS = 3000;
+  const canConvertToPutt =
+    isLiveSwing && !!videoUri && !!effectiveSwingId && !!effectiveMotion?.frames?.length;
+  const onConvertToPutt = () => {
+    if (convertState === 'running' || convertInFlightRef.current) return; // A3
+    if (convertState !== 'confirm') {
+      setConvertState('confirm');
+      setConvertError(null);
+      if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+      convertRevertTimerRef.current = setTimeout(
+        () => setConvertState((s) => (s === 'confirm' ? 'idle' : s)),
+        CONVERT_CONFIRM_MS,
+      );
+      return;
+    }
+    if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
+    if (!effectiveSwingId || !videoUri || !effectiveMotion?.frames?.length) return;
+    convertInFlightRef.current = true;
+    setConvertState('running');
+    void convertToPutt({
+      swingId: effectiveSwingId,
+      videoUri,
+      frames: effectiveMotion.frames,
+    }).then((res) => {
+      convertInFlightRef.current = false;
+      if (res.ok) {
+        // convertToPutt seeded the putt store (capture parity) and cleared
+        // the swing store — the param-less live putting result takes over.
+        router.replace('/putting/result' as Href);
+      } else {
+        setConvertError(res.message);
+        setConvertState('error');
+      }
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* 1. Header */}
@@ -1032,6 +1085,34 @@ export default function ResultScreen() {
                   </View>
                 )}
               </View>
+            )}
+
+            {/* 4b. Wrong-type repair (quiet, two-tap confirm — A5 copy names
+                the consequence). A row represents the RECORDING;
+                analysis_version is the currently accepted analysis of it. */}
+            {canConvertToPutt && (
+              <TouchableOpacity
+                style={styles.convertRow}
+                onPress={onConvertToPutt}
+                disabled={convertState === 'running'}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.convertLinkText,
+                    convertState === 'confirm' && styles.convertLinkTextConfirm,
+                  ]}
+                >
+                  {convertState === 'running'
+                    ? 'Re-analyzing…'
+                    : convertState === 'confirm'
+                      ? 'Re-analyze as Putt? Saved frame labels will be removed.'
+                      : 'Wrong type? Re-analyze as Putt'}
+                </Text>
+                {convertState === 'error' && convertError != null && (
+                  <Text style={styles.convertErrorText}>{convertError}</Text>
+                )}
+              </TouchableOpacity>
             )}
 
             {/* 5. CTA */}
