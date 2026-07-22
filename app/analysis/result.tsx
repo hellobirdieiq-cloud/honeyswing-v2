@@ -81,9 +81,10 @@ export default function ResultScreen() {
   // Operator label mode — AUTHORITATIVE (P-101): saves regrade tempo/score
   // from the merged phases through the real pipeline seam (operatorRegrade.ts)
   // and dual-write row columns + swing_debug.operator_labels (sibling
-  // top-level key; the merge RPC is a top-level shallow merge). The card
-  // gains an Auto | Yours toggle when ≥1 label is saved; with no labels every
-  // displayed value is byte-identical to the pre-P-101 screen.
+  // top-level key; the merge RPC is a top-level shallow merge). The screen
+  // gains an Auto | Yours toggle (on the Review Detection row) when ≥1 label
+  // is saved; with no labels every displayed value is byte-identical to the
+  // pre-P-101 screen.
   const [labelMode, setLabelMode] = useState(false);
   const [phaseLabels, setPhaseLabels] = useState<Record<string, number | undefined>>({});
   const [labelSaveStatus, setLabelSaveStatus] = useState<'ready' | 'saving' | 'saved'>('ready');
@@ -95,6 +96,9 @@ export default function ResultScreen() {
   // without scrolling up to the card).
   const [labelBarCollapsed, setLabelBarCollapsed] = useState(false);
   const [lastSaveSummary, setLastSaveSummary] = useState<string | null>(null);
+  // Bottom detail rows (Phase 1 layout restructure): Tempo / Art expand on tap.
+  const [tempoExpanded, setTempoExpanded] = useState(false);
+  const [artExpanded, setArtExpanded] = useState(false);
   const swingAddedRef = useRef(false);
   const [activeProfile, setActiveProfile] = useState<PlayerProfile | null>(null);
 
@@ -624,29 +628,12 @@ export default function ResultScreen() {
                 <Text style={styles.partialBannerSub}>Reason: {partialReason}</Text>
               </View>
             )}
-            {/* 1. Score (Auto = original; Yours = operator regrade) */}
+            {/* 1. Score — ONE official value (Yours regrade when corrections
+                exist, per the option-(a) row-rewrite decision; cardView
+                defaults 'yours' so selectedView already prefers it). The
+                Auto | Yours toggle moved to the Review Detection row below;
+                tempo ratio + timing moved into the Tempo row. */}
             <View style={styles.scoreCard}>
-              {corrections != null && (
-                <View style={styles.viewToggleRow}>
-                  {(['auto', 'yours'] as const).map((v) => (
-                    <TouchableOpacity
-                      key={v}
-                      style={[styles.viewToggle, cardView === v && styles.viewToggleActive]}
-                      onPress={() => setCardView(v)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        style={[
-                          styles.viewToggleText,
-                          cardView === v && styles.viewToggleTextActive,
-                        ]}
-                      >
-                        {v === 'auto' ? 'Auto' : 'Yours'}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
               <Text style={[styles.score, { color: scoreColor }]}>
                 {selectedView
                   ? (selectedView.score ?? '—')
@@ -661,17 +648,6 @@ export default function ResultScreen() {
               )}
               {coachingCueText && (
                 <Text style={styles.coachingCue}>{coachingCueText}</Text>
-              )}
-              {cardTempo && (
-                <Text style={styles.tempoRatio}>
-                  {cardTempo.tempoRatio.toFixed(2)}:1
-                </Text>
-              )}
-              {cardTempo && (
-                <View style={styles.timingRow}>
-                  <Text style={styles.timingItem}>Back {Math.round(cardTempo.backswingMs)}ms</Text>
-                  <Text style={styles.timingItem}>Down {Math.round(cardTempo.downswingMs)}ms</Text>
-                </View>
               )}
               {/* Corrections-gated only — the no-label withheld case keeps
                   today's bare em-dash (byte-identity). */}
@@ -937,20 +913,116 @@ export default function ResultScreen() {
 
             {/* 3b. Operator label mode — AUTHORITATIVE (P-101): saves regrade
                 tempo/score through operatorRegrade.ts and dual-write the row
-                columns + swing_debug.operator_labels; the card gains the
-                Auto | Yours toggle. Entry point is the on-video [Label ▴] tab
-                (FIX 4c) — no below-chips button. Video mode only. */}
+                columns + swing_debug.operator_labels; the Auto | Yours toggle
+                lives on the Review Detection row below. Entry points: the
+                on-video [Label ▴] tab (FIX 4c) and the Review Detection row
+                (Phase 1 restructure). Video mode only. */}
 
-            {/* 4. Swing Art */}
+            {/* 4. Detail rows — Review Detection / Tempo / Art (Phase 1
+                layout restructure). Pure relocation: cardTempo/displayPhases
+                selectors and the cardView toggle semantics are unchanged. */}
+            {hasVideo && !!effectiveMotion?.frames?.length && (
+              <View style={styles.detailRow}>
+                <View style={styles.detailRowHeader}>
+                  <TouchableOpacity
+                    style={styles.detailRowPressable}
+                    onPress={() => {
+                      setLabelMode(true);
+                      setLabelBarCollapsed(false);
+                      // The rows sit below the fold — bring the stage (where
+                      // the overlay expands) back into view.
+                      if (videoSectionY != null) {
+                        scrollRef.current?.scrollTo({ y: videoSectionY, animated: true });
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.detailRowLabel}>Review Detection</Text>
+                    {corrections != null && (
+                      <Text style={styles.detailRowCaption}>
+                        Compare with original detection
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  {/* Relocated Auto | Yours toggle — sibling of the row
+                      pressable so pill taps never open label mode. Same
+                      cardView state/guard as before; corrections-without-video
+                      would hide it (can't occur — full-swing labels require
+                      video) and Yours default still shows the official score. */}
+                  {corrections != null && (
+                    <View style={styles.viewToggleRowSmall}>
+                      {(['auto', 'yours'] as const).map((v) => (
+                        <TouchableOpacity
+                          key={v}
+                          style={[
+                            styles.viewToggleSmall,
+                            cardView === v && styles.viewToggleSmallActive,
+                          ]}
+                          onPress={() => setCardView(v)}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.viewToggleSmallText,
+                              cardView === v && styles.viewToggleSmallTextActive,
+                            ]}
+                          >
+                            {v === 'auto' ? 'Auto' : 'Yours'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <Text style={styles.detailRowChevron}>▸</Text>
+                </View>
+              </View>
+            )}
+            {cardTempo && (
+              <View style={styles.detailRow}>
+                <TouchableOpacity
+                  style={styles.detailRowHeader}
+                  onPress={() => setTempoExpanded((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.detailRowLabel}>Tempo</Text>
+                  <Text style={styles.detailRowChevron}>{tempoExpanded ? '▾' : '▸'}</Text>
+                </TouchableOpacity>
+                {tempoExpanded && (
+                  <View style={styles.detailRowBody}>
+                    <Text style={styles.tempoRatio}>
+                      {cardTempo.tempoRatio.toFixed(2)}:1
+                    </Text>
+                    <View style={styles.timingRow}>
+                      <Text style={styles.timingItem}>Back {Math.round(cardTempo.backswingMs)}ms</Text>
+                      <Text style={styles.timingItem}>Down {Math.round(cardTempo.downswingMs)}ms</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
             {classification?.validity === 'valid' && effectiveMotion && (
-              <View style={{ marginTop: 8 }}>
-                <SwingArtCard
-                  frames={effectiveMotion.frames}
-                  // FIX 3 + P-102: art shares the toggle-following selector
-                  // with the phase chips / skeleton chip row.
-                  phases={displayPhases ?? []}
-                  width={screenW - 48}
-                />
+              <View style={styles.detailRow}>
+                <TouchableOpacity
+                  style={styles.detailRowHeader}
+                  onPress={() => setArtExpanded((v) => !v)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.detailRowLabel}>Art</Text>
+                  <Text style={styles.detailRowChevron}>{artExpanded ? '▾' : '▸'}</Text>
+                </TouchableOpacity>
+                {artExpanded && (
+                  // No horizontal padding — the card is sized to the full
+                  // content width (screenW - 48), same prop as before the move.
+                  <View style={styles.detailRowBodyArt}>
+                    <SwingArtCard
+                      frames={effectiveMotion.frames}
+                      // FIX 3 + P-102: art shares the toggle-following selector
+                      // with the phase chips / skeleton chip row.
+                      phases={displayPhases ?? []}
+                      width={screenW - 48}
+                    />
+                  </View>
+                )}
               </View>
             )}
 

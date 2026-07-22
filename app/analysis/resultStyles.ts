@@ -146,6 +146,76 @@ export const styles = StyleSheet.create({
   viewToggleTextActive: {
     color: GOLD,
   },
+  // Bottom detail rows (Phase 1 restructure): Review Detection / Tempo / Art.
+  // detailRow has NO horizontal padding of its own — the header carries it, so
+  // the Art body can host the full-content-width SwingArtCard (screenW - 48).
+  detailRow: {
+    backgroundColor: '#1A1A1C',
+    borderRadius: 14,
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  detailRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 52,
+    gap: 10,
+  },
+  detailRowPressable: {
+    flex: 1,
+  },
+  detailRowLabel: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  detailRowCaption: {
+    color: '#777',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  detailRowChevron: {
+    color: '#777',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  detailRowBody: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  detailRowBodyArt: {
+    alignItems: 'center',
+    paddingBottom: 12,
+  },
+  // Relocated Auto | Yours toggle, small variant (Review Detection row)
+  viewToggleRowSmall: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  viewToggleSmall: {
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  viewToggleSmallActive: {
+    borderColor: GOLD,
+    backgroundColor: `${GOLD}22`,
+  },
+  viewToggleSmallText: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  viewToggleSmallTextActive: {
+    color: GOLD,
+  },
   // Corrections-gated null-tempo notice (FIX 5)
   tempoUnavailableText: {
     color: '#888',
