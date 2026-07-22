@@ -182,7 +182,12 @@ export function VideoLabelOverlay({
           </Pressable>
         )}
         <Pressable style={styles.topStripSide} onPress={onCollapse} hitSlop={8}>
-          <Text style={styles.collapseText}>Label ▾</Text>
+          {/* Same treatment as the collapsed [Label ▴] tab: dark pill, white
+              label, blue caret only — deliberately distinct from the frame
+              counter's bordered white-numbers/blue-arrows pill. */}
+          <Text style={styles.collapseText}>
+            Label <Text style={styles.collapseCaret}>▾</Text>
+          </Text>
         </Pressable>
       </View>
 
@@ -379,10 +384,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   collapseText: {
-    color: '#0A84FF',
+    color: '#FFF', // white label; the caret span is the sole blue accent
     fontSize: 13,
     fontWeight: '700',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
     paddingVertical: 4,
+    paddingHorizontal: 10,
+    overflow: 'hidden', // clips the bg to the rounded corners on iOS
+  },
+  collapseCaret: {
+    color: '#0A84FF',
   },
   frameBox: {
     // Rail treatment, lighter (rails 0.6) — composites over the 0.45 strip so

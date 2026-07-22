@@ -670,9 +670,11 @@ export default function ResultScreen() {
                       <Text style={styles.controlGroupLabel}>View</Text>
                       <View style={styles.segmentedControl}>
                         {([
+                          // 'Bones' is DISPLAY ONLY — the mode key stays
+                          // 'skeleton' (state/styles/canvas all keyed on it).
                           { mode: 'video', label: 'Video' },
                           { mode: 'overlay', label: 'Overlay' },
-                          { mode: 'skeleton', label: 'Skeleton' },
+                          { mode: 'skeleton', label: 'Bones' },
                         ] as const).map(({ mode, label }) => (
                           <TouchableOpacity
                             key={mode}
@@ -680,7 +682,10 @@ export default function ResultScreen() {
                             onPress={() => setViewMode(mode)}
                             activeOpacity={0.7}
                           >
-                            <Text style={[styles.segmentText, viewMode === mode && styles.segmentTextActive]}>
+                            <Text
+                              style={[styles.segmentText, viewMode === mode && styles.segmentTextActive]}
+                              numberOfLines={1}
+                            >
                               {label}
                             </Text>
                           </TouchableOpacity>
@@ -697,7 +702,10 @@ export default function ResultScreen() {
                             onPress={() => setSpeed(s)}
                             activeOpacity={0.7}
                           >
-                            <Text style={[styles.segmentText, speed === s && styles.segmentTextActive]}>
+                            <Text
+                              style={[styles.segmentText, speed === s && styles.segmentTextActive]}
+                              numberOfLines={1}
+                            >
                               {s}x
                             </Text>
                           </TouchableOpacity>
@@ -802,7 +810,12 @@ export default function ResultScreen() {
                             }}
                             activeOpacity={0.7}
                           >
-                            <Text style={styles.labelOverlayTabText}>Label ▴</Text>
+                            {/* White label, blue caret only — the caret is the
+                                sole blue accent (distinct from the frame
+                                counter's white-numbers/blue-arrows). */}
+                            <Text style={styles.labelOverlayTabText}>
+                              Label <Text style={styles.labelOverlayTabCaret}>▴</Text>
+                            </Text>
                           </TouchableOpacity>
                         ))}
                     </View>
@@ -938,11 +951,6 @@ export default function ResultScreen() {
                     activeOpacity={0.7}
                   >
                     <Text style={styles.detailRowLabel}>Review Detection</Text>
-                    {corrections != null && (
-                      <Text style={styles.detailRowCaption}>
-                        Compare with original detection
-                      </Text>
-                    )}
                   </TouchableOpacity>
                   {/* Relocated Auto | Yours toggle — sibling of the row
                       pressable so pill taps never open label mode. Same

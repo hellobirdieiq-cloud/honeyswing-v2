@@ -43,22 +43,23 @@ export const styles = StyleSheet.create({
   controlBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    // Content-sized groups: View pill left, Speed pill right (same visual
+    // positions the old 1.5/1 flex split produced, without forcing widths).
+    justifyContent: 'space-between',
     gap: 10,
     marginBottom: 12,
   },
   controlGroup: {
     gap: 4,
   },
-  // View gets more width than Speed (three longer labels vs three short).
-  controlGroupView: {
-    flex: 1.5,
-  },
-  controlGroupSpeed: {
-    flex: 1,
-  },
+  // Groups + segments size to CONTENT (wrap root-cause fix): forced
+  // equal-width flex squeezed 'Overlay'/'0.25x' into wrapping on narrow
+  // screens. All six labels fit one line at 390pt with 8pt side padding.
+  controlGroupView: {},
+  controlGroupSpeed: {},
   controlGroupLabel: {
-    color: '#888',
-    fontSize: 11,
+    color: '#666',
+    fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -67,16 +68,16 @@ export const styles = StyleSheet.create({
   // Segmented control (View / Speed sets share it)
   segmentedControl: {
     flexDirection: 'row',
+    alignSelf: 'flex-start',
     backgroundColor: '#1A1A1C',
     borderRadius: 10,
     padding: 3,
     gap: 3,
   },
   segment: {
-    flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 8,
     borderRadius: 8,
   },
   segmentActive: {
@@ -192,14 +193,15 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 12,
   },
-  // Relocated Auto | Yours toggle, small variant (Review Detection row)
+  // Relocated Auto | Yours toggle, small variant (Review Detection row).
+  // Deliberately quiet so the row title reads first; active state stays GOLD.
   viewToggleRowSmall: {
     flexDirection: 'row',
     gap: 6,
   },
   viewToggleSmall: {
     borderWidth: 1,
-    borderColor: '#333',
+    borderColor: '#2A2A2C',
     borderRadius: 12,
     paddingVertical: 4,
     paddingHorizontal: 10,
@@ -209,8 +211,8 @@ export const styles = StyleSheet.create({
     backgroundColor: `${GOLD}22`,
   },
   viewToggleSmallText: {
-    color: '#888',
-    fontSize: 12,
+    color: '#666',
+    fontSize: 11,
     fontWeight: '700',
   },
   viewToggleSmallTextActive: {
@@ -234,9 +236,12 @@ export const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   labelOverlayTabText: {
-    color: '#0A84FF',
+    color: '#FFF', // white label; the caret span is the sole blue accent
     fontSize: 13,
     fontWeight: '700',
+  },
+  labelOverlayTabCaret: {
+    color: '#0A84FF',
   },
   lowConfBadge: {
     color: '#AAAAAA',
