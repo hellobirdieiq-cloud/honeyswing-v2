@@ -684,42 +684,49 @@ export default function ResultScreen() {
             {effectiveMotion?.frames?.length ? (
               hasVideo ? (
                 <>
-                  {/* Control bar — segmented control (left) + speed chips
-                      (right). Video-backed swings only; the speed chips are the
-                      transport for the shared video clock that also drives the
-                      skeleton in Overlay/Skeleton modes. */}
+                  {/* Control bar — ONE compact row: View set (left) + Speed
+                      set (right), a small group label above each. Video-backed
+                      swings only; the speed chips are the transport for the
+                      shared video clock that also drives the skeleton in
+                      Overlay/Skeleton modes. */}
                   <View style={styles.controlBar}>
-                    <View style={styles.segmentedControl}>
-                      {([
-                        { mode: 'video', label: 'Video' },
-                        { mode: 'overlay', label: 'Overlay' },
-                        { mode: 'skeleton', label: 'Skeleton' },
-                      ] as const).map(({ mode, label }) => (
-                        <TouchableOpacity
-                          key={mode}
-                          style={[styles.segment, viewMode === mode && styles.segmentActive]}
-                          onPress={() => setViewMode(mode)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.segmentText, viewMode === mode && styles.segmentTextActive]}>
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                    <View style={[styles.controlGroup, styles.controlGroupView]}>
+                      <Text style={styles.controlGroupLabel}>View</Text>
+                      <View style={styles.segmentedControl}>
+                        {([
+                          { mode: 'video', label: 'Video' },
+                          { mode: 'overlay', label: 'Overlay' },
+                          { mode: 'skeleton', label: 'Skeleton' },
+                        ] as const).map(({ mode, label }) => (
+                          <TouchableOpacity
+                            key={mode}
+                            style={[styles.segment, viewMode === mode && styles.segmentActive]}
+                            onPress={() => setViewMode(mode)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.segmentText, viewMode === mode && styles.segmentTextActive]}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                    <View style={[styles.segmentedControl, { alignSelf: 'stretch' }]}>
-                      {([0.25, 0.5, 1] as const).map((s) => (
-                        <TouchableOpacity
-                          key={s}
-                          style={[styles.segment, { flex: 1, alignItems: 'center' }, speed === s && styles.segmentActive]}
-                          onPress={() => setSpeed(s)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.segmentText, speed === s && styles.segmentTextActive]}>
-                            {s}x
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                    <View style={[styles.controlGroup, styles.controlGroupSpeed]}>
+                      <Text style={styles.controlGroupLabel}>Speed</Text>
+                      <View style={styles.segmentedControl}>
+                        {([0.25, 0.5, 1] as const).map((s) => (
+                          <TouchableOpacity
+                            key={s}
+                            style={[styles.segment, speed === s && styles.segmentActive]}
+                            onPress={() => setSpeed(s)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={[styles.segmentText, speed === s && styles.segmentTextActive]}>
+                              {s}x
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
 

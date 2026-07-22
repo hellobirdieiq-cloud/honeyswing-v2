@@ -38,14 +38,33 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
 
-  // Control row: segmented control (left) + speed chips (right)
+  // Control row: View + Speed groups side by side in ONE compact row,
+  // a small muted label above each set.
   controlBar: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     gap: 10,
     marginBottom: 12,
   },
-  // View-mode segmented control (Video / Overlay / Skeleton)
+  controlGroup: {
+    gap: 4,
+  },
+  // View gets more width than Speed (three longer labels vs three short).
+  controlGroupView: {
+    flex: 1.5,
+  },
+  controlGroupSpeed: {
+    flex: 1,
+  },
+  controlGroupLabel: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginLeft: 4,
+  },
+  // Segmented control (View / Speed sets share it)
   segmentedControl: {
     flexDirection: 'row',
     backgroundColor: '#1A1A1C',
@@ -54,8 +73,10 @@ export const styles = StyleSheet.create({
     gap: 3,
   },
   segment: {
+    flex: 1,
+    alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 18,
+    paddingHorizontal: 4,
     borderRadius: 8,
   },
   segmentActive: {
@@ -63,7 +84,7 @@ export const styles = StyleSheet.create({
   },
   segmentText: {
     color: '#999',
-    fontSize: 14,
+    fontSize: 13, // compact: both control sets share one row
     fontWeight: '600',
   },
   segmentTextActive: {
