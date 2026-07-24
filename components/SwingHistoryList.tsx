@@ -184,42 +184,71 @@ export default function SwingHistoryList() {
     // Local root view (app root has none — record.tsx does the same): required
     // ancestor for the row Swipeables.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tabsRow}
-      >
+      {/* Filter block — two rows, CONTENT-SIZED. The previous layout put the
+          filters in a bare horizontal ScrollView, which as a flex child grows
+          to split the column's height with the list — that inflated band
+          (with the stretch divider through it) was the ~200pt dead gap. The
+          block is plain Views + a flexGrow:0 scroller, so cards start
+          directly below with normal spacing. */}
+      <View style={styles.filtersBlock}>
         {showKidTabs && (
-          <>
-            <TabButton
-              label="All"
-              active={activeTab === 'all'}
-              onPress={() => setActiveTab('all')}
-            />
-            {profiles.map((p) => (
+          <View style={styles.filterGroup}>
+            <Text style={styles.filterCaption}>Player</Text>
+            {/* Chips scroll HORIZONTALLY only if players ever overflow one
+                row (5+ kids at 390pt); content-sized chips never clip or
+                ellipsize names. No dropdown by design. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.playerScroll}
+              contentContainerStyle={styles.playerRow}
+            >
               <TabButton
-                key={p.id}
-                label={getDisplayName(p)}
-                active={activeTab === p.id}
-                onPress={() => setActiveTab(p.id)}
+                label="All"
+                active={activeTab === 'all'}
+                onPress={() => setActiveTab('all')}
               />
-            ))}
-            <View style={styles.tabSeparator} />
-          </>
+              {profiles.map((p) => (
+                <TabButton
+                  key={p.id}
+                  label={getDisplayName(p)}
+                  active={activeTab === p.id}
+                  onPress={() => setActiveTab(p.id)}
+                />
+              ))}
+            </ScrollView>
+          </View>
         )}
-        {/* Type chips (History v2) — always rendered; tapping the active
-            type clears back to all. */}
-        <TabButton
-          label="Swing"
-          active={typeFilter === 'swing'}
-          onPress={() => setTypeFilter((cur) => (cur === 'swing' ? 'all' : 'swing'))}
-        />
-        <TabButton
-          label="Putt"
-          active={typeFilter === 'putt'}
-          onPress={() => setTypeFilter((cur) => (cur === 'putt' ? 'all' : 'putt'))}
-        />
-      </ScrollView>
+        <View style={styles.filterGroup}>
+          <Text style={styles.filterCaption}>Type</Text>
+          {/* All | Swing | Putt segmented control (result-screen View/Speed
+              idiom, duplicated locally — resultStyles is analysis-only by
+              convention). All = today's combined default; the segmented
+              radio replaces the old tap-active-clears chip gesture, same
+              capability. Content-sized, never stretched. */}
+          <View style={styles.segmentedControl}>
+            {([
+              { value: 'all', label: 'All' },
+              { value: 'swing', label: 'Swing' },
+              { value: 'putt', label: 'Putt' },
+            ] as const).map(({ value, label }) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.segment, typeFilter === value && styles.segmentActive]}
+                onPress={() => setTypeFilter(value)}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[styles.segmentText, typeFilter === value && styles.segmentTextActive]}
+                  numberOfLines={1}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
       {filteredRows.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyBody}>No swings recorded yet.</Text>
@@ -348,12 +377,60 @@ function SwingRow({
 }
 
 const styles = StyleSheet.create({
-  tabSeparator: {
-    width: 1,
-    alignSelf: 'stretch',
-    marginVertical: 6,
-    marginHorizontal: 6,
-    backgroundColor: '#333',
+  // ── filter block (two content-sized rows; no divider — the rows separate
+  //    themselves). Captions mirror the result screen's VIEW/SPEED muted-caps
+  //    convention (controlGroupLabel). ──
+  filtersBlock: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    gap: 10,
+  },
+  filterGroup: {
+    gap: 4,
+  },
+  filterCaption: {
+    color: '#666',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginLeft: 4,
+  },
+  // flexGrow:0 is the gap fix — without it a ScrollView flex-child inflates
+  // vertically and pushes the list down.
+  playerScroll: {
+    flexGrow: 0,
+  },
+  playerRow: {
+    gap: 8,
+    alignItems: 'center',
+  },
+  // Segmented control — result-screen View/Speed styling, duplicated locally
+  // (resultStyles is analysis-only by convention).
+  segmentedControl: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: '#1A1A1C',
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  segment: {
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  segmentActive: {
+    backgroundColor: GOLD,
+  },
+  segmentText: {
+    color: '#999',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  segmentTextActive: {
+    color: '#111',
   },
   puttTag: {
     borderWidth: 1,
@@ -469,18 +546,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  tabsRow: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    gap: 8,
-  },
+  // Player chips — compact, content-sized (names render fully, no ellipsis;
+  // spacing via the row's gap, no per-chip margin).
   tab: {
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: '#333',
-    marginRight: 8,
     alignSelf: 'flex-start',
   },
   tabActive: {
