@@ -36,6 +36,10 @@ import { useSwingVideoClock } from './useSwingVideoClock';
 import { useFullSwingRegrade } from './useFullSwingRegrade';
 import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorRegrade';
 import { convertToPutt } from '../../lib/convertSwingType';
+import {
+  downloadSwingVideoToCache,
+  deleteDownloadedSwingVideo,
+} from '../../lib/downloadSwingVideo';
 import { diffLabelStamps } from '../../lib/labelDirtyState';
 
 /** Save-success auto-collapse (EXTERNAL-ASSUMPTION tunable): the beat "✓
@@ -119,8 +123,12 @@ export default function ResultScreen() {
   const [tempoExpanded, setTempoExpanded] = useState(false);
   const [artExpanded, setArtExpanded] = useState(false);
   // Type-mismatch repair ("this was a putt"): two-tap confirm → convertToPutt.
-  // In-flight ref = concurrency guard (A3): one conversion, no double taps.
-  const [convertState, setConvertState] = useState<'idle' | 'confirm' | 'running' | 'error'>('idle');
+  // History rows (P-105) prepend a 'downloading' phase (stored video → cache).
+  // In-flight ref = concurrency guard (A3): one conversion, no double taps —
+  // set before the download starts, so it spans both phases.
+  const [convertState, setConvertState] = useState<
+    'idle' | 'confirm' | 'downloading' | 'running' | 'error'
+  >('idle');
   const [convertError, setConvertError] = useState<string | null>(null);
   const convertInFlightRef = useRef(false);
   const convertRevertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -635,15 +643,25 @@ export default function ResultScreen() {
     recordLoaded,
   );
 
-  // Wrong-type repair, swing → putt. LIVE-only in v1: the native putting
-  // passes decode the LOCAL capture video — history rows only have a signed
-  // URL (P-105 downloader ticket). Needs a persisted row (signed-out held
-  // swings have none).
+  // Wrong-type repair, swing → putt. The native putting passes decode LOCAL
+  // video pixels: live uses the capture file; history (P-105) downloads the
+  // stored video to an attempt-unique cache file first. Needs a persisted row
+  // (signed-out held swings have none); history additionally needs
+  // video_storage_path — null until the video outbox drains ⇒ affordance
+  // hidden, not an error.
   const CONVERT_CONFIRM_MS = 3000;
   const canConvertToPutt =
-    isLiveSwing && !!videoUri && !!effectiveSwingId && !!effectiveMotion?.frames?.length;
-  const onConvertToPutt = () => {
-    if (convertState === 'running' || convertInFlightRef.current) return; // A3
+    !!effectiveSwingId &&
+    !!effectiveMotion?.frames?.length &&
+    (isLiveSwing ? !!videoUri : !!videoStoragePath);
+  const onConvertToPutt = async () => {
+    if (
+      convertState === 'downloading' ||
+      convertState === 'running' ||
+      convertInFlightRef.current
+    ) {
+      return; // A3 — spans the download phase
+    }
     if (convertState !== 'confirm') {
       setConvertState('confirm');
       setConvertError(null);
@@ -655,24 +673,59 @@ export default function ResultScreen() {
       return;
     }
     if (convertRevertTimerRef.current) clearTimeout(convertRevertTimerRef.current);
-    if (!effectiveSwingId || !videoUri || !effectiveMotion?.frames?.length) return;
+    const frames = effectiveMotion?.frames;
+    if (!effectiveSwingId || !frames?.length) return;
+    if (isLiveSwing ? !videoUri : !videoStoragePath) return;
     convertInFlightRef.current = true;
-    setConvertState('running');
-    void convertToPutt({
-      swingId: effectiveSwingId,
-      videoUri,
-      frames: effectiveMotion.frames,
-    }).then((res) => {
-      convertInFlightRef.current = false;
+    let downloadedUri: string | null = null;
+    try {
+      let localVideoUri = videoUri;
+      let historyStepMs: number | undefined;
+      if (!isLiveSwing) {
+        setConvertState('downloading');
+        const dl = await downloadSwingVideoToCache(effectiveSwingId, videoStoragePath!);
+        if (!dl.ok) {
+          setConvertError(dl.message);
+          setConvertState('error');
+          return;
+        }
+        downloadedUri = dl.uri;
+        localVideoUri = dl.uri;
+        // msPerFrame from the actual frame timestamps (fps varies across
+        // eras) — same derivation as the label save above.
+        historyStepMs =
+          frames.length > 1
+            ? (frames[frames.length - 1].timestampMs - frames[0].timestampMs) /
+              (frames.length - 1)
+            : undefined;
+      }
+      if (!localVideoUri) return;
+      setConvertState('running');
+      const res = await convertToPutt({
+        swingId: effectiveSwingId,
+        videoUri: localVideoUri,
+        frames,
+        ...(isLiveSwing ? {} : { origin: 'history' as const, stepMs: historyStepMs }),
+      });
       if (res.ok) {
-        // convertToPutt seeded the putt store (capture parity) and cleared
-        // the swing store — the param-less live putting result takes over.
-        router.replace('/putting/result' as Href);
+        if (isLiveSwing) {
+          // convertToPutt seeded the putt store (capture parity) and cleared
+          // the swing store — the param-less live putting result takes over.
+          router.replace('/putting/result' as Href);
+        } else {
+          // History: no store involved — the putting result reconstructs from
+          // the freshly written row (signed-URL playback), so the cache file
+          // deleted in the finally below is never referenced again.
+          router.replace(`/putting/result?swingId=${effectiveSwingId}` as Href);
+        }
       } else {
         setConvertError(res.message);
         setConvertState('error');
       }
-    });
+    } finally {
+      convertInFlightRef.current = false;
+      if (downloadedUri) void deleteDownloadedSwingVideo(downloadedUri);
+    }
   };
 
   return (
@@ -1201,7 +1254,7 @@ export default function ResultScreen() {
               <TouchableOpacity
                 style={styles.convertRow}
                 onPress={onConvertToPutt}
-                disabled={convertState === 'running'}
+                disabled={convertState === 'downloading' || convertState === 'running'}
                 activeOpacity={0.7}
               >
                 <Text
@@ -1210,11 +1263,15 @@ export default function ResultScreen() {
                     convertState === 'confirm' && styles.convertLinkTextConfirm,
                   ]}
                 >
-                  {convertState === 'running'
-                    ? 'Re-analyzing…'
-                    : convertState === 'confirm'
-                      ? 'Re-analyze as Putt? Saved frame labels will be removed.'
-                      : 'Wrong type? Re-analyze as Putt'}
+                  {/* downloading → running swaps the STRING in this same
+                      element — no remount/flicker between the two phases. */}
+                  {convertState === 'downloading'
+                    ? 'Downloading video…'
+                    : convertState === 'running'
+                      ? 'Re-analyzing…'
+                      : convertState === 'confirm'
+                        ? 'Re-analyze as Putt? Saved frame labels will be removed.'
+                        : 'Wrong type? Re-analyze as Putt'}
                 </Text>
                 {convertState === 'error' && convertError != null && (
                   <Text style={styles.convertErrorText}>{convertError}</Text>

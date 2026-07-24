@@ -485,21 +485,31 @@ half-edited) frames sticky targets and biases the operator toward confirming
 them. Revisit only if a trusted-boundary source appears.
 WHERE (if ever): components/LabelScrubber.tsx. EFFORT: S.
 
-**P-105 — history swing→putt type conversion (signed-URL downloader)** ⬜
-(logged at type-mismatch repair v1, 2026-07-22)
+**P-105 — history swing→putt type conversion (signed-URL downloader)** 🔄
+(logged at type-mismatch repair v1, 2026-07-22; BUILT 2026-07-23 — device check
+owed, checklist item 32 in the dapper-lemon plan)
 WHAT: extend the wrong-type repair to HISTORICAL full-swing rows. The putting
 pipeline's native passes (trackPuttingObjects/refinePutterHead) decode LOCAL
-video pixels; history rows only expose a signed URL. Needs: download the
-signed URL to cache via expo-file-system (already a dep, ~19.0.21) → feed the
-local path to the existing lib/convertSwingType.ts convertToPutt (unchanged) →
-delete the cache file. Fail soft when video_storage_path is null (upload never
-drained) — keep the affordance hidden in that case, as v1 does for all
-history full-swing rows.
-WHY DEFERRED: largest new surface of the repair feature (download lifecycle,
-disk, retry) for the rarest scenario; the other three conversion cells shipped
-in v1 (live both directions + history putt→swing, which is a pure recompute).
-WHERE: lib/convertSwingType.ts (new download helper) + app/analysis/result.tsx
-guard (drop the isLiveSwing restriction once the downloader exists). EFFORT: M.
+video pixels; history rows only expose a signed URL. Built: download the signed
+URL to an ATTEMPT-UNIQUE cache file (convert-putt-<swingId>-<nowMs>.mov,
+fresh-download-per-attempt, 30s timeout, every exit path deletes; stale-file
+sweep at attempt start) → feed the local path to the existing convertToPutt →
+delete the cache file. convertToPutt gained OPTIONAL history params (owner
+decision): origin:'history' skips the live-store side effects (would otherwise
+seed the putt store with a soon-deleted cache file + wipe an unrelated live
+capture) and stepMs is caller-derived from the row's frame timestamps (fps
+varies across eras — the hardcoded capture-parity grid only describes today's
+240fps captures); params absent ⇒ live path byte-identical. Success routes to
+the HISTORY putting result (?swingId — signed-URL playback, no store). Fail
+soft when video_storage_path is null (upload never drained) — affordance
+hidden, not an error.
+WHY IT WAS DEFERRED: largest new surface of the repair feature (download
+lifecycle, disk, retry) for the rarest scenario; the other three conversion
+cells shipped in v1 (live both directions + history putt→swing, pure recompute).
+WHERE: lib/downloadSwingVideo.ts (NEW — all filesystem plumbing incl. the
+exported best-effort deleteDownloadedSwingVideo) + lib/convertSwingType.ts
+(optional origin/stepMs params) + app/analysis/result.tsx (guard now
+persisted-row + video_storage_path for history; 'downloading' state). EFFORT: M.
 
 ---
 

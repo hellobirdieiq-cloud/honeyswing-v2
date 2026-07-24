@@ -4,13 +4,16 @@
  * INVARIANT: A row represents the RECORDING; analysis_version is the
  * currently accepted analysis of it.
  *
- * convertToPutt  — live full-swing result only (v1): re-runs the putting
- *                  pipeline (CALLED, never modified) on the LOCAL capture
- *                  video + in-memory frames — identical inputs to the
- *                  capture-time putt fork, so full capture parity.
- *                  History full-swing rows are out of scope in v1: the
- *                  native bar passes need a local file and only a signed
- *                  URL exists (P-105 downloader ticket).
+ * convertToPutt  — full-swing result, live or history: re-runs the putting
+ *                  pipeline (CALLED, never modified) on a LOCAL video +
+ *                  frames. Live = the capture file + in-memory frames,
+ *                  identical inputs to the capture-time putt fork (full
+ *                  capture parity). History (P-105) = a temp cache download
+ *                  of the stored video (lib/downloadSwingVideo.ts) + the
+ *                  row's motion_frames; origin:'history' skips the live-store
+ *                  side effects and takes a caller-derived stepMs (fps varies
+ *                  across eras — the capture-parity constant only describes
+ *                  today's grid).
  * convertToSwing — live putt result AND history putt rows: pure recompute
  *                  via analyzePoseSequence on the row's frames. Gravity is
  *                  unavailable post-capture (only the averaged vector
@@ -92,24 +95,37 @@ async function applyConversionUpdate(
 }
 
 /**
- * Live full-swing capture that was actually a putt. Requires the LOCAL
- * capture video (native bar passes decode pixels) and a persisted row.
- * On success the putt store is populated exactly like the capture-time putt
- * fork, so the caller can route to the param-less live putting result (local
- * video playback + shaft overlay intact).
+ * Full-swing recording that was actually a putt. Requires a LOCAL video file
+ * (native bar passes decode pixels) and a persisted row.
+ *
+ * origin 'live' (default): the capture file — on success the putt store is
+ * populated exactly like the capture-time putt fork, so the caller can route
+ * to the param-less live putting result (local video playback + shaft overlay
+ * intact).
+ *
+ * origin 'history' (P-105): the videoUri is a temp cache download the caller
+ * deletes after this settles, so NO live store is touched (convertToSwing's
+ * history precedent — the caller routes to /putting/result?swingId=… and the
+ * screen reconstructs from the freshly written row). In particular the live
+ * swing store is NOT cleared: it may hold an unrelated in-flight capture.
  */
 export async function convertToPutt(args: {
   swingId: string;
   videoUri: string;
   frames: PoseFrame[];
+  origin?: 'live' | 'history';
+  /** History only: derived from the row's frame timestamps (fps varies across
+   * eras). Absent ⇒ the capture-parity constant — the live grid. */
+  stepMs?: number;
 }): Promise<ConvertResult> {
-  const { swingId, videoUri, frames } = args;
+  const { swingId, videoUri, frames, origin = 'live' } = args;
   try {
     const record = await getSwingById(swingId);
     if (!record) return { ok: false, message: 'conversion failed — swing row not found' };
 
-    // Capture-parity step grid (captureProcessing putt fork).
-    const stepMs = ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
+    // Capture-parity step grid (captureProcessing putt fork) unless the
+    // caller supplied the row's real spacing.
+    const stepMs = args.stepMs ?? ANALYZER_DECIMATION * (1000 / CAPTURE_FPS);
     const pipeline = await Promise.race([
       runPuttingPipeline({ videoUri, poseFrames: frames, stepMs }),
       new Promise<never>((_, rej) =>
@@ -126,16 +142,18 @@ export async function convertToPutt(args: {
     const result = await applyConversionUpdate(swingId, update);
     if (!result.ok) return result;
 
-    // Hand the live capture to the putt store (same shape as the capture
-    // fork) and retire the full-swing store — the recording is a putt now.
-    const token = setCurrentPuttResult({
-      poseFrames: frames,
-      videoUri,
-      recordedAt: Date.now(),
-      pipeline,
-    });
-    setCurrentPuttSwingId(swingId, token);
-    clearCurrentSwingMotion();
+    if (origin === 'live') {
+      // Hand the live capture to the putt store (same shape as the capture
+      // fork) and retire the full-swing store — the recording is a putt now.
+      const token = setCurrentPuttResult({
+        poseFrames: frames,
+        videoUri,
+        recordedAt: Date.now(),
+        pipeline,
+      });
+      setCurrentPuttSwingId(swingId, token);
+      clearCurrentSwingMotion();
+    }
     return result;
   } catch (e) {
     console.warn('[convertSwingType] convertToPutt threw:', e instanceof Error ? e.message : String(e));
