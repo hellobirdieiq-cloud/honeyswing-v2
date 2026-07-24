@@ -821,6 +821,44 @@ export default function ResultScreen() {
                           <Text style={styles.videoPlayButtonIcon}>▶</Text>
                         </TouchableOpacity>
                       )}
+                      {/* Position indication OUTSIDE label mode. Paused →
+                          frame counter pill top-center (display-only; the
+                          tappable counter stays a label-overlay instrument).
+                          Playing → thin progress line at the stage bottom
+                          (numbers tick too fast to read). Both pointerEvents
+                          none — they never contest the tab or tap-catcher. */}
+                      {!labelOverlayExpanded && !isPlaying && !!effectiveMotion?.frames?.length && (
+                        <View style={styles.stageFrameCounterWrap} pointerEvents="none">
+                          <View style={styles.stageFrameCounterPill}>
+                            <Text style={styles.stageFrameCounterText}>
+                              {'<'}
+                              <Text style={styles.stageFrameCounterNum}>
+                                {' '}{videoIdx ?? 0} / {effectiveMotion.frames.length}{' '}
+                              </Text>
+                              {'>'}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                      {!labelOverlayExpanded && isPlaying && (effectiveMotion?.frames?.length ?? 0) > 1 && (
+                        <View style={styles.stageProgressTrack} pointerEvents="none">
+                          <View
+                            style={[
+                              styles.stageProgressFill,
+                              {
+                                width: `${Math.min(
+                                  100,
+                                  Math.max(
+                                    0,
+                                    ((videoIdx ?? 0) /
+                                      (effectiveMotion!.frames.length - 1)) * 100,
+                                  ),
+                                )}%`,
+                              },
+                            ]}
+                          />
+                        </View>
+                      )}
                       {/* Operator label overlay (FIX 4b/4c): edge layout — top
                           strip (frame counter + collapse), −5/−1 and +1/+5
                           rails on the side edges, phase chips in one line at

@@ -247,11 +247,13 @@ export const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 6,
   },
-  // Collapsed-state tab for the operator label overlay (FIX 4/4b)
+  // Collapsed-state tab for the operator label overlay (FIX 4/4b).
+  // TOP-right: the Label control's ONE home in both states — matches the
+  // expanded overlay's Label ▾ (top strip, right), so it never jumps.
   labelOverlayTab: {
     position: 'absolute',
     right: 8,
-    bottom: 8,
+    top: 8,
     backgroundColor: 'rgba(0,0,0,0.6)',
     borderRadius: 8,
     paddingHorizontal: 12,
@@ -506,10 +508,54 @@ export const styles = StyleSheet.create({
     aspectRatio: 9 / 16,
     position: 'relative',
   },
-  videoPlayButton: {
+  // Paused-state frame counter (outside label mode) — same pill treatment as
+  // the label overlay's counter (VideoLabelOverlay frameBox/frameText), but
+  // DISPLAY-ONLY: tap-to-type stays a label-mode instrument.
+  stageFrameCounterWrap: {
     position: 'absolute',
-    bottom: 12,
-    right: 12,
+    top: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  stageFrameCounterPill: {
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: '#0A84FF',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  stageFrameCounterText: {
+    color: '#0A84FF',
+    fontSize: 14,
+    fontFamily: 'Menlo',
+    fontWeight: '700',
+  },
+  stageFrameCounterNum: {
+    color: '#FFF',
+  },
+  // Playing-state position line — thin, non-interactive, bottom of the stage.
+  stageProgressTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  stageProgressFill: {
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.65)',
+  },
+  videoPlayButton: {
+    // Dead center of the stage (standard video-player idiom) — was
+    // bottom/right 12, which collided with the [Label ▴] tab's corner.
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -24,
+    marginLeft: -24,
     width: 48,
     height: 48,
     borderRadius: 24,
