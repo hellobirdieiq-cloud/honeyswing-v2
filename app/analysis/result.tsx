@@ -36,6 +36,7 @@ import { useSwingVideoClock } from './useSwingVideoClock';
 import { useFullSwingRegrade } from './useFullSwingRegrade';
 import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorRegrade';
 import { convertToPutt } from '../../lib/convertSwingType';
+import { diffLabelStamps } from '../../lib/labelDirtyState';
 
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
@@ -236,6 +237,14 @@ export default function ResultScreen() {
     [fsAllPhaseEvents],
   );
   const fsStampedCount = Object.values(phaseLabels).filter((v) => v != null).length;
+  // Unsaved-change visibility: ONE derived comparison vs the last-saved
+  // snapshot (never an edit-history flag) drives chip amber, Save
+  // enable/count, and the Reset↔Discard morph. Move-away-and-back is
+  // indistinguishable from never-moved (contract, labelDirtyState.test.ts).
+  const fsLabelDirty = useMemo(
+    () => diffLabelStamps(phaseLabels, savedLabelFrames),
+    [phaseLabels, savedLabelFrames],
+  );
   // 3b: scrubber boundaries track the CURRENT (unsaved) stamps live —
   // operator frame where stamped (solid tick), detected otherwise (dim
   // tick). A stamp moves its tick immediately; reset reverts. Only the
@@ -250,13 +259,16 @@ export default function ResultScreen() {
       }),
     [fsAllPhaseEvents, phaseLabels],
   );
+  // Save states: (a) clean → disabled/dim "Save Labels"; (b) pending changes
+  // → ready "Save Labels (N)"; (c) just saved (snapshot advanced → clean) →
+  // "✓ Saved" until the next dirtying stamp. Saving/error unchanged.
   const fsSaveState =
-    fsStampedCount === 0 || !effectiveSwingId
-      ? ('disabled' as const)
-      : labelSaveStatus === 'saving'
-        ? ('saving' as const)
-        : labelSaveStatus === 'saved'
-          ? ('saved' as const)
+    labelSaveStatus === 'saving'
+      ? ('saving' as const)
+      : labelSaveStatus === 'saved' && !fsLabelDirty.isDirty
+        ? ('saved' as const)
+        : fsStampedCount === 0 || !effectiveSwingId || !fsLabelDirty.isDirty
+          ? ('disabled' as const)
           : ('ready' as const);
 
   const onSaveLabels = async () => {
@@ -884,6 +896,7 @@ export default function ResultScreen() {
                             scrubUpdate={scrubToFrame}
                             scrubEnd={endScrub}
                             labels={phaseLabels}
+                            savedLabels={savedLabelFrames}
                             onStamp={(key, frame) => {
                               setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
                               setLabelSaveStatus('ready');
@@ -926,8 +939,22 @@ export default function ResultScreen() {
                         setLabelSaveError(null);
                         setLastSaveSummary(null);
                       }}
+                      dirty={fsLabelDirty.isDirty}
+                      onDiscardChanges={() => {
+                        // Restore the last-saved snapshot (no snapshot →
+                        // clear accidental stamps). Derived state does the
+                        // rest: amber→green, Save dims, morph reverts.
+                        setPhaseLabels(savedLabelFrames ? { ...savedLabelFrames } : {});
+                        setLabelSaveStatus('ready');
+                        setLabelSaveError(null);
+                        setLastSaveSummary(null);
+                      }}
                       onSave={() => void onSaveLabels()}
-                      saveButtonLabel="Save Labels"
+                      saveButtonLabel={
+                        fsSaveState === 'ready'
+                          ? `Save Labels (${fsLabelDirty.pendingCount})`
+                          : 'Save Labels'
+                      }
                       saveState={fsSaveState}
                       saveDisabledReason={
                         fsStampedCount === 0

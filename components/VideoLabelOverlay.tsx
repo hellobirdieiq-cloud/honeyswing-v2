@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 import type { LabelEvent, LabelSaveState } from './PhaseLabelBar';
 import { LabelScrubber } from './LabelScrubber';
+import { isStampModified } from '@/lib/labelDirtyState';
 
 /**
  * VideoLabelOverlay + LabelControlsBelow — full-swing operator labeling,
@@ -57,6 +58,7 @@ export function VideoLabelOverlay({
   videoIdx,
   seekToFrame,
   labels,
+  savedLabels,
   onStamp,
   onCollapse,
   phases,
@@ -69,6 +71,10 @@ export function VideoLabelOverlay({
   videoIdx: number;
   seekToFrame: (index: number, opts?: { autoPlay?: boolean }) => void;
   labels: Record<string, number | undefined>;
+  /** Last-saved snapshot — a chip whose stamp differs from its saved value
+   *  renders "modified, unsaved" (amber) until Save commits it. Derived
+   *  per-render from equality; never a tracked flag. */
+  savedLabels?: Partial<Record<string, number>> | null;
   onStamp: (key: string, frame: number) => void;
   onCollapse: () => void;
   /** FIX 6c scrubber inputs + 3b live boundaries: the host passes detected
@@ -231,17 +237,28 @@ export function VideoLabelOverlay({
         {events.map((ev) => {
           const stamped = labels[ev.key];
           const flashing = flashKey === ev.key;
+          // "Modified, unsaved": stamp differs from its SAVED value → amber
+          // until Save commits. Saved-and-equal stays green; never-saved
+          // stamps keep the standard stamped treatment.
+          const modified = isStampModified(ev.key, labels, savedLabels ?? null);
           return (
             <Pressable
               key={ev.key}
               style={[
                 styles.chip,
                 stamped != null && styles.chipStamped,
+                modified && styles.chipModified,
                 flashing && styles.chipFlash,
               ]}
               onPress={() => onChipTap(ev)}
             >
-              <Text style={[styles.chipTitle, stamped != null && styles.chipTitleStamped]}>
+              <Text
+                style={[
+                  styles.chipTitle,
+                  stamped != null && styles.chipTitleStamped,
+                  modified && styles.chipTitleModified,
+                ]}
+              >
                 {stamped != null ? `✓ ${ev.label} f${stamped}` : ev.label}
               </Text>
             </Pressable>
@@ -257,6 +274,8 @@ export function LabelControlsBelow({
   labels,
   seekToFrame,
   onResetLabels,
+  dirty,
+  onDiscardChanges,
   onSave,
   saveButtonLabel,
   saveState,
@@ -268,6 +287,13 @@ export function LabelControlsBelow({
   labels: Record<string, number | undefined>;
   seekToFrame: (index: number, opts?: { autoPlay?: boolean }) => void;
   onResetLabels: () => void;
+  /** Derived from equality with the last-saved snapshot (host-computed,
+   *  labelDirtyState.diffLabelStamps) — while true, the reset slot morphs to
+   *  "Discard changes" (restorative: NO confirmation) and restores the
+   *  snapshot via onDiscardChanges. When false, the slot is today's
+   *  "Reset labels" with the confirm-with-escape flow. */
+  dirty: boolean;
+  onDiscardChanges: () => void;
   onSave?: () => void;
   saveButtonLabel: string;
   saveState: LabelSaveState;
@@ -277,6 +303,13 @@ export function LabelControlsBelow({
 }) {
   const [resetArmed, setResetArmed] = useState(false);
   const stampedCount = events.filter((ev) => labels[ev.key] != null).length;
+
+  // The confirm flow belongs only to the clean-state "Reset labels" — if a
+  // stamp lands while armed (state flips to dirty), disarm instead of
+  // letting the red confirm styling bleed into the Discard morph.
+  useEffect(() => {
+    if (dirty) setResetArmed(false);
+  }, [dirty]);
 
   // 3a confirm-reset escape: the armed state auto-reverts after
   // RESET_CONFIRM_MS, and any touch inside this panel OTHER than the reset
@@ -334,7 +367,13 @@ export function LabelControlsBelow({
           style={[styles.resetBtn, resetArmed && styles.resetArmed]}
           onTouchStart={(e) => e.stopPropagation()}
           onPress={() => {
-            if (resetArmed) {
+            if (dirty) {
+              // Restorative, not destructive — restores the last-saved
+              // snapshot immediately, NO confirmation. The morph back to
+              // "Reset labels" falls out of the derived dirty flag.
+              setResetArmed(false);
+              onDiscardChanges();
+            } else if (resetArmed) {
               onResetLabels();
               setResetArmed(false);
             } else if (stampedCount > 0) {
@@ -343,7 +382,7 @@ export function LabelControlsBelow({
           }}
         >
           <Text style={[styles.resetText, resetArmed && styles.resetTextArmed]}>
-            {resetArmed ? 'Confirm reset?' : 'Reset labels'}
+            {dirty ? 'Discard changes' : resetArmed ? 'Confirm reset?' : 'Reset labels'}
           </Text>
         </Pressable>
         <Pressable
@@ -481,6 +520,12 @@ const styles = StyleSheet.create({
     borderColor: '#30D158',
     backgroundColor: '#30D15818',
   },
+  // "Modified, unsaved" — armed/flash GOLD family: the stamp differs from
+  // its saved value until Save commits it.
+  chipModified: {
+    borderColor: '#FFD60A',
+    backgroundColor: '#FFD60A18',
+  },
   chipFlash: {
     backgroundColor: '#FFD60A33',
   },
@@ -492,6 +537,9 @@ const styles = StyleSheet.create({
   },
   chipTitleStamped: {
     color: '#30D158',
+  },
+  chipTitleModified: {
+    color: '#FFD60A',
   },
   // ── below-stage ──
   belowContainer: {
