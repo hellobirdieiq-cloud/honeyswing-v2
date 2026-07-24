@@ -27,13 +27,20 @@ import { isStampModified } from '@/lib/labelDirtyState';
  * FIX 6a: label mode = PAUSED — the host pauses on expand and hides the play
  * button while expanded; every seek issued from this overlay stays paused.
  *
- * Interaction contract: SINGLE-TAP stamp — tapping a chip stamps that phase
- * at the CURRENT frame immediately (latest-wins on re-tap), confirmed by a
- * FLASH_MS highlight + the ✓/fN title. NO seek happens in the stamp path;
- * the delta tokens below the video (LabelControlsBelow) are the ONLY route
- * to the app's detected guess (tap = paused seek). This DIVERGES from
- * PhaseLabelBar's two-tap arm — the putting screen keeps that panel
- * unchanged; reconcile in the P-103 extraction.
+ * Interaction contract (v3 — nav chips + explicit stamp row):
+ *   - PHASE CHIPS = PURE NAVIGATION: tap = paused seek to the chip's current
+ *     frame (operator stamp if present, else detected). Chips NEVER stamp
+ *     and hold no selection state; their treatments (green saved, amber
+ *     modified-unsaved, ✓/fN title) are display-only.
+ *   - STAMP ROW ("Mark as: [TA][TOP][IMP][FIN]", between scrubber and chips,
+ *     always visible while expanded) is the ONLY stamp path: tap stamps that
+ *     phase at the CURRENT playhead frame (latest-wins), confirmed by the
+ *     FLASH_MS highlight on the corresponding chip. The four mini buttons
+ *     are visually identical at all times. NO seek in the stamp path.
+ *   - Delta tokens below the video (LabelControlsBelow) stay the ONLY route
+ *     to the app's detected guess (tap = paused seek).
+ * This DIVERGES from PhaseLabelBar's two-tap arm — the putting screen keeps
+ * that panel unchanged; reconcile in the P-103 extraction.
  */
 
 const DELTA_WARN = 3;
@@ -45,12 +52,16 @@ const RESET_CONFIRM_MS = 3000;
  *  the step repeats, then the repeat cadence. */
 const STEP_HOLD_DELAY_MS = 350;
 const STEP_HOLD_INTERVAL_MS = 80;
-/** Height the absolute-positioned chip row occupies (chip 50 + 2×8 padding) —
- *  the scrubber sits above it. */
-const CHIP_ROW_HEIGHT = 66;
-/** Extra breathing room between the scrubber and the chip row — visually
- *  separates navigation (scrubber) from labeling (chips). */
-const SCRUBBER_CHIP_GAP = 10;
+/** Height the absolute-positioned chip row occupies (chip 50 + 2×2 padding —
+ *  vertical padding compressed from 8 to make room for the stamp row without
+ *  covering more video; chips keep their 50pt size). */
+const CHIP_ROW_HEIGHT = 54;
+/** Slim stamp row ("Mark as:") between the chip row and the scrubber. */
+const STAMP_ROW_HEIGHT = 24;
+/** The old 10pt scrubber↔chip gap is spent on the stamp row: band total is
+ *  54+24 = 78 vs the previous 66+10 = 76 — ~2pt more video covered, the
+ *  compression floor with chips pinned at 50pt. */
+const SCRUBBER_CHIP_GAP = 0;
 
 export function VideoLabelOverlay({
   events,
@@ -139,12 +150,20 @@ export function VideoLabelOverlay({
     setTimeout(() => setFlashKey((k) => (k === key ? null : k)), FLASH_MS);
   };
 
-  // Single-tap stamp: every tap marks the phase at the CURRENT frame
-  // (latest-wins on re-tap). NO seek in this path — the operator's playhead
-  // never moves out from under them; the flash + ✓/fN title confirm.
+  // v3: chips NAVIGATE — paused seek to the chip's current frame (operator
+  // stamp wins over detected). No stamp, no selection state.
   const onChipTap = (ev: LabelEvent) => {
-    onStamp(ev.key, videoIdx);
-    flash(ev.key);
+    const target = labels[ev.key] ?? ev.detectedFrame;
+    if (target == null) return;
+    seekToFrame(clampFrame(target), { autoPlay: false });
+  };
+
+  // v3: the stamp row is the ONLY stamp path — marks the phase at the
+  // CURRENT playhead frame (latest-wins). NO seek; the flash on the
+  // corresponding chip + its ✓/fN title confirm the write.
+  const onStampTap = (key: string) => {
+    onStamp(key, videoIdx);
+    flash(key);
   };
 
   const submitFrameInput = () => {
@@ -231,8 +250,27 @@ export function VideoLabelOverlay({
         />
       </View>
 
-      {/* Bottom chip row — one line, fixed height. Tap = stamp at the
-          current frame; the FLASH_MS highlight confirms the write. */}
+      {/* v3 stamp row — the ONLY stamp path. Always visible while expanded;
+          the four mini buttons are visually identical at all times. The
+          current frame is NOT repeated here — the top-center counter pill
+          already shows it. */}
+      <View style={styles.stampRow}>
+        <Text style={styles.stampLabel}>Mark as:</Text>
+        {events.map((ev) => (
+          <Pressable
+            key={ev.key}
+            style={styles.stampBtn}
+            hitSlop={{ top: 6, bottom: 6 }}
+            onPress={() => onStampTap(ev.key)}
+          >
+            <Text style={styles.stampBtnText}>{ev.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Bottom chip row — one line, fixed height. v3: tap = paused seek to
+          the chip's current frame (stamp wins over detected) — navigation
+          only; the stamp row above is the sole stamp path. */}
       <View style={styles.chipRow}>
         {events.map((ev) => {
           const stamped = labels[ev.key];
@@ -493,8 +531,42 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: CHIP_ROW_HEIGHT + SCRUBBER_CHIP_GAP,
+    bottom: CHIP_ROW_HEIGHT + STAMP_ROW_HEIGHT + SCRUBBER_CHIP_GAP,
     paddingHorizontal: 14,
+  },
+  // v3 stamp row — slim band between scrubber and chips, same backdrop as
+  // the chip row so the two read as one bottom band.
+  stampRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: CHIP_ROW_HEIGHT,
+    height: STAMP_ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  stampLabel: {
+    color: '#999',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  stampBtn: {
+    flex: 1,
+    height: 22,
+    borderWidth: 1,
+    borderColor: '#777',
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stampBtnText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontFamily: 'Menlo',
+    fontWeight: '700',
   },
   chipRow: {
     position: 'absolute',
@@ -503,7 +575,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     gap: 6,
-    padding: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   chip: {
