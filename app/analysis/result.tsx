@@ -38,6 +38,10 @@ import { regradeFromOperatorPhases } from '../../packages/domain/swing/operatorR
 import { convertToPutt } from '../../lib/convertSwingType';
 import { diffLabelStamps } from '../../lib/labelDirtyState';
 
+/** Save-success auto-collapse (EXTERNAL-ASSUMPTION tunable): the beat "✓
+ *  Saved" stays on screen before the overlay folds itself. */
+const SAVE_COLLAPSE_MS = 800;
+
 type PhaseChipKey = SwingPhase | 'full_swing';
 const PHASE_CHIPS: { phase: PhaseChipKey; label: string }[] = [
   { phase: 'full_swing',     label: 'Full Swing' },
@@ -98,6 +102,19 @@ export default function ResultScreen() {
   // without scrolling up to the card).
   const [labelBarCollapsed, setLabelBarCollapsed] = useState(false);
   const [lastSaveSummary, setLastSaveSummary] = useState<string | null>(null);
+  // Save-success auto-collapse: scheduled ONLY on the full-success path
+  // (both writes landed) — failure/partial failure return before scheduling,
+  // so the retry always stays open. End state = the Label ▾ collapse
+  // (labelBarCollapsed true, labelMode stays armed). A new stamp / reset /
+  // discard within the beat cancels the fold.
+  const saveCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelSaveCollapse = useCallback(() => {
+    if (saveCollapseTimerRef.current) {
+      clearTimeout(saveCollapseTimerRef.current);
+      saveCollapseTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => cancelSaveCollapse, [cancelSaveCollapse]);
   // Bottom detail rows (Phase 1 layout restructure): Tempo / Art expand on tap.
   const [tempoExpanded, setTempoExpanded] = useState(false);
   const [artExpanded, setArtExpanded] = useState(false);
@@ -190,6 +207,16 @@ export default function ResultScreen() {
   // every label-mode seek is {autoPlay:false}, so nothing can resume play.
   // Collapsing restores the normal controls.
   const labelOverlayExpanded = labelMode && !labelBarCollapsed;
+  // (Re)entering the expanded overlay cancels any pending save-collapse fold
+  // — a stale timer from a save made before a manual collapse must never
+  // fold the freshly reopened session. The two known expand routes ALSO
+  // cancel synchronously in their tap handlers (airtight: same task as the
+  // tap, no passive-effect window); this transition effect is the safety net
+  // for any future expand route. Navigation (scrub / rails / chip nav /
+  // delta seeks) deliberately never touches the timer.
+  useEffect(() => {
+    if (labelOverlayExpanded) cancelSaveCollapse();
+  }, [labelOverlayExpanded, cancelSaveCollapse]);
   useEffect(() => {
     if (labelOverlayExpanded) player?.pause();
   }, [labelOverlayExpanded, player]);
@@ -379,6 +406,13 @@ export default function ResultScreen() {
         : 'Yours: tempo unavailable',
     );
     setLabelSaveStatus('saved');
+    // "✓ Saved" gets its beat, then the overlay folds (success only — the
+    // failure path returned above).
+    cancelSaveCollapse();
+    saveCollapseTimerRef.current = setTimeout(() => {
+      saveCollapseTimerRef.current = null;
+      setLabelBarCollapsed(true);
+    }, SAVE_COLLAPSE_MS);
   };
 
   // Score count-up. Animates from the currently displayed value to the target
@@ -898,6 +932,7 @@ export default function ResultScreen() {
                             labels={phaseLabels}
                             savedLabels={savedLabelFrames}
                             onStamp={(key, frame) => {
+                              cancelSaveCollapse();
                               setPhaseLabels((prev) => ({ ...prev, [key]: frame }));
                               setLabelSaveStatus('ready');
                               setLabelSaveError(null);
@@ -909,6 +944,10 @@ export default function ResultScreen() {
                           <TouchableOpacity
                             style={styles.labelOverlayTab}
                             onPress={() => {
+                              // Synchronous cancel: same task as the tap, so
+                              // an expiring save-collapse timer can never
+                              // interleave and fold the reopened session.
+                              cancelSaveCollapse();
                               setLabelMode(true);
                               setLabelBarCollapsed(false);
                             }}
@@ -934,6 +973,7 @@ export default function ResultScreen() {
                       labels={phaseLabels}
                       seekToFrame={seekToFrame}
                       onResetLabels={() => {
+                        cancelSaveCollapse();
                         setPhaseLabels({});
                         setLabelSaveStatus('ready');
                         setLabelSaveError(null);
@@ -941,6 +981,7 @@ export default function ResultScreen() {
                       }}
                       dirty={fsLabelDirty.isDirty}
                       onDiscardChanges={() => {
+                        cancelSaveCollapse();
                         // Restore the last-saved snapshot (no snapshot →
                         // clear accidental stamps). Derived state does the
                         // rest: amber→green, Save dims, morph reverts.
@@ -1058,6 +1099,7 @@ export default function ResultScreen() {
                   <TouchableOpacity
                     style={styles.detailRowPressable}
                     onPress={() => {
+                      cancelSaveCollapse(); // synchronous — see the tab handler
                       setLabelMode(true);
                       setLabelBarCollapsed(false);
                       // The rows sit below the fold — bring the stage (where
